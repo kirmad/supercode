@@ -117,7 +117,7 @@ export namespace Provider {
         options: {
           headers: {
             "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "opencode",
+            "X-Title": "supercode",
           },
         },
       }
@@ -128,7 +128,7 @@ export namespace Provider {
         options: {
           headers: {
             "http-referer": "https://opencode.ai/",
-            "x-title": "opencode",
+            "x-title": "supercode",
           },
         },
       }

@@ -405,7 +405,7 @@ export const GithubRunCommand = cmd({
         const comment = await createComment()
         commentId = comment.data.id
 
-        // Setup opencode session
+        // Setup supercode session
         const repoData = await fetchRepo()
         session = await Session.create()
         subscribeSessionEvents()
@@ -415,7 +415,7 @@ export const GithubRunCommand = cmd({
           await Session.share(session.id)
           return session.id.slice(-8)
         })()
-        console.log("opencode session", session.id)
+        console.log("supercode session", session.id)
 
         // Handle 3 cases
         // 1. Issue
@@ -888,7 +888,7 @@ Co-authored-by: ${actor} <${actor}@users.noreply.github.com>"`
 
           return `<a href="${shareBaseUrl}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
         })()
-        const shareUrl = shareId ? `[opencode session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+        const shareUrl = shareId ? `[supercode session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
         return `\n\n${image}${shareUrl}[github run](${runUrl})`
       }
 

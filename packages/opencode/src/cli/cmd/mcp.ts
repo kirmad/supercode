@@ -67,7 +67,7 @@ export const McpAddCommand = cmd({
       if (prompts.isCancel(url)) throw new UI.CancelledError()
 
       const client = new Client({
-        name: "opencode",
+        name: "supercode",
         version: "1.0.0",
       })
       const transport = new StreamableHTTPClientTransport(new URL(url))

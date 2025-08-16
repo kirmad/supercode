@@ -93,7 +93,7 @@ export default {
           const userResponse = await fetch("https://api.github.com/user", {
             headers: {
               Authorization: `Bearer ${response.tokenset.access}`,
-              "User-Agent": "opencode",
+              "User-Agent": "supercode",
               Accept: "application/vnd.github+json",
             },
           })

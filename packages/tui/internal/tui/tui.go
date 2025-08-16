@@ -439,12 +439,12 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.showCompletionDialog = false
 	case opencode.EventListResponseEventInstallationUpdated:
 		return a, toast.NewSuccessToast(
-			"opencode updated to "+msg.Properties.Version+", restart to apply.",
+			"supercode updated to "+msg.Properties.Version+", restart to apply.",
 			toast.WithTitle("New version installed"),
 		)
 	case opencode.EventListResponseEventIdeInstalled:
 		return a, toast.NewSuccessToast(
-			"Installed the opencode extension in "+msg.Properties.Ide,
+			"Installed the supercode extension in "+msg.Properties.Ide,
 			toast.WithTitle(msg.Properties.Ide+" extension installed"),
 		)
 	case opencode.EventListResponseEventSessionDeleted:
@@ -896,10 +896,10 @@ func (a Model) home() (string, int, int) {
 	base := baseStyle.Render
 	muted := styles.NewStyle().Foreground(t.TextMuted()).Background(t.Background()).Render
 
-	open := `
-█▀▀█ █▀▀█ █▀▀ █▀▀▄ 
-█░░█ █░░█ █▀▀ █░░█ 
-▀▀▀▀ █▀▀▀ ▀▀▀ ▀  ▀ `
+	super := `
+█▀▀ █  █ █▀▀█ █▀▀ █▀▀█ 
+▀▀█ █░░█ █▀▀  █▀▀ █▀▀▄ 
+▀▀▀ ▀▀▀▀ ▀    ▀▀▀ ▀  ▀ `
 	code := `
 █▀▀ █▀▀█ █▀▀▄ █▀▀
 █░░ █░░█ █░░█ █▀▀
@@ -907,7 +907,7 @@ func (a Model) home() (string, int, int) {
 
 	logo := lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		muted(open),
+		muted(super),
 		base(code),
 	)
 	// cwd := app.Info.Path.Cwd

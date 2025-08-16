@@ -85,9 +85,9 @@ export namespace Server {
         openAPISpecs(app, {
           documentation: {
             info: {
-              title: "opencode",
+              title: "supercode",
               version: "0.0.3",
-              description: "opencode api",
+              description: "supercode api",
             },
             openapi: "3.1.1",
           },
@@ -1225,9 +1225,9 @@ export namespace Server {
     const result = await generateSpecs(a, {
       documentation: {
         info: {
-          title: "opencode",
+          title: "supercode",
           version: "1.0.0",
-          description: "opencode api",
+          description: "supercode api",
         },
         openapi: "3.1.1",
       },
