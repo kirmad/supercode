@@ -3,17 +3,132 @@ import { $ } from "bun"
 import { exec } from "child_process"
 import * as prompts from "@clack/prompts"
 import { map, pipe, sortBy, values } from "remeda"
+import { Octokit } from "@octokit/rest"
+import { graphql } from "@octokit/graphql"
+import * as core from "@actions/core"
+import * as github from "@actions/github"
+import type { Context } from "@actions/github/lib/context"
+import type { IssueCommentEvent } from "@octokit/webhooks-types"
 import { UI } from "../ui"
 import { cmd } from "./cmd"
 import { ModelsDev } from "../../provider/models"
 import { App } from "../../app/app"
+import { bootstrap } from "../bootstrap"
+import { Session } from "../../session"
+import { Identifier } from "../../id/id"
+import { Provider } from "../../provider/provider"
+import { Bus } from "../../bus"
+import { MessageV2 } from "../../session/message-v2"
+
+type GitHubAuthor = {
+  login: string
+  name?: string
+}
+
+type GitHubComment = {
+  id: string
+  databaseId: string
+  body: string
+  author: GitHubAuthor
+  createdAt: string
+}
+
+type GitHubReviewComment = GitHubComment & {
+  path: string
+  line: number | null
+}
+
+type GitHubCommit = {
+  oid: string
+  message: string
+  author: {
+    name: string
+    email: string
+  }
+}
+
+type GitHubFile = {
+  path: string
+  additions: number
+  deletions: number
+  changeType: string
+}
+
+type GitHubReview = {
+  id: string
+  databaseId: string
+  author: GitHubAuthor
+  body: string
+  state: string
+  submittedAt: string
+  comments: {
+    nodes: GitHubReviewComment[]
+  }
+}
+
+type GitHubPullRequest = {
+  title: string
+  body: string
+  author: GitHubAuthor
+  baseRefName: string
+  headRefName: string
+  headRefOid: string
+  createdAt: string
+  additions: number
+  deletions: number
+  state: string
+  baseRepository: {
+    nameWithOwner: string
+  }
+  headRepository: {
+    nameWithOwner: string
+  }
+  commits: {
+    totalCount: number
+    nodes: Array<{
+      commit: GitHubCommit
+    }>
+  }
+  files: {
+    nodes: GitHubFile[]
+  }
+  comments: {
+    nodes: GitHubComment[]
+  }
+  reviews: {
+    nodes: GitHubReview[]
+  }
+}
+
+type GitHubIssue = {
+  title: string
+  body: string
+  author: GitHubAuthor
+  createdAt: string
+  state: string
+  comments: {
+    nodes: GitHubComment[]
+  }
+}
+
+type PullRequestQueryResponse = {
+  repository: {
+    pullRequest: GitHubPullRequest
+  }
+}
+
+type IssueQueryResponse = {
+  repository: {
+    issue: GitHubIssue
+  }
+}
 
 const WORKFLOW_FILE = ".github/workflows/opencode.yml"
 
 export const GithubCommand = cmd({
   command: "github",
   describe: "manage GitHub agent",
-  builder: (yargs) => yargs.command(GithubInstallCommand).demandCommand(),
+  builder: (yargs) => yargs.command(GithubInstallCommand).command(GithubRunCommand).demandCommand(),
   async handler() {},
 })
 
