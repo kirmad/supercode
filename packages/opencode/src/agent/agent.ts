@@ -38,6 +38,7 @@ export namespace Agent {
 
   const state = App.state("agent", async () => {
     const cfg = await Config.get()
+    const defaultTools = cfg.tools ?? {}
     const defaultPermission: Info["permission"] = {
       edit: "allow",
       bash: {
@@ -55,6 +56,7 @@ export namespace Agent {
         tools: {
           todoread: false,
           todowrite: false,
+          ...defaultTools,
         },
         options: {},
         permission: agentPermission,
@@ -63,7 +65,7 @@ export namespace Agent {
       },
       build: {
         name: "build",
-        tools: {},
+        tools: { ...defaultTools },
         options: {},
         permission: agentPermission,
         mode: "primary",
@@ -77,6 +79,7 @@ export namespace Agent {
           write: false,
           edit: false,
           patch: false,
+          ...defaultTools,
         },
         mode: "primary",
         builtIn: true,
@@ -97,7 +100,7 @@ export namespace Agent {
           tools: {},
           builtIn: false,
         }
-      const { model, prompt, tools, description, temperature, top_p, mode, permission, ...extra } = value
+      const { name, model, prompt, tools, description, temperature, top_p, mode, permission, ...extra } = value
       item.options = {
         ...item.options,
         ...extra,
@@ -109,10 +112,16 @@ export namespace Agent {
           ...item.tools,
           ...tools,
         }
+      item.tools = {
+        ...defaultTools,
+        ...item.tools,
+      }
       if (description) item.description = description
       if (temperature != undefined) item.temperature = temperature
       if (top_p != undefined) item.topP = top_p
       if (mode) item.mode = mode
+      // just here for consistency & to prevent it from being added as an option
+      if (name) item.name = name
 
       if (permission ?? cfg.permission) {
         item.permission = mergeAgentPermissions(cfg.permission ?? {}, permission ?? {})

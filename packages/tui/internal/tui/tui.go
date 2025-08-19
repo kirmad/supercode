@@ -621,6 +621,10 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			},
 		}
 	case app.SessionSelectedMsg:
+		updated, cmd := a.messages.Update(msg)
+		a.messages = updated.(chat.MessagesComponent)
+		cmds = append(cmds, cmd)
+
 		messages, err := a.app.ListMessages(context.Background(), msg.ID)
 		if err != nil {
 			slog.Error("Failed to list messages", "error", err.Error())
@@ -628,7 +632,8 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.app.Session = msg
 		a.app.Messages = messages
-		return a, util.CmdHandler(app.SessionLoadedMsg{})
+		cmds = append(cmds, util.CmdHandler(app.SessionLoadedMsg{}))
+		return a, tea.Batch(cmds...)
 	case app.SessionCreatedMsg:
 		a.app.Session = msg.Session
 	case dialog.ScrollToMessageMsg:
@@ -723,8 +728,8 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "/tui/open-sessions":
 			sessionDialog := dialog.NewSessionDialog(a.app)
 			a.modal = sessionDialog
-		case "/tui/open-navigation":
-			navigationDialog := dialog.NewNavigationDialog(a.app)
+		case "/tui/open-timeline":
+			navigationDialog := dialog.NewTimelineDialog(a.app)
 			a.modal = navigationDialog
 		case "/tui/open-themes":
 			themeDialog := dialog.NewThemeDialog()
@@ -1141,11 +1146,11 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 	case commands.SessionListCommand:
 		sessionDialog := dialog.NewSessionDialog(a.app)
 		a.modal = sessionDialog
-	case commands.SessionNavigationCommand:
+	case commands.SessionTimelineCommand:
 		if a.app.Session.ID == "" {
 			return a, toast.NewErrorToast("No active session")
 		}
-		navigationDialog := dialog.NewNavigationDialog(a.app)
+		navigationDialog := dialog.NewTimelineDialog(a.app)
 		a.modal = navigationDialog
 	case commands.SessionShareCommand:
 		if a.app.Session.ID == "" {

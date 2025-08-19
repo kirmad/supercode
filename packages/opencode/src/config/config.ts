@@ -44,16 +44,31 @@ export namespace Config {
 
     result.agent = result.agent || {}
     const markdownAgents = [
-      ...(await Filesystem.globUp("agent/*.md", Global.Path.config, Global.Path.config)),
-      ...(await Filesystem.globUp(".opencode/agent/*.md", app.path.cwd, app.path.root)),
+      ...(await Filesystem.globUp("agent/**/*.md", Global.Path.config, Global.Path.config)),
+      ...(await Filesystem.globUp(".opencode/agent/**/*.md", app.path.cwd, app.path.root)),
     ]
     for (const item of markdownAgents) {
       const content = await Bun.file(item).text()
       const md = matter(content)
       if (!md.data) continue
 
+      // Extract relative path from agent folder for nested agents
+      let agentName = path.basename(item, ".md")
+      const agentFolderPath = item.includes("/.opencode/agent/")
+        ? item.split("/.opencode/agent/")[1]
+        : item.includes("/agent/")
+          ? item.split("/agent/")[1]
+          : agentName + ".md"
+
+      // If agent is in a subfolder, include folder path in name
+      if (agentFolderPath.includes("/")) {
+        const relativePath = agentFolderPath.replace(".md", "")
+        const pathParts = relativePath.split("/")
+        agentName = pathParts.slice(0, -1).join("/").toUpperCase() + "/" + pathParts[pathParts.length - 1].toUpperCase()
+      }
+
       const config = {
-        name: path.basename(item, ".md"),
+        name: agentName,
         ...md.data,
         prompt: md.content.trim(),
       }
@@ -214,6 +229,7 @@ export namespace Config {
       session_export: z.string().optional().default("<leader>x").describe("Export session to editor"),
       session_new: z.string().optional().default("<leader>n").describe("Create a new session"),
       session_list: z.string().optional().default("<leader>l").describe("List all sessions"),
+      session_timeline: z.string().optional().default("<leader>g").describe("Show session timeline"),
       session_share: z.string().optional().default("<leader>s").describe("Share current session"),
       session_unshare: z.string().optional().default("none").describe("Unshare current session"),
       session_interrupt: z.string().optional().default("esc").describe("Interrupt current session"),
@@ -384,6 +400,7 @@ export namespace Config {
           webfetch: Permission.optional(),
         })
         .optional(),
+      tools: z.record(z.string(), z.boolean()).optional(),
       experimental: z
         .object({
           hook: z
