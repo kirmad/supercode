@@ -10,3 +10,13 @@ tmp
 **/logs/*.json
 supercode
 logs/*.log
+
+# Test files and screenshots (temporary)
+test-scalar*.js
+scalar-*.png
+*-test.png
+*-test.js
+.playwright-mcp/
+.claude-trace/
+web-client/dist/*
+server.log

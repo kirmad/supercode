@@ -1666,31 +1666,6 @@ export type ConfigProvidersResponses = {
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
 
-export type ConfigMcpData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/config/mcp"
-}
-
-export type ConfigMcpResponses = {
-  /**
-   * List of MCP servers with status
-   */
-  200: {
-    servers: Array<{
-      name: string
-      type: "local" | "remote"
-      enabled: boolean
-      connected: boolean
-      url?: string
-      command?: Array<string>
-    }>
-  }
-}
-
-export type ConfigMcpResponse = ConfigMcpResponses[keyof ConfigMcpResponses]
-
 export type FindTextData = {
   body?: never
   path?: never
@@ -2000,6 +1975,68 @@ export type TuiShowToastResponses = {
 }
 
 export type TuiShowToastResponse = TuiShowToastResponses[keyof TuiShowToastResponses]
+
+export type WebAppData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/web"
+}
+
+export type WebAppResponses = {
+  /**
+   * Web application HTML
+   */
+  200: string
+}
+
+export type WebAppResponse = WebAppResponses[keyof WebAppResponses]
+
+export type WebInfoData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/web/api/info"
+}
+
+export type WebInfoResponses = {
+  /**
+   * Application info
+   */
+  200: {
+    name: string
+    version: string
+    description: string
+    apiBaseUrl: string
+  }
+}
+
+export type WebInfoResponse = WebInfoResponses[keyof WebInfoResponses]
+
+export type ConfigMcpData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/config/mcp"
+}
+
+export type ConfigMcpResponses = {
+  /**
+   * List of MCP servers with status
+   */
+  200: {
+    servers: Array<{
+      name: string
+      type: "local" | "remote"
+      enabled: boolean
+      connected: boolean
+      url?: string
+      command?: Array<string>
+    }>
+  }
+}
+
+export type ConfigMcpResponse = ConfigMcpResponses[keyof ConfigMcpResponses]
 
 export type AuthSetData = {
   body?: Auth

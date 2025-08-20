@@ -1,0 +1,11 @@
+packages/opencode/src/util/mcp-init.ts
+packages/opencode/src/server/mcp-api.ts
+packages/tui/internal/app/mcp-extension.go
+packages/tui/internal/commands/mcp-commands.go
+packages/opencode/src/components/dialog/mcp.go
+packages/opencode/src/server/web-routes.ts
+packages/opencode/src/server/web-static.ts
+packages/opencode/src/server/web-templates.ts
+packages/opencode/src/server/static/app.js
+packages/opencode/src/server/templates/web-app.html
+safe-files.txt

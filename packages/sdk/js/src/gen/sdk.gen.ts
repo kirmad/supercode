@@ -49,8 +49,6 @@ import type {
   PostSessionByIdPermissionsByPermissionIdResponses,
   ConfigProvidersData,
   ConfigProvidersResponses,
-  ConfigMcpData,
-  ConfigMcpResponses,
   FindTextData,
   FindTextResponses,
   FindFilesData,
@@ -83,6 +81,12 @@ import type {
   TuiExecuteCommandResponses,
   TuiShowToastData,
   TuiShowToastResponses,
+  WebAppData,
+  WebAppResponses,
+  WebInfoData,
+  WebInfoResponses,
+  ConfigMcpData,
+  ConfigMcpResponses,
   AuthSetData,
   AuthSetResponses,
   AuthSetErrors,
@@ -564,6 +568,28 @@ class Tui extends _HeyApiClient {
   }
 }
 
+class Web extends _HeyApiClient {
+  /**
+   * Web application with multi-tab interface including API client
+   */
+  public app<ThrowOnError extends boolean = false>(options?: Options<WebAppData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<WebAppResponses, unknown, ThrowOnError>({
+      url: "/web",
+      ...options,
+    })
+  }
+
+  /**
+   * Get web application info
+   */
+  public info<ThrowOnError extends boolean = false>(options?: Options<WebInfoData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<WebInfoResponses, unknown, ThrowOnError>({
+      url: "/web/api/info",
+      ...options,
+    })
+  }
+}
+
 class Auth extends _HeyApiClient {
   /**
    * Set authentication credentials
@@ -607,5 +633,6 @@ export class OpencodeClient extends _HeyApiClient {
   find = new Find({ client: this._client })
   file = new File({ client: this._client })
   tui = new Tui({ client: this._client })
+  web = new Web({ client: this._client })
   auth = new Auth({ client: this._client })
 }

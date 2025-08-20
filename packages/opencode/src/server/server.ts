@@ -22,6 +22,7 @@ import { lazy } from "../util/lazy"
 import { Agent } from "../agent/agent"
 import { Auth } from "../auth"
 import { createMCPRoutes } from "./mcp-api"
+import { createWebRoutes } from "./web-routes"
 
 const ERRORS = {
   400: {
@@ -55,6 +56,7 @@ export namespace Server {
     const app = new Hono()
 
     const result = app
+      //.use(cors())
       .onError((err, c) => {
         if (err instanceof NamedError) {
           return c.json(err.toObject(), {
@@ -1186,6 +1188,7 @@ export namespace Server {
         async (c) => c.json(await callTui(c)),
       )
       .route("/tui/control", TuiRoute)
+      .route("/web", createWebRoutes())
       .route("/", createMCPRoutes())
       .put(
         "/auth/:id",
