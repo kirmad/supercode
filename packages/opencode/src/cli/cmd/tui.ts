@@ -15,6 +15,7 @@ import { Ide } from "../../ide"
 
 import { Flag } from "../../flag/flag"
 import { Session } from "../../session"
+import { McpInit } from "../../util/mcp-init"
 
 declare global {
   const OPENCODE_TUI_PATH: string
@@ -98,6 +99,9 @@ export const TuiCommand = cmd({
         if (Object.keys(providers).length === 0) {
           return "needs_provider"
         }
+
+        // Initialize MCP servers early so they're ready when TUI opens
+        await McpInit.initialize()
 
         const server = Server.listen({
           port: args.port,

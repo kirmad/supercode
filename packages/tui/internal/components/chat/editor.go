@@ -421,7 +421,17 @@ func (m *editorComponent) Content() string {
 }
 
 func (m *editorComponent) Cursor() *tea.Cursor {
-	return m.textarea.Cursor()
+	cursor := m.textarea.Cursor()
+	if cursor != nil {
+		// Only adjust cursor position for single-line mode in the initial screen where PaddingTop(1) applies
+		// Multi-line mode uses lipgloss.Place with different positioning
+		// Initial screen is when no session has been started (Session.ID == "")
+		if m.Lines() <= 1 && m.app.Session.ID == "" {
+			// Adjust cursor position to account for PaddingTop(1) in the editor container
+			cursor.Position.Y += 1
+		}
+	}
+	return cursor
 }
 
 func (m *editorComponent) View() string {
