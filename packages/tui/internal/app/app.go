@@ -904,6 +904,7 @@ func (a *App) ListProviders(ctx context.Context) ([]opencode.Provider, error) {
 	return providers.Providers, nil
 }
 
+
 // func (a *App) loadCustomKeybinds() {
 //
 // }

@@ -400,6 +400,9 @@ func LoadFromConfig(config *opencode.Config) CommandRegistry {
 		}
 		registry[command.Name] = command
 	}
+	// Add MCP commands from extension
+	extendRegistryWithMCP(registry)
+	
 	slog.Info("Loaded commands", "commands", registry)
 	return registry
 }

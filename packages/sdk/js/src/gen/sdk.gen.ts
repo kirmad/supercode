@@ -49,6 +49,8 @@ import type {
   PostSessionByIdPermissionsByPermissionIdResponses,
   ConfigProvidersData,
   ConfigProvidersResponses,
+  ConfigMcpData,
+  ConfigMcpResponses,
   FindTextData,
   FindTextResponses,
   FindFilesData,
@@ -189,6 +191,16 @@ class Config extends _HeyApiClient {
   public providers<ThrowOnError extends boolean = false>(options?: Options<ConfigProvidersData, ThrowOnError>) {
     return (options?.client ?? this._client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
       url: "/config/providers",
+      ...options,
+    })
+  }
+
+  /**
+   * List all MCP servers and their status
+   */
+  public mcp<ThrowOnError extends boolean = false>(options?: Options<ConfigMcpData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<ConfigMcpResponses, unknown, ThrowOnError>({
+      url: "/config/mcp",
       ...options,
     })
   }

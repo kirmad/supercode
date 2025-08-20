@@ -21,6 +21,7 @@ import { Permission } from "../permission"
 import { lazy } from "../util/lazy"
 import { Agent } from "../agent/agent"
 import { Auth } from "../auth"
+import { createMCPRoutes } from "./mcp-api"
 
 const ERRORS = {
   400: {
@@ -1185,6 +1186,7 @@ export namespace Server {
         async (c) => c.json(await callTui(c)),
       )
       .route("/tui/control", TuiRoute)
+      .route("/", createMCPRoutes())
       .put(
         "/auth/:id",
         describeRoute({

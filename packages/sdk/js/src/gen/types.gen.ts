@@ -1666,6 +1666,31 @@ export type ConfigProvidersResponses = {
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
 
+export type ConfigMcpData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/config/mcp"
+}
+
+export type ConfigMcpResponses = {
+  /**
+   * List of MCP servers with status
+   */
+  200: {
+    servers: Array<{
+      name: string
+      type: "local" | "remote"
+      enabled: boolean
+      connected: boolean
+      url?: string
+      command?: Array<string>
+    }>
+  }
+}
+
+export type ConfigMcpResponse = ConfigMcpResponses[keyof ConfigMcpResponses]
+
 export type FindTextData = {
   body?: never
   path?: never
