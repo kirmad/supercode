@@ -22,4 +22,4 @@ web-client/dist/*
 server.log
 opencodetmp/*
 .opencode/*
-
+packages/tui/test-tui

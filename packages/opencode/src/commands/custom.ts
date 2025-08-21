@@ -12,8 +12,71 @@ export namespace CustomCommands {
     filePath?: string
   }
 
+  export interface CommandMetadata {
+    description?: string
+    "argument-hint"?: string
+    [key: string]: any
+  }
+
+  export interface CommandInfo {
+    metadata: CommandMetadata
+    content: string
+  }
+
   const NAMESPACED_COMMAND_REGEX = /^\/([a-zA-Z0-9_-]+):([a-zA-Z0-9_:-]+)(\s+.*)?$/
   const ROOT_COMMAND_REGEX = /^\/([a-zA-Z0-9_-]+)(\s+.*)?$/
+
+  function parseFrontMatter(content: string): { metadata: CommandMetadata; content: string } {
+    const frontMatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/
+    const match = content.match(frontMatterRegex)
+    
+    if (!match) {
+      return { metadata: {}, content }
+    }
+
+    const [, yamlContent, markdownContent] = match
+    const metadata: CommandMetadata = {}
+
+    // Simple YAML parser for basic key-value pairs
+    const lines = yamlContent.split('\n')
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      
+      const colonIndex = trimmed.indexOf(':')
+      if (colonIndex === -1) continue
+      
+      const key = trimmed.substring(0, colonIndex).trim()
+      let value = trimmed.substring(colonIndex + 1).trim()
+      
+      // Remove quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) || 
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1)
+      }
+      
+      metadata[key] = value
+    }
+
+    return { metadata, content: markdownContent }
+  }
+
+  export async function getCommandInfo(input: string): Promise<CommandInfo | null> {
+    const parsed = parseCommand(input)
+    
+    if (!parsed.isCustomCommand || !parsed.filePath) {
+      return null
+    }
+    
+    try {
+      const content = await fs.readFile(parsed.filePath, "utf-8")
+      const { metadata, content: markdownContent } = parseFrontMatter(content)
+      
+      return { metadata, content: markdownContent }
+    } catch (error) {
+      return null
+    }
+  }
 
   export function parseCommand(input: string): ParsedCommand {
     const trimmed = input.trim()
@@ -59,8 +122,12 @@ export namespace CustomCommands {
     
     try {
       const content = await fs.readFile(parsed.filePath, "utf-8")
+      
+      // Parse front matter and get the actual content without front matter
+      const { content: markdownContent } = parseFrontMatter(content)
+      
       // First replace arguments
-      let processedContent = content.replace(/\$ARGUMENTS/g, parsed.args || "")
+      let processedContent = markdownContent.replace(/\$ARGUMENTS/g, parsed.args || "")
       
       // Then process file includes
       processedContent = await processFileIncludes(processedContent, parsed.filePath)
