@@ -62,7 +62,10 @@ export namespace CustomCommands {
       // First replace arguments
       let processedContent = content.replace(/\$ARGUMENTS/g, parsed.args || "")
       
-      // Then process shell commands
+      // Then process file includes
+      processedContent = await processFileIncludes(processedContent, parsed.filePath)
+      
+      // Finally process shell commands
       processedContent = await processShellCommands(processedContent)
       
       return processedContent
@@ -70,6 +73,38 @@ export namespace CustomCommands {
       const commandRef = parsed.namespace ? `${parsed.namespace}:${parsed.command}` : parsed.command
       throw new Error(`Command not found: ${commandRef}`)
     }
+  }
+
+  async function processFileIncludes(content: string, commandFilePath: string): Promise<string> {
+    // Regex to match @<filepath> patterns - matches common file path characters
+    const fileIncludeRegex = /@([a-zA-Z0-9_./\-]+)/g
+    
+    let processedContent = content
+    let match
+    
+    // Get the directory of the command file for relative path resolution
+    const commandDir = path.dirname(commandFilePath)
+    
+    while ((match = fileIncludeRegex.exec(content)) !== null) {
+      const [fullMatch, filePath] = match
+      
+      try {
+        // Resolve the file path relative to the command file directory
+        const resolvedPath = path.resolve(commandDir, filePath)
+        
+        // Read the file content
+        const fileContent = await fs.readFile(resolvedPath, "utf-8")
+        
+        // Replace the @<filepath> with the file content
+        processedContent = processedContent.replace(fullMatch, fileContent)
+      } catch (error) {
+        // On error, replace with error message
+        const errorMsg = `[Error including file '${filePath}': ${error instanceof Error ? error.message : 'Unknown error'}]`
+        processedContent = processedContent.replace(fullMatch, errorMsg)
+      }
+    }
+    
+    return processedContent
   }
 
   async function processShellCommands(content: string): Promise<string> {
