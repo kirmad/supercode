@@ -19,7 +19,6 @@ export function getWebAppHTML(baseUrl: string): string {
     }
     
     const templatePath = join(templatesDir, "web-app.html")
-    console.log(`Loading web app template from: ${templatePath}`)
     let htmlContent = readFileSync(templatePath, "utf-8")
     
     // Perform template substitution

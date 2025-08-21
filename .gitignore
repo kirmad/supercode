@@ -20,3 +20,4 @@ scalar-*.png
 .claude-trace/
 web-client/dist/*
 server.log
+opencodetmp/*

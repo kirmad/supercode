@@ -1,10 +1,11 @@
-import { Code, Sun, Moon } from "lucide-react"
+import { Code, Sun, Moon, Terminal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTheme } from "@/hooks/use-theme"
 import { ApiClientTab } from "@/components/tabs/ApiClientTab"
 import { SessionsTab } from "@/components/tabs/SessionsTab"
 import { LogsTab } from "@/components/tabs/LogsTab"
+import { TuiTab } from "@/components/tabs/TuiTab"
 import { useState } from "react"
 
 export function MainLayout() {
@@ -60,6 +61,13 @@ export function MainLayout() {
               >
                 Logs
               </TabsTrigger>
+              <TabsTrigger 
+                value="tui"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-500 data-[state=active]:bg-transparent px-4 py-3"
+              >
+                <Terminal className="mr-2 h-4 w-4" />
+                TUI
+              </TabsTrigger>
             </TabsList>
             
             {/* Status indicator */}
@@ -95,6 +103,9 @@ export function MainLayout() {
             </TabsContent>
             <TabsContent value="logs" className="h-full m-0">
               <LogsTab />
+            </TabsContent>
+            <TabsContent value="tui" className="h-full m-0">
+              <TuiTab />
             </TabsContent>
           </div>
         </Tabs>

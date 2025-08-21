@@ -19,7 +19,6 @@ export function getWebAppJS(): string {
     }
     
     const jsPath = join(staticDir, "app.js")
-    console.log(`Loading web app JS from: ${jsPath}`)
     return readFileSync(jsPath, "utf-8")
   } catch (error) {
     console.error("Failed to load web app JavaScript:", error)
