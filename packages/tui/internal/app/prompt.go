@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/sst/opencode-sdk-go"
-	"github.com/sst/opencode/internal/attachment"
-	"github.com/sst/opencode/internal/id"
+	"github.com/kirmad/supercode/internal/attachment"
+	"github.com/kirmad/supercode/internal/id"
 )
 
 type Prompt struct {

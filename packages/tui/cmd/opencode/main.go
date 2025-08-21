@@ -14,11 +14,11 @@ import (
 	flag "github.com/spf13/pflag"
 	"github.com/sst/opencode-sdk-go"
 	"github.com/sst/opencode-sdk-go/option"
-	"github.com/sst/opencode/internal/api"
-	"github.com/sst/opencode/internal/app"
-	"github.com/sst/opencode/internal/clipboard"
-	"github.com/sst/opencode/internal/tui"
-	"github.com/sst/opencode/internal/util"
+	"github.com/kirmad/supercode/internal/api"
+	"github.com/kirmad/supercode/internal/app"
+	"github.com/kirmad/supercode/internal/clipboard"
+	"github.com/kirmad/supercode/internal/tui"
+	"github.com/kirmad/supercode/internal/util"
 )
 
 var Version = "dev"

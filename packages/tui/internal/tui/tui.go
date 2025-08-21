@@ -16,20 +16,20 @@ import (
 	"github.com/charmbracelet/lipgloss/v2"
 
 	"github.com/sst/opencode-sdk-go"
-	"github.com/sst/opencode/internal/api"
-	"github.com/sst/opencode/internal/app"
-	"github.com/sst/opencode/internal/commands"
-	"github.com/sst/opencode/internal/completions"
-	"github.com/sst/opencode/internal/components/chat"
-	cmdcomp "github.com/sst/opencode/internal/components/commands"
-	"github.com/sst/opencode/internal/components/dialog"
-	"github.com/sst/opencode/internal/components/modal"
-	"github.com/sst/opencode/internal/components/status"
-	"github.com/sst/opencode/internal/components/toast"
-	"github.com/sst/opencode/internal/layout"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
-	"github.com/sst/opencode/internal/util"
+	"github.com/kirmad/supercode/internal/api"
+	"github.com/kirmad/supercode/internal/app"
+	"github.com/kirmad/supercode/internal/commands"
+	"github.com/kirmad/supercode/internal/completions"
+	"github.com/kirmad/supercode/internal/components/chat"
+	cmdcomp "github.com/kirmad/supercode/internal/components/commands"
+	"github.com/kirmad/supercode/internal/components/dialog"
+	"github.com/kirmad/supercode/internal/components/modal"
+	"github.com/kirmad/supercode/internal/components/status"
+	"github.com/kirmad/supercode/internal/components/toast"
+	"github.com/kirmad/supercode/internal/layout"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
+	"github.com/kirmad/supercode/internal/util"
 )
 
 // InterruptDebounceTimeoutMsg is sent when the interrupt key debounce timeout expires
@@ -82,7 +82,7 @@ type Model struct {
 func (a Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	// https://github.com/charmbracelet/bubbletea/issues/1440
-	// https://github.com/sst/opencode/issues/127
+	// https://github.com/kirmad/supercode/issues/127
 	if !util.IsWsl() {
 		cmds = append(cmds, tea.RequestBackgroundColor)
 	}

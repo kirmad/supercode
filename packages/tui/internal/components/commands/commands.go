@@ -8,11 +8,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/charmbracelet/lipgloss/v2/compat"
-	"github.com/sst/opencode/internal/app"
-	"github.com/sst/opencode/internal/commands"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
-	"github.com/sst/opencode/internal/util"
+	"github.com/kirmad/supercode/internal/app"
+	"github.com/kirmad/supercode/internal/commands"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
+	"github.com/kirmad/supercode/internal/util"
 )
 
 type CommandsComponent interface {

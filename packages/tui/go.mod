@@ -1,4 +1,4 @@
-module github.com/sst/opencode
+module github.com/kirmad/supercode
 
 go 1.24.0
 

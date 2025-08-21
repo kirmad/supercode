@@ -5,9 +5,9 @@ import (
 	"github.com/charmbracelet/bubbles/v2/textinput"
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/sst/opencode/internal/components/list"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
+	"github.com/kirmad/supercode/internal/components/list"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
 )
 
 // SearchQueryChangedMsg is emitted when the search query changes

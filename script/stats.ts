@@ -73,7 +73,7 @@ async function fetchReleases(): Promise<Release[]> {
   const per = 100
 
   while (true) {
-    const url = `https://api.github.com/repos/sst/opencode/releases?page=${page}&per_page=${per}`
+    const url = `https://api.github.com/repos/kirmad/supercode/releases?page=${page}&per_page=${per}`
 
     const response = await fetch(url)
     if (!response.ok) {

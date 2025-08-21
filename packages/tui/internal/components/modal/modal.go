@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss/v2"
-	"github.com/sst/opencode/internal/layout"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
+	"github.com/kirmad/supercode/internal/layout"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
 )
 
 // CloseModalMsg is a message to signal that the active modal should be closed.

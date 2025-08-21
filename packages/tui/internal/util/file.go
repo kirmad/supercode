@@ -9,8 +9,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss/v2/compat"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
 )
 
 var RootPath string

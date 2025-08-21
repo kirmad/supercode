@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/sst/opencode-sdk-go"
-	"github.com/sst/opencode/internal/app"
-	"github.com/sst/opencode/internal/styles"
-	"github.com/sst/opencode/internal/theme"
+	"github.com/kirmad/supercode/internal/app"
+	"github.com/kirmad/supercode/internal/styles"
+	"github.com/kirmad/supercode/internal/theme"
 )
 
 type agentsContextGroup struct {
