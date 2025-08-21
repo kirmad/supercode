@@ -21,3 +21,5 @@ scalar-*.png
 web-client/dist/*
 server.log
 opencodetmp/*
+.opencode/*
+

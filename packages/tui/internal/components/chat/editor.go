@@ -230,6 +230,17 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 			cmds = append(cmds, util.CmdHandler(commands.ExecuteCommandMsg(m.app.Commands[commands.CommandName(commandName)])))
 			return m, tea.Batch(cmds...)
+		case "custom-commands":
+			commandName := msg.Item.Value
+			
+			// Replace from "/" to cursor with command and space
+			slashIndex := m.textarea.LastRuneIndex('/')
+			if slashIndex != -1 {
+				cursorCol := m.textarea.CursorColumn()
+				m.textarea.ReplaceRange(slashIndex, cursorCol, commandName+" ")
+			}
+			
+			return m, nil
 		case "files":
 			atIndex := m.textarea.LastRuneIndex('@')
 			if atIndex == -1 {

@@ -46,6 +46,7 @@ import { Permission } from "../permission"
 import { Wildcard } from "../util/wildcard"
 import { ulid } from "ulid"
 import { defer } from "../util/defer"
+import { CustomCommands } from "../commands/custom"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -445,6 +446,17 @@ export namespace Session {
       time: {
         created: Date.now(),
       },
+    }
+
+    // Check for custom commands
+    if (input.parts.length === 1 && input.parts[0].type === "text") {
+      const textPart = input.parts[0]
+      const commandContent = await CustomCommands.executeCommand(textPart.text)
+      
+      if (commandContent) {
+        // Replace input with command content
+        textPart.text = commandContent
+      }
     }
 
     const app = App.info()

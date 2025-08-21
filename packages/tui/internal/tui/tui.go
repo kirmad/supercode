@@ -68,6 +68,7 @@ type Model struct {
 	messages             chat.MessagesComponent
 	completions          dialog.CompletionDialog
 	commandProvider      completions.CompletionProvider
+	customCommandsProvider completions.CompletionProvider
 	fileProvider         completions.CompletionProvider
 	symbolsProvider      completions.CompletionProvider
 	agentsProvider       completions.CompletionProvider
@@ -205,8 +206,8 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.editor = updated.(chat.EditorComponent)
 			cmds = append(cmds, cmd)
 
-			// Set command provider for command completion
-			a.completions = dialog.NewCompletionDialogComponent("/", a.commandProvider)
+			// Set command providers for command completion (including custom commands)
+			a.completions = dialog.NewCompletionDialogComponent("/", a.commandProvider, a.customCommandsProvider)
 			updated, cmd = a.completions.Update(msg)
 			a.completions = updated.(dialog.CompletionDialog)
 			cmds = append(cmds, cmd)
@@ -1459,13 +1460,14 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 
 func NewModel(app *app.App) tea.Model {
 	commandProvider := completions.NewCommandCompletionProvider(app)
+	customCommandsProvider := completions.NewCustomCommandsProvider()
 	fileProvider := completions.NewFileContextGroup(app)
 	symbolsProvider := completions.NewSymbolsContextGroup(app)
 	agentsProvider := completions.NewAgentsContextGroup(app)
 
 	messages := chat.NewMessagesComponent(app)
 	editor := chat.NewEditorComponent(app)
-	completions := dialog.NewCompletionDialogComponent("/", commandProvider)
+	completions := dialog.NewCompletionDialogComponent("/", commandProvider, customCommandsProvider)
 
 	var leaderBinding *key.Binding
 	if app.Config.Keybinds.Leader != "" {
@@ -1480,6 +1482,7 @@ func NewModel(app *app.App) tea.Model {
 		messages:             messages,
 		completions:          completions,
 		commandProvider:      commandProvider,
+		customCommandsProvider: customCommandsProvider,
 		fileProvider:         fileProvider,
 		symbolsProvider:      symbolsProvider,
 		agentsProvider:       agentsProvider,
