@@ -85,7 +85,7 @@ export namespace Installation {
 
     for (const check of checks) {
       const output = await check.command()
-      if (output.includes("supercode")) {
+      if (output.includes("supercode") || output.includes("@kirmad/supercode")) {
         return check.name
       }
     }
@@ -109,11 +109,11 @@ export namespace Installation {
             VERSION: target,
           })
         case "npm":
-          return $`npm install -g supercode@${target}`
+          return $`npm install -g @kirmad/supercode@${target}`
         case "pnpm":
-          return $`pnpm install -g supercode@${target}`
+          return $`pnpm install -g @kirmad/supercode@${target}`
         case "bun":
-          return $`bun install -g supercode@${target}`
+          return $`bun install -g @kirmad/supercode@${target}`
         case "brew":
           // TODO: Set up kirmad/supercode homebrew tap
           // For now, fall back to curl installation

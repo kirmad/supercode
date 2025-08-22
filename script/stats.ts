@@ -195,8 +195,8 @@ console.log(`\nFetched ${releases.length} releases total\n`)
 
 const { total: githubTotal, stats } = calculate(releases)
 
-console.log("Fetching npm all-time downloads for supercode...\n")
-const npmDownloads = await fetchNpmDownloads("supercode")
+console.log("Fetching npm all-time downloads for @kirmad/supercode...\n")
+const npmDownloads = await fetchNpmDownloads("@kirmad/supercode")
 console.log(`Fetched npm all-time downloads: ${npmDownloads.toLocaleString()}\n`)
 
 await save(githubTotal, npmDownloads)

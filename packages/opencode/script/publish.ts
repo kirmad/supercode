@@ -60,7 +60,7 @@ for (const [os, arch] of targets) {
       2,
     ),
   )
-  if (!dry) await $`cd dist/${name} && chmod 777 -R . && bun publish --access public --tag ${npmTag}`
+  if (!dry) await $`cd dist/${name} && chmod -R 755 . && bun publish --access public --tag ${npmTag}`
   optionalDependencies[name] = version
 }
 
