@@ -71,7 +71,7 @@ export namespace Installation {
       },
       {
         name: "brew" as const,
-        command: () => $`brew list --formula opencode-ai`.throws(false).text(),
+        command: () => $`brew list --formula supercode`.throws(false).text(),
       },
     ]
 
@@ -85,7 +85,7 @@ export namespace Installation {
 
     for (const check of checks) {
       const output = await check.command()
-      if (output.includes("opencode-ai")) {
+      if (output.includes("supercode")) {
         return check.name
       }
     }
@@ -104,19 +104,22 @@ export namespace Installation {
     const cmd = (() => {
       switch (method) {
         case "curl":
-          return $`curl -fsSL https://opencode.ai/install | bash`.env({
+          return $`curl -fsSL https://raw.githubusercontent.com/kirmad/supercode/dev/install | bash`.env({
             ...process.env,
             VERSION: target,
           })
         case "npm":
-          return $`npm install -g opencode-ai@${target}`
+          return $`npm install -g supercode@${target}`
         case "pnpm":
-          return $`pnpm install -g opencode-ai@${target}`
+          return $`pnpm install -g supercode@${target}`
         case "bun":
-          return $`bun install -g opencode-ai@${target}`
+          return $`bun install -g supercode@${target}`
         case "brew":
-          return $`brew install sst/tap/opencode`.env({
-            HOMEBREW_NO_AUTO_UPDATE: "1",
+          // TODO: Set up kirmad/supercode homebrew tap
+          // For now, fall back to curl installation
+          return $`curl -fsSL https://raw.githubusercontent.com/kirmad/supercode/dev/install | bash`.env({
+            ...process.env,
+            VERSION: target,
           })
         default:
           throw new Error(`Unknown method: ${method}`)

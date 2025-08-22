@@ -8,7 +8,7 @@ import type {
   UserMessage,
   Part,
   Auth,
-} from "@opencode-ai/sdk"
+} from "@supercode/sdk"
 import type { BunShell } from "./shell"
 
 export type PluginInput = {

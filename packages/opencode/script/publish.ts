@@ -70,7 +70,7 @@ await $`cp ./script/postinstall.mjs ./dist/${pkg.name}/postinstall.mjs`
 await Bun.file(`./dist/${pkg.name}/package.json`).write(
   JSON.stringify(
     {
-      name: pkg.name + "-ai",
+      name: pkg.name,
       bin: {
         [pkg.name]: `./bin/${pkg.name}`,
       },
@@ -92,10 +92,10 @@ if (!snapshot) {
   }
 
   // Calculate SHA values
-  const arm64Sha = await $`sha256sum ./dist/opencode-linux-arm64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
-  const x64Sha = await $`sha256sum ./dist/opencode-linux-x64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
-  const macX64Sha = await $`sha256sum ./dist/opencode-darwin-x64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
-  const macArm64Sha = await $`sha256sum ./dist/opencode-darwin-arm64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
+  const arm64Sha = await $`sha256sum ./dist/supercode-linux-arm64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
+  const x64Sha = await $`sha256sum ./dist/supercode-linux-x64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
+  const macX64Sha = await $`sha256sum ./dist/supercode-darwin-x64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
+  const macArm64Sha = await $`sha256sum ./dist/supercode-darwin-arm64.zip | cut -d' ' -f1`.text().then((x) => x.trim())
 
   /* AUR package - commented out as AUR is down
   const pkgbuild = [
@@ -114,14 +114,14 @@ if (!snapshot) {
     "conflicts=('opencode')",
     "depends=('fzf' 'ripgrep')",
     "",
-    `source_aarch64=("\${pkgname}_\${pkgver}_aarch64.zip::https://github.com/kirmad/supercode/releases/download/v${version}/opencode-linux-arm64.zip")`,
+    `source_aarch64=("\${pkgname}_\${pkgver}_aarch64.zip::https://github.com/kirmad/supercode/releases/download/v${version}/supercode-linux-arm64.zip")`,
     `sha256sums_aarch64=('${arm64Sha}')`,
     "",
-    `source_x86_64=("\${pkgname}_\${pkgver}_x86_64.zip::https://github.com/kirmad/supercode/releases/download/v${version}/opencode-linux-x64.zip")`,
+    `source_x86_64=("\${pkgname}_\${pkgver}_x86_64.zip::https://github.com/kirmad/supercode/releases/download/v${version}/supercode-linux-x64.zip")`,
     `sha256sums_x86_64=('${x64Sha}')`,
     "",
     "package() {",
-    '  install -Dm755 ./opencode "${pkgdir}/usr/bin/opencode"',
+    '  install -Dm755 ./supercode "${pkgdir}/usr/bin/supercode"',
     "}",
     "",
   ].join("\n")
@@ -151,36 +151,36 @@ if (!snapshot) {
     "",
     "  on_macos do",
     "    if Hardware::CPU.intel?",
-    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/opencode-darwin-x64.zip"`,
+    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/supercode-darwin-x64.zip"`,
     `      sha256 "${macX64Sha}"`,
     "",
     "      def install",
-    '        bin.install "opencode"',
+    '        bin.install "supercode"',
     "      end",
     "    end",
     "    if Hardware::CPU.arm?",
-    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/opencode-darwin-arm64.zip"`,
+    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/supercode-darwin-arm64.zip"`,
     `      sha256 "${macArm64Sha}"`,
     "",
     "      def install",
-    '        bin.install "opencode"',
+    '        bin.install "supercode"',
     "      end",
     "    end",
     "  end",
     "",
     "  on_linux do",
     "    if Hardware::CPU.intel? and Hardware::CPU.is_64_bit?",
-    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/opencode-linux-x64.zip"`,
+    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/supercode-linux-x64.zip"`,
     `      sha256 "${x64Sha}"`,
     "      def install",
-    '        bin.install "opencode"',
+    '        bin.install "supercode"',
     "      end",
     "    end",
     "    if Hardware::CPU.arm? and Hardware::CPU.is_64_bit?",
-    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/opencode-linux-arm64.zip"`,
+    `      url "https://github.com/kirmad/supercode/releases/download/v${version}/supercode-linux-arm64.zip"`,
     `      sha256 "${arm64Sha}"`,
     "      def install",
-    '        bin.install "opencode"',
+    '        bin.install "supercode"',
     "      end",
     "    end",
     "  end",
