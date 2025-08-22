@@ -1,0 +1,19 @@
+{
+  "name": "@kirmad/supercode",
+  "version": "0.5.11",
+  "bin": {
+    "supercode": "./bin/supercode"
+  },
+  "scripts": {
+    "postinstall": "node ./postinstall.mjs"
+  },
+  "optionalDependencies": {
+    "@kirmad/supercode-windows-x64": "0.5.10",
+    "@kirmad/supercode-linux-arm64": "0.5.10",
+    "@kirmad/supercode-linux-x64": "0.5.10",
+    "@kirmad/supercode-linux-x64-baseline": "0.5.10",
+    "@kirmad/supercode-darwin-x64": "0.5.10",
+    "@kirmad/supercode-darwin-x64-baseline": "0.5.10",
+    "@kirmad/supercode-darwin-arm64": "0.5.10"
+  }
+}

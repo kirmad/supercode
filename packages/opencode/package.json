@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.5.8",
+  "version": "0.5.11",
   "name": "@kirmad/supercode",
   "type": "module",
   "private": false,
@@ -9,8 +9,8 @@
     "dev": "bun run --conditions=development ./src/index.ts"
   },
   "bin": {
-    "@kirmad/supercode": "./bin/opencode",
-    "supercode": "./bin/opencode"
+    "@kirmad/supercode": "./bin/supercode",
+    "supercode": "./bin/supercode"
   },
   "exports": {
     "./*": "./src/*.ts"

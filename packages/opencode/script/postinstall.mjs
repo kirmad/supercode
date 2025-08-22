@@ -50,7 +50,7 @@ function detectPlatformAndArch() {
 function findBinary() {
   const { platform, arch } = detectPlatformAndArch()
   const packageName = `@kirmad/supercode-${platform}-${arch}`
-  const binary = platform === "windows" ? "opencode.exe" : "opencode"
+  const binary = platform === "windows" ? "supercode.exe" : "supercode"
 
   try {
     // Use require.resolve to find the package
@@ -71,7 +71,7 @@ function findBinary() {
 function main() {
   try {
     const binaryPath = findBinary()
-    const binScript = path.join(__dirname, "bin", "opencode")
+    const binScript = path.join(__dirname, "bin", "supercode")
 
     // Remove existing bin script if it exists
     if (fs.existsSync(binScript)) {
@@ -80,9 +80,9 @@ function main() {
 
     // Create symlink to the actual binary
     fs.symlinkSync(binaryPath, binScript)
-    console.log(`opencode binary symlinked: ${binScript} -> ${binaryPath}`)
+    console.log(`supercode binary symlinked: ${binScript} -> ${binaryPath}`)
   } catch (error) {
-    console.error("Failed to create opencode binary symlink:", error.message)
+    console.error("Failed to create supercode binary symlink:", error.message)
     process.exit(1)
   }
 }
