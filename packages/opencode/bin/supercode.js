@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
+// Cross-platform Node.js wrapper for supercode binary
+// This enables proper npm global installation on Windows
+
+import { execFileSync } from "child_process"
+import { createRequire } from "module"
 import fs from "fs"
 import path from "path"
 import os from "os"
 import { fileURLToPath } from "url"
-import { createRequire } from "module"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
@@ -48,6 +52,13 @@ function detectPlatformAndArch() {
 }
 
 function findBinary() {
+  // Check for explicit environment variable
+  if (process.env.OPENCODE_BIN_PATH) {
+    if (fs.existsSync(process.env.OPENCODE_BIN_PATH)) {
+      return process.env.OPENCODE_BIN_PATH
+    }
+  }
+
   const { platform, arch } = detectPlatformAndArch()
   const packageName = `@kirmad/supercode-${platform}-${arch}`
   const binary = platform === "windows" ? "supercode.exe" : "supercode"
@@ -64,25 +75,34 @@ function findBinary() {
 
     return binaryPath
   } catch (error) {
-    throw new Error(`Could not find package ${packageName}: ${error.message}`)
+    console.error(`It seems that your package manager failed to install the right version of the supercode CLI for your platform. You can try manually installing the "${packageName}" package`)
+    process.exit(1)
   }
 }
 
-function createWindowsWrapper(binaryPath, wrapperPath) {
-  // Create a .cmd wrapper for Windows
-  const cmdContent = `@echo off
-"${binaryPath}" %*`
-  
-  fs.writeFileSync(wrapperPath + ".cmd", cmdContent, "utf8")
-  console.log(`supercode Windows wrapper created: ${wrapperPath}.cmd -> ${binaryPath}`)
-}
-
 function main() {
-  // Since package.json now points to supercode.js (a Node.js script),
-  // npm will automatically create proper wrappers on all platforms.
-  // We no longer need complex symlink/copy logic for Windows.
-  console.log("supercode installation complete")
-  console.log("npm will create appropriate wrappers for your platform")
+  try {
+    const binaryPath = findBinary()
+    
+    // Execute the binary with all arguments, inheriting stdio
+    const result = execFileSync(binaryPath, process.argv.slice(2), {
+      stdio: "inherit",
+      windowsHide: false
+    })
+    
+    process.exit(0)
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      console.error("supercode binary not found. Please reinstall the package.")
+      process.exit(1)
+    } else if (error.status !== undefined) {
+      // Exit with the same code as the binary
+      process.exit(error.status)
+    } else {
+      console.error("Failed to execute supercode:", error.message)
+      process.exit(1)
+    }
+  }
 }
 
 main()

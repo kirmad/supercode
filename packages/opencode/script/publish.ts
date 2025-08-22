@@ -72,7 +72,8 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
     {
       name: pkg.name,
       bin: {
-        [pkg.name]: `./bin/${pkg.name}`,
+        [pkg.name]: "./bin/supercode.js",
+        "supercode": "./bin/supercode.js",
       },
       scripts: {
         postinstall: "node ./postinstall.mjs",
