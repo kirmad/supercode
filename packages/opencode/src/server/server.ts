@@ -23,6 +23,7 @@ import { Agent } from "../agent/agent"
 import { Auth } from "../auth"
 import { createMCPRoutes } from "./mcp-api"
 import { createWebRoutes } from "./web-routes"
+import { createDebugLogsRoutes } from "./debug-logs-routes"
 
 const ERRORS = {
   400: {
@@ -1190,6 +1191,7 @@ export namespace Server {
       .route("/tui/control", TuiRoute)
       .route("/web", createWebRoutes())
       .route("/", createMCPRoutes())
+      .route("/", createDebugLogsRoutes())
       .put(
         "/auth/:id",
         describeRoute({

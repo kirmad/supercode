@@ -47,6 +47,7 @@ import { Wildcard } from "../util/wildcard"
 import { ulid } from "ulid"
 import { defer } from "../util/defer"
 import { CustomCommands } from "../commands/custom"
+import { DebugLogger } from "./debug-logger"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -895,6 +896,27 @@ export namespace Session {
         },
       },
     )
+
+    // Debug logging: Log the message being sent to the LLM
+    const messagesToSend = [
+      ...system.map(
+        (x): ModelMessage => ({
+          role: "system",
+          content: x,
+        }),
+      ),
+      ...MessageV2.toModelMessage(msgs.filter((m) => !(m.info.role === "assistant" && m.info.error))),
+    ]
+    
+    // Log messages and protocol request
+    DebugLogger.logMessagesToSend(input.sessionID, assistantMsg.id, messagesToSend, input.providerID, input.modelID)
+    DebugLogger.logProtocolRequest(input.sessionID, assistantMsg.id, input.providerID, input.modelID, {
+      messageCount: messagesToSend.length,
+      enabledTools: Object.keys(tools).filter((x) => x !== "invalid"),
+      temperature: params.temperature,
+      topP: params.topP
+    })
+
     const stream = streamText({
       onError(e) {
         log.error("streamText error", {
@@ -1003,7 +1025,38 @@ export namespace Session {
         ],
       }),
     })
+    
+    const startTime = Date.now()
     const result = await processor.process(stream)
+    const duration = Date.now() - startTime
+
+    // Debug logging: Log the completion and response
+    DebugLogger.logProtocolResponse(
+      input.sessionID,
+      assistantMsg.id,
+      input.providerID,
+      input.modelID,
+      {
+        partsCount: result.parts.length,
+        completed: true
+      },
+      result.info.tokens,
+      result.info.cost,
+      duration
+    )
+
+    // Log the assistant's response content
+    for (const part of result.parts) {
+      if (part.type === "text") {
+        DebugLogger.logMessageReceived(
+          input.sessionID,
+          assistantMsg.id,
+          part.text,
+          { partType: part.type, partId: part.id }
+        )
+      }
+    }
+
     const queued = state().queued.get(input.sessionID) ?? []
     const unprocessed = queued.find((x) => !x.processed)
     if (unprocessed) {
@@ -1233,6 +1286,15 @@ export namespace Session {
               case "tool-call": {
                 const match = toolcalls[value.toolCallId]
                 if (match) {
+                  // Debug logging: Log tool call being sent
+                  DebugLogger.logToolCallSent(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    value.toolName,
+                    value.input
+                  )
+
                   const part = await updatePart({
                     ...match,
                     tool: value.toolName,
@@ -1251,6 +1313,19 @@ export namespace Session {
               case "tool-result": {
                 const match = toolcalls[value.toolCallId]
                 if (match && match.state.status === "running") {
+                  const duration = Date.now() - match.state.time.start
+                  
+                  // Debug logging: Log tool call result
+                  DebugLogger.logToolCallResult(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    match.tool,
+                    value.output.output,
+                    true, // success
+                    duration
+                  )
+
                   await updatePart({
                     ...match,
                     state: {
@@ -1273,6 +1348,19 @@ export namespace Session {
               case "tool-error": {
                 const match = toolcalls[value.toolCallId]
                 if (match && match.state.status === "running") {
+                  const duration = Date.now() - match.state.time.start
+                  
+                  // Debug logging: Log tool call error
+                  DebugLogger.logToolCallResult(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    match.tool,
+                    (value.error as any).toString(),
+                    false, // not success
+                    duration
+                  )
+
                   if (value.error instanceof Permission.RejectedError) {
                     shouldStop = true
                   }
