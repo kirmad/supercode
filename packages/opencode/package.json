@@ -6,7 +6,12 @@
   "private": false,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "bun run --conditions=development ./src/index.ts"
+    "dev": "bun run --conditions=development ./src/index.ts",
+    "publish": "bun run script/publish.ts",
+    "version-and-publish": "bun run script/version-and-publish.ts",
+    "release": "bun run script/version-and-publish.ts",
+    "release:minor": "bun run script/version-and-publish.ts minor",
+    "release:major": "bun run script/version-and-publish.ts major"
   },
   "bin": {
     "@kirmad/supercode": "./bin/supercode.js",
