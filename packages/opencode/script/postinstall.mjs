@@ -49,7 +49,7 @@ function detectPlatformAndArch() {
 
 function findBinary() {
   const { platform, arch } = detectPlatformAndArch()
-  const packageName = `opencode-${platform}-${arch}`
+  const packageName = `@kirmad/supercode-${platform}-${arch}`
   const binary = platform === "windows" ? "opencode.exe" : "opencode"
 
   try {
