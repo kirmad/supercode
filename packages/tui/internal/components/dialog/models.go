@@ -26,6 +26,16 @@ const (
 	maxRecentModels  = 5
 )
 
+// formatTokenLimit converts a token limit to a human-readable format
+func formatTokenLimit(limit float64) string {
+	if limit >= 1000000 {
+		return fmt.Sprintf("%.0fM", limit/1000000)
+	} else if limit >= 1000 {
+		return fmt.Sprintf("%.0fK", limit/1000)
+	}
+	return fmt.Sprintf("%.0f", limit)
+}
+
 // ModelDialog interface for the model selection dialog
 type ModelDialog interface {
 	layout.Modal
@@ -70,10 +80,19 @@ func (m modelItem) Render(
 		Foreground(t.TextMuted()).
 		Background(t.BackgroundPanel())
 
+	limitStyle := baseStyle.
+		Foreground(t.TextMuted()).
+		Background(t.BackgroundPanel())
+
 	modelPart := itemStyle.Render(m.model.Model.Name)
 	providerPart := providerStyle.Render(fmt.Sprintf(" %s", m.model.Provider.Name))
+	
+	// Format token limits
+	contextLimit := formatTokenLimit(m.model.Model.Limit.Context)
+	outputLimit := formatTokenLimit(m.model.Model.Limit.Output)
+	limitsPart := limitStyle.Render(fmt.Sprintf(" (%s/%s)", contextLimit, outputLimit))
 
-	combinedText := modelPart + providerPart
+	combinedText := modelPart + providerPart + limitsPart
 	return baseStyle.
 		Background(t.BackgroundPanel()).
 		PaddingLeft(1).
@@ -160,9 +179,14 @@ func (m *modelDialog) calculateOptimalWidth(models []ModelWithProvider) int {
 	maxWidth := minDialogWidth
 
 	for _, model := range models {
-		// Calculate the width needed for this item: "ModelName (ProviderName)"
-		// Add 4 for the parentheses, space, and some padding
-		itemWidth := len(model.Model.Name) + len(model.Provider.Name) + 4
+		// Calculate the width needed for this item: "ModelName ProviderName (ContextLimit/OutputLimit)"
+		// Format token limits to estimate their display width
+		contextLimit := formatTokenLimit(model.Model.Limit.Context)
+		outputLimit := formatTokenLimit(model.Model.Limit.Output)
+		tokenLimitsText := fmt.Sprintf(" (%s/%s)", contextLimit, outputLimit)
+		
+		// Add space for model name, provider name, and token limits
+		itemWidth := len(model.Model.Name) + len(model.Provider.Name) + len(tokenLimitsText) + 2 // +2 for spacing
 		if itemWidth > maxWidth {
 			maxWidth = itemWidth
 		}
