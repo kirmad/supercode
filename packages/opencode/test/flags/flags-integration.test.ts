@@ -148,9 +148,9 @@ placement: "before"
 Project Information:
 @project-info.txt
 
-Current timestamp: !`date +%Y-%m-%d`
+Current timestamp: !\`date +%Y-%m-%d\`
 
-Environment: !`echo $NODE_ENV`
+Environment: !\`echo $NODE_ENV\`
 `
     )
 
@@ -160,8 +160,8 @@ Environment: !`echo $NODE_ENV`
 description: "Add summary"
 placement: "after"
 ---
-Working directory: !`pwd`
-File count: !`find . -type f | wc -l``
+Working directory: !\`pwd\`
+File count: !\`find . -type f | wc -l\``
     )
 
     await App.provide({ cwd: fixturePath }, async () => {
