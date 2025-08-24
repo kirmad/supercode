@@ -67,7 +67,9 @@ type Model struct {
 	editor               chat.EditorComponent
 	messages             chat.MessagesComponent
 	completions          dialog.CompletionDialog
+	flagsCompletions     dialog.CompletionDialog
 	commandProvider      completions.CompletionProvider
+	flagsProvider        completions.CompletionProvider
 	customCommandsProvider completions.CompletionProvider
 	fileProvider         completions.CompletionProvider
 	symbolsProvider      completions.CompletionProvider
@@ -227,6 +229,26 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Set file, symbols, and agents providers for @ completion
 			a.completions = dialog.NewCompletionDialogComponent("@", a.agentsProvider, a.fileProvider, a.symbolsProvider)
+			updated, cmd = a.completions.Update(msg)
+			a.completions = updated.(dialog.CompletionDialog)
+			cmds = append(cmds, cmd)
+
+			return a, tea.Sequence(cmds...)
+		}
+
+		// Handle flags completions trigger
+		if keyString == "-" &&
+			strings.HasSuffix(a.editor.Value(), "-") &&
+			!a.showCompletionDialog &&
+			!a.app.IsBashMode {
+			a.showCompletionDialog = true
+
+			updated, cmd := a.editor.Update(msg)
+			a.editor = updated.(chat.EditorComponent)
+			cmds = append(cmds, cmd)
+
+			// Set flags provider for -- completion
+			a.completions = dialog.NewCompletionDialogComponent("--", a.flagsProvider)
 			updated, cmd = a.completions.Update(msg)
 			a.completions = updated.(dialog.CompletionDialog)
 			cmds = append(cmds, cmd)
@@ -1461,6 +1483,7 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 func NewModel(app *app.App) tea.Model {
 	commandProvider := completions.NewCommandCompletionProvider(app)
 	customCommandsProvider := completions.NewCustomCommandsProvider()
+	flagsProvider := completions.NewFlagsProvider()
 	fileProvider := completions.NewFileContextGroup(app)
 	symbolsProvider := completions.NewSymbolsContextGroup(app)
 	agentsProvider := completions.NewAgentsContextGroup(app)
@@ -1468,6 +1491,7 @@ func NewModel(app *app.App) tea.Model {
 	messages := chat.NewMessagesComponent(app)
 	editor := chat.NewEditorComponent(app)
 	completions := dialog.NewCompletionDialogComponent("/", commandProvider, customCommandsProvider)
+	flagsCompletions := dialog.NewCompletionDialogComponent("--", flagsProvider)
 
 	var leaderBinding *key.Binding
 	if app.Config.Keybinds.Leader != "" {
@@ -1481,7 +1505,9 @@ func NewModel(app *app.App) tea.Model {
 		editor:               editor,
 		messages:             messages,
 		completions:          completions,
+		flagsCompletions:     flagsCompletions,
 		commandProvider:      commandProvider,
+		flagsProvider:        flagsProvider,
 		customCommandsProvider: customCommandsProvider,
 		fileProvider:         fileProvider,
 		symbolsProvider:      symbolsProvider,

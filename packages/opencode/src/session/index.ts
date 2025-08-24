@@ -49,6 +49,7 @@ import { Wildcard } from "../util/wildcard"
 import { ulid } from "ulid"
 import { defer } from "../util/defer"
 import { CustomCommands } from "../commands/custom"
+import { Flags } from "../flags"
 import { DebugLogger } from "./debug-logger"
 import { CompactionManager } from "./compaction"
 
@@ -486,6 +487,12 @@ export namespace Session {
       time: {
         created: Date.now(),
       },
+    }
+
+    // Process flags first
+    if (input.parts.length === 1 && input.parts[0].type === "text") {
+      const textPart = input.parts[0]
+      textPart.text = await Flags.processFlagReferences(textPart.text)
     }
 
     // Check for custom commands
