@@ -48,11 +48,49 @@ import { ulid } from "ulid"
 import { defer } from "../util/defer"
 import { CustomCommands } from "../commands/custom"
 import { DebugLogger } from "./debug-logger"
+import { CompactionManager } from "./compaction"
+import * as fs from "fs"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
 
   const OUTPUT_TOKEN_MAX = 32_000
+
+  /**
+   * Checks if the session should be compressed based on current token usage
+   * Uses the enhanced CompactionManager for sophisticated analysis
+   */
+  async function checkShouldCompress(
+    providerID: string, 
+    modelID: string, 
+    sessionID: string,
+    toolCalls?: any[],
+    queuedMessages?: any[]
+  ): Promise<boolean> {
+    try {
+      const msgs = await messages(sessionID)
+      const shouldCompact = await CompactionManager.checkShouldCompress(
+        providerID,
+        modelID, 
+        sessionID,
+        toolCalls,
+        queuedMessages,
+        msgs
+      )
+      
+      if (shouldCompact) {
+        log.info('Compression recommended by CompactionManager', {
+          sessionID,
+          reason: 'Token threshold exceeded with pending operations'
+        })
+      }
+      
+      return shouldCompact
+    } catch (error) {
+      log.error('Error checking compression threshold', { error, sessionID })
+      return false
+    }
+  }
 
   const parentSessionTitlePrefix = "New session - "
   const childSessionTitlePrefix = "Child session - "
@@ -993,6 +1031,11 @@ export namespace Session {
           return true
         }
 
+        // Check if processor flagged that we should compress
+        if (processor.getShouldCompress()) {
+          return true
+        }
+
         return false
       },
       providerOptions: {
@@ -1026,9 +1069,29 @@ export namespace Session {
       }),
     })
     
+    // Process the chat
     const startTime = Date.now()
     const result = await processor.process(stream)
     const duration = Date.now() - startTime
+
+    // Check if compression was flagged during processing
+    if (processor.getShouldCompress()) {
+      log.info("compression flagged during processing, compacting and continuing", { 
+        sessionID: input.sessionID 
+      })
+      
+      // Mark current session as auto-compacting to prevent loops
+      state().autoCompacting.set(input.sessionID, true)
+      
+      await summarize({
+        sessionID: input.sessionID,
+        providerID: input.providerID,
+        modelID: input.modelID,
+      }, true)
+      
+      // Recursively continue the chat after compression
+      return chat(input)
+    }
 
     // Debug logging: Log the completion and response
     DebugLogger.logProtocolResponse(
@@ -1204,12 +1267,19 @@ export namespace Session {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     let snapshot: string | undefined
     let shouldStop = false
+    let shouldCompress = false
     return {
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
       getShouldStop() {
         return shouldStop
+      },
+      getShouldCompress() {
+        return shouldCompress
+      },
+      setShouldCompress(value: boolean) {
+        shouldCompress = value
       },
       async process(stream: StreamTextResult<Record<string, AITool>, never>) {
         try {
@@ -1341,6 +1411,12 @@ export namespace Session {
                     },
                   })
                   delete toolcalls[value.toolCallId]
+
+                  const activeCalls = Object.values(toolcalls)
+                  const queuedMessages = state().queued.get(assistantMsg.sessionID) ?? []
+                  if (await checkShouldCompress(assistantMsg.providerID, assistantMsg.modelID, assistantMsg.sessionID, activeCalls, queuedMessages)) {
+                    shouldCompress = true
+                  }
                 }
                 break
               }
@@ -1406,7 +1482,17 @@ export namespace Session {
                   tokens: usage.tokens,
                   cost: usage.cost,
                 })
+
+                // [AUTO_SUMMARIZE]
                 await updateMessage(assistantMsg)
+                
+                // Check if we should compress during processing
+                const activeCalls = Object.values(toolcalls)
+                const queuedMessages = state().queued.get(assistantMsg.sessionID) ?? []
+                if (await checkShouldCompress(assistantMsg.providerID, assistantMsg.modelID, assistantMsg.sessionID, activeCalls, queuedMessages)) {
+                  shouldCompress = true
+                }
+                
                 if (snapshot) {
                   const patch = await Snapshot.patch(snapshot)
                   if (patch.files.length) {
@@ -1589,8 +1675,13 @@ export namespace Session {
     return next
   }
 
-  export async function summarize(input: { sessionID: string; providerID: string; modelID: string }) {
-    using abort = lock(input.sessionID)
+  export async function summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+    using abort = skipLock ? {
+      signal: new AbortController().signal,
+      async [Symbol.dispose]() {
+      },
+    } : lock(input.sessionID)
+
     const msgs = await messages(input.sessionID)
     const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
     const filtered = msgs.filter((msg) => !lastSummary || msg.info.id >= lastSummary.info.id)
