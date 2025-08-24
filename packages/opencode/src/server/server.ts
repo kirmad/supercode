@@ -1188,6 +1188,29 @@ export namespace Server {
         ),
         async (c) => c.json(await callTui(c)),
       )
+      .get(
+        "/tui/status",
+        describeRoute({
+          description: "Get TUI status (working vs ready)",
+          operationId: "tui.getStatus",
+          responses: {
+            200: {
+              description: "TUI status retrieved successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      busy: z.boolean(),
+                      status: z.enum(["working", "ready", "waiting_for_permission"]),
+                    })
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => c.json(await callTui(c)),
+      )
       .route("/tui/control", TuiRoute)
       .route("/web", createWebRoutes())
       .route("/", createMCPRoutes())

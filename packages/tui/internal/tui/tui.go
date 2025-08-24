@@ -841,6 +841,20 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			cmds = append(cmds, toastCmd)
 
+		case "/tui/status":
+			busy := a.app.IsBusy()
+			status := "ready"
+			if busy {
+				status = "working"
+				if a.app.CurrentPermission.ID != "" {
+					status = "waiting_for_permission"
+				}
+			}
+			response = map[string]interface{}{
+				"busy":   busy,
+				"status": status,
+			}
+
 		default:
 			break
 		}

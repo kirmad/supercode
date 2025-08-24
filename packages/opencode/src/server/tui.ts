@@ -10,7 +10,11 @@ const request = new AsyncQueue<Request>()
 const response = new AsyncQueue<any>()
 
 export async function callTui(ctx: Context) {
-  const body = await ctx.req.json()
+  let body = {}
+  // Handle GET requests (like /tui/status) that don't have a body
+  if (ctx.req.method !== "GET") {
+    body = await ctx.req.json()
+  }
   request.push({
     path: ctx.req.path,
     body,
