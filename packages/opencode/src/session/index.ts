@@ -17,6 +17,7 @@ import {
 
 import PROMPT_INITIALIZE from "../session/prompt/initialize.txt"
 import PROMPT_PLAN from "../session/prompt/plan.txt"
+import PROMPT_COMPACTION from "../session/prompt/compaction.txt"
 
 import { App } from "../app/app"
 import { Bus } from "../bus"
@@ -38,6 +39,7 @@ import { FileTime } from "../file/time"
 import { MessageV2 } from "./message-v2"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
+import { TodoReadTool } from "../tool/todo"
 import { mergeDeep, pipe, splitWhen } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { Plugin } from "../plugin"
@@ -49,7 +51,6 @@ import { defer } from "../util/defer"
 import { CustomCommands } from "../commands/custom"
 import { DebugLogger } from "./debug-logger"
 import { CompactionManager } from "./compaction"
-import * as fs from "fs"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -709,7 +710,7 @@ export namespace Session {
       if (model.info.limit.context && tokens > Math.max((model.info.limit.context - outputLimit) * 0.9, 0)) {
         state().autoCompacting.set(input.sessionID, true)
 
-        await summarize({
+        await enhanced_summarize({
           sessionID: input.sessionID,
           providerID: input.providerID,
           modelID: input.modelID,
@@ -1083,7 +1084,7 @@ export namespace Session {
       // Mark current session as auto-compacting to prevent loops
       state().autoCompacting.set(input.sessionID, true)
       
-      await summarize({
+      await enhanced_summarize({
         sessionID: input.sessionID,
         providerID: input.providerID,
         modelID: input.modelID,
@@ -1746,6 +1747,221 @@ export namespace Session {
 
     const result = await processor.process(stream)
     return result
+  }
+
+  /**
+   * Enhanced summarize function that follows the compaction logic from how-to.md
+   * This creates a continuation prompt for when approaching context limits
+   */
+  export async function enhanced_summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+    using abort = skipLock ? {
+      signal: new AbortController().signal,
+      async [Symbol.dispose]() {
+      },
+    } : lock(input.sessionID)
+
+    const msgs = await messages(input.sessionID)
+    const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
+    const filtered = msgs.filter((msg) => !lastSummary || msg.info.id >= lastSummary.info.id)
+    const model = await Provider.getModel(input.providerID, input.modelID)
+    const app = App.info()
+    
+    // No system prompts for compaction as per how-to.md
+    const system: string[] = []
+
+    const next: MessageV2.Info = {
+      id: Identifier.ascending("message"),
+      role: "assistant",
+      sessionID: input.sessionID,
+      system,
+      mode: "build",
+      path: {
+        cwd: app.path.cwd,
+        root: app.path.root,
+      },
+      summary: true,
+      cost: 0,
+      modelID: input.modelID,
+      providerID: input.providerID,
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      time: {
+        created: Date.now(),
+      },
+    }
+    await updateMessage(next)
+
+    // Create minimal tools - only Read tool as per compaction logic
+    const readTool = await ReadTool.init()
+    const tools: Record<string, AITool> = {
+      read: tool({
+        id: "read" as any,
+        description: readTool.description,
+        inputSchema: readTool.parameters as ZodSchema,
+        async execute(args, options) {
+          return await readTool.execute(args, {
+            sessionID: input.sessionID,
+            abort: options.abortSignal!,
+            messageID: next.id,
+            callID: options.toolCallId,
+            agent: "build",
+            metadata: async () => {},
+          })
+        },
+        toModelOutput(result) {
+          return {
+            type: "text",
+            value: result.output,
+          }
+        },
+      })
+    }
+
+    const processor = createProcessor(next, model.info)
+    const stream = streamText({
+      maxRetries: 10,
+      abortSignal: abort.signal,
+      model: model.language,
+      tools,
+      messages: [
+        ...system.map(
+          (x): ModelMessage => ({
+            role: "system",
+            content: x,
+          }),
+        ),
+        ...MessageV2.toModelMessage(filtered),
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: PROMPT_COMPACTION,
+            },
+          ],
+        },
+      ],
+    })
+
+    const result = await processor.process(stream)
+    
+    let processedText = ""
+    
+    // Process the compaction result to replace tags and add continuation context
+    if (result.parts.length > 0) {
+      for (const part of result.parts) {
+        if (part.type === "text") {
+          // Replace <analysis> and <summary> tags with headings as per how-to.md
+          processedText = part.text
+            .replace(/<analysis>/gi, "analysis:")
+            .replace(/<\/analysis>/gi, "")
+            .replace(/<summary>/gi, "summary:")
+            .replace(/<\/summary>/gi, "")
+        }
+      }
+    }
+    
+    // Get todo list for the final summary message
+    let todos: any[] = []
+    let hasActiveTodos = false
+    try {
+      const todoTool = await TodoReadTool.init()
+      const todoResult = await todoTool.execute({}, {
+        sessionID: input.sessionID,
+        abort: abort.signal,
+        messageID: next.id,
+        callID: "compaction-todos",
+        agent: "build",
+        metadata: async () => {},
+      })
+      
+      if (todoResult.metadata?.todos && Array.isArray(todoResult.metadata.todos)) {
+        todos = todoResult.metadata.todos
+        // Check if there are any non-completed todos
+        hasActiveTodos = todos.some(todo => todo.status !== "completed")
+      }
+    } catch (error) {
+      log.info("Could not read todos during compaction", { error })
+    }
+    
+    // Create the final summary message with proper system prompts
+    const summarySystem = [
+      ...SystemPrompt.header(input.providerID),
+      ...(await SystemPrompt.environment()),
+      ...(await SystemPrompt.custom()),
+    ]
+    
+    const finalSummaryMsg: MessageV2.Info = {
+      id: Identifier.ascending("message"),
+      role: "assistant",
+      sessionID: input.sessionID,
+      system: summarySystem,
+      mode: "build",
+      path: {
+        cwd: app.path.cwd,
+        root: app.path.root,
+      },
+      summary: true,
+      cost: result.info.cost,
+      modelID: input.modelID,
+      providerID: input.providerID,
+      tokens: result.info.tokens,
+      time: {
+        created: Date.now(),
+        completed: Date.now(),
+      },
+    }
+    await updateMessage(finalSummaryMsg)
+    
+    // Create the continuation prompt part
+    const continuationPart: MessageV2.Part = {
+      id: Identifier.ascending("part"),
+      messageID: finalSummaryMsg.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: `This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:
+
+<context>
+${processedText}
+</context>
+
+Please continue the conversation from where we left it off without asking the user any further questions. Continue with the last task that you were asked to work on.
+
+This is your continuation prompt.`
+    }
+    await updatePart(continuationPart)
+    
+    const parts = [continuationPart]
+    
+    // Only add todo system reminder if there are active (non-completed) todos
+    if (hasActiveTodos) {
+      const todoReminderPart: MessageV2.Part = {
+        id: Identifier.ascending("part"),
+        messageID: finalSummaryMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        synthetic: true,
+        text: `<system-reminder>
+Your todo list has changed. DO NOT mention this explicitly to the user. Here are the latest contents of your todo list:
+
+${JSON.stringify(todos)}. 
+
+Continue on with the tasks at hand if applicable.
+</system-reminder>`
+      }
+      await updatePart(todoReminderPart)
+      parts.push(todoReminderPart)
+    }
+    
+    // Return the final summary message with proper system context
+    return {
+      info: finalSummaryMsg,
+      parts
+    }
   }
 
   function isLocked(sessionID: string) {
