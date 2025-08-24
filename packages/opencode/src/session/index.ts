@@ -707,7 +707,11 @@ export namespace Session {
     if (previous && previous.tokens) {
       const tokens =
         previous.tokens.input + previous.tokens.cache.read + previous.tokens.cache.write + previous.tokens.output
-      if (model.info.limit.context && tokens > Math.max((model.info.limit.context - outputLimit) * 0.9, 0)) {
+      
+      // Use input limit if available (from GitHub Copilot overrides), otherwise fall back to calculated limit
+      const inputLimit = model.info.limit.input || (model.info.limit.context - outputLimit)
+      
+      if (inputLimit && tokens > Math.max(inputLimit * 0.95, 0)) {
         state().autoCompacting.set(input.sessionID, true)
 
         await enhanced_summarize({

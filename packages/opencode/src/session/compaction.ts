@@ -122,7 +122,10 @@ export namespace CompactionManager {
       const model = await Provider.getModel(providerID, modelID)
       const outputLimit = Math.min(model.info.limit.output, 32_000) || 32_000
 
-      if (model.info.limit.context && tokens > Math.max((model.info.limit.context - outputLimit) * 0.9, 0)) {
+      // Use input limit if available (from GitHub Copilot overrides), otherwise fall back to calculated limit
+      const inputLimit = model.info.limit.input || (model.info.limit.context - outputLimit)
+      
+      if (inputLimit && tokens > Math.max(inputLimit * 0.95, 0)) {
         return true
       }
 
