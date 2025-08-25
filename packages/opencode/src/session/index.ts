@@ -35,6 +35,7 @@ import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { NamedError } from "../util/error"
 import { SystemPrompt } from "./system"
+import { todoReminders } from "./todo-reminders"
 import { FileTime } from "../file/time"
 import { MessageV2 } from "./message-v2"
 import { LSP } from "../lsp"
@@ -1015,6 +1016,23 @@ export namespace Session {
           })
           await updateMessage(assistantMsg)
         }
+
+        // Add ephemeral todo reminders as the last messages
+        try {
+          const reminders = await todoReminders(input.sessionID)
+          if (reminders.length > 0) {
+            // Add each reminder as a separate system message
+            // These are sent to the AI model but not persisted in the conversation history
+            const ephemeralMessages = reminders.map(reminder => ({
+              role: 'system' as const,
+              content: reminder,
+            }))
+            messages.push(...ephemeralMessages)
+          }
+        } catch (error) {
+          // Silently fail - don't interrupt the main flow
+        }
+
         return {
           messages,
         }
