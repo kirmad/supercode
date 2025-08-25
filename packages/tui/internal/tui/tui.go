@@ -15,7 +15,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 
-	"github.com/sst/opencode-sdk-go"
 	"github.com/kirmad/supercode/internal/api"
 	"github.com/kirmad/supercode/internal/app"
 	"github.com/kirmad/supercode/internal/commands"
@@ -30,6 +29,7 @@ import (
 	"github.com/kirmad/supercode/internal/styles"
 	"github.com/kirmad/supercode/internal/theme"
 	"github.com/kirmad/supercode/internal/util"
+	"github.com/sst/opencode-sdk-go"
 )
 
 // InterruptDebounceTimeoutMsg is sent when the interrupt key debounce timeout expires
@@ -60,26 +60,26 @@ const exitDebounceTimeout = 1 * time.Second
 type Model struct {
 	tea.Model
 	tea.CursorModel
-	width, height        int
-	app                  *app.App
-	modal                layout.Modal
-	status               status.StatusComponent
-	editor               chat.EditorComponent
-	messages             chat.MessagesComponent
-	completions          dialog.CompletionDialog
-	flagsCompletions     dialog.CompletionDialog
-	commandProvider      completions.CompletionProvider
-	flagsProvider        completions.CompletionProvider
+	width, height          int
+	app                    *app.App
+	modal                  layout.Modal
+	status                 status.StatusComponent
+	editor                 chat.EditorComponent
+	messages               chat.MessagesComponent
+	completions            dialog.CompletionDialog
+	flagsCompletions       dialog.CompletionDialog
+	commandProvider        completions.CompletionProvider
+	flagsProvider          completions.CompletionProvider
 	customCommandsProvider completions.CompletionProvider
-	fileProvider         completions.CompletionProvider
-	symbolsProvider      completions.CompletionProvider
-	agentsProvider       completions.CompletionProvider
-	showCompletionDialog bool
-	leaderBinding        *key.Binding
-	toastManager         *toast.ToastManager
-	interruptKeyState    InterruptKeyState
-	exitKeyState         ExitKeyState
-	messagesRight        bool
+	fileProvider           completions.CompletionProvider
+	symbolsProvider        completions.CompletionProvider
+	agentsProvider         completions.CompletionProvider
+	showCompletionDialog   bool
+	leaderBinding          *key.Binding
+	toastManager           *toast.ToastManager
+	interruptKeyState      InterruptKeyState
+	exitKeyState           ExitKeyState
+	messagesRight          bool
 }
 
 func (a Model) Init() tea.Cmd {
@@ -461,10 +461,10 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.CompletionDialogCloseMsg:
 		a.showCompletionDialog = false
 	case opencode.EventListResponseEventInstallationUpdated:
-		return a, toast.NewSuccessToast(
-			"supercode updated to "+msg.Properties.Version+", restart to apply.",
-			toast.WithTitle("New version installed"),
-		)
+		//return a, toast.NewSuccessToast(
+		//	"supercode updated to "+msg.Properties.Version+", restart to apply.",
+		//	toast.WithTitle("New version installed"),
+		//)
 	case opencode.EventListResponseEventIdeInstalled:
 		return a, toast.NewSuccessToast(
 			"Installed the supercode extension in "+msg.Properties.Ide,
@@ -1514,23 +1514,23 @@ func NewModel(app *app.App) tea.Model {
 	}
 
 	model := &Model{
-		status:               status.NewStatusCmp(app),
-		app:                  app,
-		editor:               editor,
-		messages:             messages,
-		completions:          completions,
-		flagsCompletions:     flagsCompletions,
-		commandProvider:      commandProvider,
-		flagsProvider:        flagsProvider,
+		status:                 status.NewStatusCmp(app),
+		app:                    app,
+		editor:                 editor,
+		messages:               messages,
+		completions:            completions,
+		flagsCompletions:       flagsCompletions,
+		commandProvider:        commandProvider,
+		flagsProvider:          flagsProvider,
 		customCommandsProvider: customCommandsProvider,
-		fileProvider:         fileProvider,
-		symbolsProvider:      symbolsProvider,
-		agentsProvider:       agentsProvider,
-		leaderBinding:        leaderBinding,
-		showCompletionDialog: false,
-		toastManager:         toast.NewToastManager(),
-		interruptKeyState:    InterruptKeyIdle,
-		exitKeyState:         ExitKeyIdle,
+		fileProvider:           fileProvider,
+		symbolsProvider:        symbolsProvider,
+		agentsProvider:         agentsProvider,
+		leaderBinding:          leaderBinding,
+		showCompletionDialog:   false,
+		toastManager:           toast.NewToastManager(),
+		interruptKeyState:      InterruptKeyIdle,
+		exitKeyState:           ExitKeyIdle,
 	}
 
 	return model
