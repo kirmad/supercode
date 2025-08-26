@@ -16,7 +16,8 @@ import {
   Bot,
   Clock,
   Maximize2,
-  Minimize2
+  Minimize2,
+  PlusCircle
 } from "lucide-react"
 
 interface Session {
@@ -308,6 +309,21 @@ export function TuiTab() {
     setError(null)
     
     try {
+      // Check if the prompt is a slash command
+      const trimmedPrompt = prompt.trim()
+      if (trimmedPrompt.startsWith('/')) {
+        const command = trimmedPrompt.substring(1).toLowerCase()
+        
+        // Handle slash commands
+        if (command === 'clear' || command === 'new') {
+          await executeCommand('session_new')
+          setPrompt("")
+          return
+        }
+        
+        // For other slash commands, fall through to normal submission
+      }
+      
       // First append the prompt to TUI
       const appendResponse = await fetch(`${window.APP_CONFIG.apiUrl}/tui/append-prompt`, {
         method: 'POST',
@@ -349,6 +365,29 @@ export function TuiTab() {
     }
   }
 
+  const executeCommand = async (commandName: string) => {
+    try {
+      const response = await fetch(`${window.APP_CONFIG.apiUrl}/tui/execute-command`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ command: commandName }),
+      })
+      
+      if (!response.ok) throw new Error(`Failed to execute command: ${commandName}`)
+      
+      // Refresh sessions and messages after command execution
+      await loadSessions()
+      if (currentSession) {
+        await loadMessages(currentSession.id)
+      }
+    } catch (err) {
+      console.error(`Failed to execute TUI command ${commandName}:`, err)
+      setError(err instanceof Error ? err.message : `Failed to execute command: ${commandName}`)
+    }
+  }
+
   const clearPrompt = async () => {
     try {
       const response = await fetch(`${window.APP_CONFIG.apiUrl}/tui/clear-prompt`, {
@@ -364,6 +403,15 @@ export function TuiTab() {
       }
     } catch (err) {
       console.error('Failed to clear TUI prompt:', err)
+    }
+  }
+
+  const newSession = async () => {
+    setError(null)
+    try {
+      await executeCommand('session_new')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create new session')
     }
   }
 
@@ -667,7 +715,7 @@ export function TuiTab() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Enter your prompt here... (Cmd/Ctrl+Enter to submit)"
+                  placeholder="Enter your prompt here... (Cmd/Ctrl+Enter to submit, or try /clear, /new)"
                   className={`flex-1 resize-none border rounded-md ${isMaximized ? 'p-2' : 'p-3'} text-sm bg-background focus:outline-none focus:ring-2 focus:ring-blue-500 ${isMaximized ? 'min-h-[50px] max-h-[100px]' : 'min-h-[60px] max-h-[120px]'}`}
                   disabled={!tuiStatus.connected || isSubmitting}
                 />
@@ -694,6 +742,17 @@ export function TuiTab() {
                   >
                     <Square className="w-4 h-4" />
                     {isMaximized ? '' : 'Clear'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={newSession}
+                    disabled={!tuiStatus.connected || isSubmitting}
+                    size={isMaximized ? "sm" : "sm"}
+                    className={isMaximized ? "gap-1 h-8" : "gap-2"}
+                    title="Create a new session (same as typing /clear or /new)"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    {isMaximized ? '' : 'New Session'}
                   </Button>
                 </div>
               </div>

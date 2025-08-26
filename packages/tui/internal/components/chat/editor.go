@@ -14,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss/v2"
 	"github.com/google/uuid"
-	"github.com/sst/opencode-sdk-go"
 	"github.com/kirmad/supercode/internal/app"
 	"github.com/kirmad/supercode/internal/attachment"
 	"github.com/kirmad/supercode/internal/clipboard"
@@ -25,6 +24,7 @@ import (
 	"github.com/kirmad/supercode/internal/styles"
 	"github.com/kirmad/supercode/internal/theme"
 	"github.com/kirmad/supercode/internal/util"
+	"github.com/sst/opencode-sdk-go"
 )
 
 type EditorComponent interface {
@@ -232,14 +232,14 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		case "custom-commands":
 			commandName := msg.Item.Value
-			
+
 			// Replace from "/" to cursor with command and space
 			slashIndex := m.textarea.LastRuneIndex('/')
 			if slashIndex != -1 {
 				cursorCol := m.textarea.CursorColumn()
 				m.textarea.ReplaceRange(slashIndex, cursorCol, commandName+" ")
 			}
-			
+
 			return m, nil
 		case "files":
 			atIndex := m.textarea.LastRuneIndex('@')
@@ -335,12 +335,12 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textarea.InsertString(msg.Item.Value + " ")
 				return m, nil
 			}
-			
+
 			// Replace from the "--" up to the current cursor position with the flag
 			cursorCol := m.textarea.CursorColumn()
 			m.textarea.ReplaceRange(dashIndex, cursorCol, msg.Item.Value+" ")
 			return m, nil
-			
+
 		default:
 			slog.Debug("Unknown provider", "provider", msg.Item.ProviderID)
 			return m, nil
@@ -448,15 +448,6 @@ func (m *editorComponent) Content() string {
 
 func (m *editorComponent) Cursor() *tea.Cursor {
 	cursor := m.textarea.Cursor()
-	if cursor != nil {
-		// Only adjust cursor position for single-line mode in the initial screen where PaddingTop(1) applies
-		// Multi-line mode uses lipgloss.Place with different positioning
-		// Initial screen is when no session has been started (Session.ID == "")
-		if m.Lines() <= 1 && m.app.Session.ID == "" {
-			// Adjust cursor position to account for PaddingTop(1) in the editor container
-			cursor.Position.Y += 1
-		}
-	}
 	return cursor
 }
 
