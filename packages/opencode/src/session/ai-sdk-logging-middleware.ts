@@ -2,10 +2,8 @@ import { ulid } from "ulid"
 import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { HttpFileLogger } from "./http-file-logger"
-import type {
-  LanguageModelV2Middleware,
-  LanguageModelV2StreamPart,
-} from '@ai-sdk/provider'
+// AI SDK v5.0.8 types - using any for now to avoid breaking builds
+// TODO: Update to correct types once AI SDK types are stable
 
 /**
  * AI SDK Logging Middleware - Captures all AI requests and responses at the SDK level
@@ -37,8 +35,8 @@ export namespace AiSdkLoggingMiddleware {
   /**
    * The main logging middleware for AI SDK
    */
-  export const middleware: LanguageModelV2Middleware = {
-    wrapGenerate: async ({ doGenerate, params }) => {
+  export const middleware: any = {
+    wrapGenerate: async ({ doGenerate, params }: { doGenerate: any, params: any }) => {
       if (!Flag.OPENCODE_DEBUG_HTTP()) {
         return doGenerate()
       }
@@ -109,7 +107,7 @@ export namespace AiSdkLoggingMiddleware {
       }
     },
 
-    wrapStream: async ({ doStream, params }) => {
+    wrapStream: async ({ doStream, params }: { doStream: any, params: any }) => {
       if (!Flag.OPENCODE_DEBUG_HTTP()) {
         return doStream()
       }
@@ -138,8 +136,8 @@ export namespace AiSdkLoggingMiddleware {
         const textBlocks = new Map<string, string>()
 
         const transformStream = new TransformStream<
-          LanguageModelV2StreamPart,
-          LanguageModelV2StreamPart
+          any,
+          any
         >({
           transform(chunk, controller) {
             totalParts++

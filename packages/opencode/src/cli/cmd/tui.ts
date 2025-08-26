@@ -79,7 +79,7 @@ export const TuiCommand = cmd({
   handler: async (args) => {
     // Set HTTP debugging environment variable before bootstrap
     if (args["debug-http"]) {
-      process.env.OPENCODE_DEBUG_HTTP = "true"
+      process.env["OPENCODE_DEBUG_HTTP"] = "true"
     }
     
     while (true) {
