@@ -4,7 +4,7 @@ import { resolver } from "hono-openapi/zod"
 import { z } from "zod"
 
 // Import the web app templates and static assets
-import { getWebAppHTML } from "./web-templates"
+import { getWebAppHTML, getChatAppHTML } from "./web-templates"
 import { getWebAppJS } from "./web-static"
 
 export function createWebRoutes() {
@@ -33,6 +33,32 @@ export function createWebRoutes() {
       c.header("Pragma", "no-cache")
       c.header("Expires", "0")
       return c.html(getWebAppHTML(baseUrl))
+    }
+  )
+
+  // Chat-only route - serves full-screen chat interface
+  webApp.get(
+    "/chat",
+    describeRoute({
+      description: "Full-screen chat-only interface with maximized TUI tab",
+      operationId: "web.chat",
+      responses: {
+        200: {
+          description: "Chat application HTML",
+          content: {
+            "text/html": {
+              schema: resolver(z.string()),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const baseUrl = `${c.req.url.split('/web')[0]}`
+      c.header("Cache-Control", "no-cache, no-store, must-revalidate")
+      c.header("Pragma", "no-cache")
+      c.header("Expires", "0")
+      return c.html(getChatAppHTML(baseUrl))
     }
   )
 

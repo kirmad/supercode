@@ -12,11 +12,18 @@ import { useState } from "react"
 export function MainLayout() {
   const { theme, toggleTheme } = useTheme()
   const [apiStatus, setApiStatus] = useState<"loading" | "ready" | "error">("loading")
+  
+  // Check if we're in chat-only mode
+  const chatOnlyMode = (window as any).APP_CONFIG?.chatOnlyMode === true
+  
+  // Set the default tab based on mode
+  const defaultTab = chatOnlyMode ? "tui" : "api-client"
 
   return (
     <div className="flex h-screen flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b px-6 py-4">
+      {/* Header - Hidden in chat-only mode */}
+      {!chatOnlyMode && (
+        <header className="flex items-center justify-between border-b px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-600">
             <Code className="h-4 w-4 text-white" />
@@ -36,12 +43,14 @@ export function MainLayout() {
           )}
         </Button>
       </header>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="api-client" className="flex h-full flex-col">
-          {/* Tab Navigation */}
-          <div className="flex items-center justify-between border-b px-6">
+        <Tabs defaultValue={defaultTab} className="flex h-full flex-col">
+          {/* Tab Navigation - Hidden in chat-only mode */}
+          {!chatOnlyMode && (
+            <div className="flex items-center justify-between border-b px-6">
             <TabsList className="bg-transparent p-0 h-auto gap-0">
               <TabsTrigger 
                 value="api-client" 
@@ -100,6 +109,7 @@ export function MainLayout() {
               )}
             </div>
           </div>
+          )}
 
           {/* Tab Content */}
           <div className="flex-1 overflow-hidden">

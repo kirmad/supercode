@@ -11,6 +11,9 @@
       "Bash(bun run:*)",
       "Bash(bun test:*)",
       "Bash(node:*)",
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Bash(go build:*)",
       "Bash(rm:*)"
     ],
     "deny": [],

@@ -7,6 +7,7 @@ declare global {
     APP_CONFIG: {
       apiUrl: string
       webUrl: string
+      chatOnlyMode?: boolean
     }
   }
 }

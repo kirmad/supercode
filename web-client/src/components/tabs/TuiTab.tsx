@@ -124,7 +124,10 @@ export function TuiTab() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isMaximized, setIsMaximized] = useState(false)
+  // Check for chatOnlyMode from global config and auto-maximize if enabled
+  const [isMaximized, setIsMaximized] = useState(() => {
+    return (window as any).APP_CONFIG?.chatOnlyMode === true
+  })
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -334,6 +337,11 @@ export function TuiTab() {
         await loadMessages(currentSession.id)
       }
       
+      // Restore focus to the input field after submission
+      setTimeout(() => {
+        promptRef.current?.focus()
+      }, 100)
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit prompt')
     } finally {
@@ -431,15 +439,18 @@ export function TuiTab() {
                 {currentSession?.title || 'TUI Chat'}
               </span>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsMaximized(false)}
-              className="h-6 w-6 p-0"
-              title="Exit fullscreen"
-            >
-              <Minimize2 className="w-3 h-3" />
-            </Button>
+            {/* Hide minimize button in chat-only mode */}
+            {!(window as any).APP_CONFIG?.chatOnlyMode && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsMaximized(false)}
+                className="h-6 w-6 p-0"
+                title="Exit fullscreen"
+              >
+                <Minimize2 className="w-3 h-3" />
+              </Button>
+            )}
           </div>
         </div>
       ) : (
