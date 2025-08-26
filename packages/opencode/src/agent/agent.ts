@@ -141,7 +141,7 @@ export namespace Agent {
   export async function generate(input: { description: string }) {
     const defaultModel = await Provider.defaultModel()
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
-    const system = SystemPrompt.header(defaultModel.providerID)
+    const system = await SystemPrompt.header(defaultModel.providerID)
     system.push(PROMPT_GENERATE)
     const existing = await list()
     const result = await generateObject({

@@ -15,9 +15,6 @@ import {
   type StreamTextResult,
 } from "ai"
 
-import PROMPT_INITIALIZE from "../session/prompt/initialize.txt"
-import PROMPT_PLAN from "../session/prompt/plan.txt"
-import PROMPT_COMPACTION from "../session/prompt/compaction.txt"
 
 import { App } from "../app/app"
 import { Bus } from "../bus"
@@ -746,7 +743,7 @@ export namespace Session {
           },
         },
         messages: [
-          ...SystemPrompt.title(input.providerID).map(
+          ...(await SystemPrompt.title(input.providerID)).map(
             (x): ModelMessage => ({
               role: "system",
               content: x,
@@ -781,22 +778,23 @@ export namespace Session {
 
     const agent = await Agent.get(inputAgent)
     if (agent.name === "plan") {
+      const planPrompt = await SystemPrompt.loadPrompt("plan.txt")
       msgs.at(-1)?.parts.push({
         id: Identifier.ascending("part"),
         messageID: userMsg.id,
         sessionID: input.sessionID,
         type: "text",
-        text: PROMPT_PLAN,
+        text: planPrompt,
         synthetic: true,
       })
     }
-    let system = SystemPrompt.header(input.providerID)
+    let system = await SystemPrompt.header(input.providerID)
     system.push(
-      ...(() => {
+      ...(await (async () => {
         if (input.system) return [input.system]
         if (agent.prompt) return [agent.prompt]
-        return SystemPrompt.provider(input.modelID)
-      })(),
+        return await SystemPrompt.provider(input.modelID)
+      })()),
     )
     system.push(...(await SystemPrompt.environment()))
     system.push(...(await SystemPrompt.custom()))
@@ -1718,7 +1716,7 @@ export namespace Session {
     const model = await Provider.getModel(input.providerID, input.modelID)
     const app = App.info()
     const system = [
-      ...SystemPrompt.summarize(input.providerID),
+      ...(await SystemPrompt.summarize(input.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
     ]
@@ -1869,7 +1867,7 @@ export namespace Session {
           content: [
             {
               type: "text",
-              text: PROMPT_COMPACTION,
+              text: await SystemPrompt.loadPrompt("compaction.txt"),
             },
           ],
         },
@@ -1919,7 +1917,7 @@ export namespace Session {
     
     // Create the final summary message with proper system prompts
     const summarySystem = [
-      ...SystemPrompt.header(input.providerID),
+      ...(await SystemPrompt.header(input.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
     ]
@@ -2070,7 +2068,7 @@ Continue on with the tasks at hand if applicable.
         {
           id: Identifier.ascending("part"),
           type: "text",
-          text: PROMPT_INITIALIZE.replace("${path}", app.path.root),
+          text: (await SystemPrompt.loadPrompt("initialize.txt")).replace("${path}", app.path.root),
         },
       ],
     })

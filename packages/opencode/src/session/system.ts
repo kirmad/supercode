@@ -15,18 +15,92 @@ import PROMPT_SUMMARIZE from "./prompt/summarize.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_COPILOT_GPT_5 from "./prompt/copilot-gpt-5.txt"
 
+// Cache for loaded prompt overrides
+const promptCache = new Map<string, string>()
+
+// Import additional prompts used in session/index.ts
+import PROMPT_INITIALIZE from "./prompt/initialize.txt"
+import PROMPT_PLAN from "./prompt/plan.txt"
+import PROMPT_COMPACTION from "./prompt/compaction.txt"
+
+// Built-in prompt mapping
+const BUILT_IN_PROMPTS = {
+  "anthropic.txt": PROMPT_ANTHROPIC,
+  "qwen.txt": PROMPT_ANTHROPIC_WITHOUT_TODO,
+  "beast.txt": PROMPT_BEAST,
+  "gemini.txt": PROMPT_GEMINI,
+  "anthropic_spoof.txt": PROMPT_ANTHROPIC_SPOOF,
+  "summarize.txt": PROMPT_SUMMARIZE,
+  "title.txt": PROMPT_TITLE,
+  "copilot-gpt-5.txt": PROMPT_COPILOT_GPT_5,
+  "initialize.txt": PROMPT_INITIALIZE,
+  "plan.txt": PROMPT_PLAN,
+  "compaction.txt": PROMPT_COMPACTION,
+} as const
+
+
 export namespace SystemPrompt {
-  export function header(providerID: string) {
-    if (providerID.includes("anthropic")) return [PROMPT_ANTHROPIC_SPOOF.trim()]
+  /**
+   * Load a prompt with override support
+   * Priority: project .opencode/prompt/ -> global ~/.opencode/prompt/ -> built-in
+   */
+  export async function loadPrompt(filename: string): Promise<string> {
+    const cacheKey = filename
+    if (promptCache.has(cacheKey)) {
+      return promptCache.get(cacheKey)!
+    }
+
+    const { cwd, root } = App.info().path
+    
+    // Check project-level override
+    const projectPromptFile = path.join(".opencode", "prompt", filename)
+    const projectMatches = await Filesystem.findUp(projectPromptFile, cwd, root)
+    if (projectMatches.length > 0) {
+      try {
+        const content = await Bun.file(projectMatches[0]).text()
+        promptCache.set(cacheKey, content)
+        return content
+      } catch (error) {
+        // Fall through to check global override
+      }
+    }
+
+    // Check global override
+    const globalPromptPath = path.join(os.homedir(), ".opencode", "prompt", filename)
+    try {
+      if (await Bun.file(globalPromptPath).exists()) {
+        const content = await Bun.file(globalPromptPath).text()
+        promptCache.set(cacheKey, content)
+        return content
+      }
+    } catch (error) {
+      // Fall through to built-in
+    }
+
+    // Use built-in prompt
+    const builtIn = BUILT_IN_PROMPTS[filename as keyof typeof BUILT_IN_PROMPTS]
+    if (builtIn) {
+      promptCache.set(cacheKey, builtIn)
+      return builtIn
+    }
+
+    throw new Error(`Unknown prompt file: ${filename}`)
+  }
+
+  export async function header(providerID: string) {
+    if (providerID.includes("anthropic")) {
+      const prompt = await SystemPrompt.loadPrompt("anthropic_spoof.txt")
+      return [prompt.trim()]
+    }
     return []
   }
 
-  export function provider(modelID: string) {
-    if (modelID.includes("gpt-5")) return [PROMPT_COPILOT_GPT_5]
-    if (modelID.includes("gpt-") || modelID.includes("o1") || modelID.includes("o3")) return [PROMPT_BEAST]
-    if (modelID.includes("gemini-")) return [PROMPT_GEMINI]
-    if (modelID.includes("claude")) return [PROMPT_ANTHROPIC]
-    return [PROMPT_ANTHROPIC_WITHOUT_TODO]
+  export async function provider(modelID: string) {
+    if (modelID.includes("gpt-5")) return [await SystemPrompt.loadPrompt("copilot-gpt-5.txt")]
+    if (modelID.includes("gpt-") || modelID.includes("o1") || modelID.includes("o3")) return [await SystemPrompt.loadPrompt("beast.txt")]
+    if (modelID.includes("gemini-")) return [await SystemPrompt.loadPrompt("gemini.txt")]
+    if (modelID.includes("claude")) return [await SystemPrompt.loadPrompt("anthropic.txt")]
+    return [await SystemPrompt.loadPrompt("qwen.txt")]
   }
 
   export async function environment() {
@@ -113,21 +187,25 @@ export namespace SystemPrompt {
     return Promise.all(found).then((result) => result.filter(Boolean))
   }
 
-  export function summarize(providerID: string) {
+  export async function summarize(providerID: string) {
     switch (providerID) {
       case "anthropic":
-        return [PROMPT_ANTHROPIC_SPOOF.trim(), PROMPT_SUMMARIZE]
+        const spoofPrompt = await SystemPrompt.loadPrompt("anthropic_spoof.txt")
+        const summarizePrompt = await SystemPrompt.loadPrompt("summarize.txt")
+        return [spoofPrompt.trim(), summarizePrompt]
       default:
-        return [PROMPT_SUMMARIZE]
+        return [await SystemPrompt.loadPrompt("summarize.txt")]
     }
   }
 
-  export function title(providerID: string) {
+  export async function title(providerID: string) {
     switch (providerID) {
       case "anthropic":
-        return [PROMPT_ANTHROPIC_SPOOF.trim(), PROMPT_TITLE]
+        const spoofPrompt = await SystemPrompt.loadPrompt("anthropic_spoof.txt")
+        const titlePrompt = await SystemPrompt.loadPrompt("title.txt")
+        return [spoofPrompt.trim(), titlePrompt]
       default:
-        return [PROMPT_TITLE]
+        return [await SystemPrompt.loadPrompt("title.txt")]
     }
   }
 }
