@@ -326,6 +326,21 @@ func (m *editorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea.InsertString(" ")
 			return m, nil
 
+		case "flags":
+			// Find the last dash (-) in the text, then check if there's another dash before it
+			value := m.textarea.Value()
+			dashIndex := strings.LastIndex(value, "--")
+			if dashIndex == -1 {
+				// Should not happen, but as a fallback, just insert.
+				m.textarea.InsertString(msg.Item.Value + " ")
+				return m, nil
+			}
+			
+			// Replace from the "--" up to the current cursor position with the flag
+			cursorCol := m.textarea.CursorColumn()
+			m.textarea.ReplaceRange(dashIndex, cursorCol, msg.Item.Value+" ")
+			return m, nil
+			
 		default:
 			slog.Debug("Unknown provider", "provider", msg.Item.ProviderID)
 			return m, nil
