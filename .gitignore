@@ -23,3 +23,5 @@ server.log
 opencodetmp/*
 .opencode/*
 packages/tui/test-tui
+.trash/
+.serena/cache/**/*.pkl

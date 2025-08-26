@@ -2,13 +2,15 @@ import z from "zod"
 import { App } from "../app/app"
 import { Config } from "../config/config"
 import { mergeDeep, sortBy } from "remeda"
-import { NoSuchModelError, type LanguageModel, type Provider as SDK } from "ai"
+import { NoSuchModelError, type LanguageModel, type Provider as SDK, wrapLanguageModel } from "ai"
 import { Log } from "../util/log"
 import { BunProc } from "../bun"
 import { Plugin } from "../plugin"
 import { ModelsDev } from "./models"
 import { NamedError } from "../util/error"
 import { Auth } from "../auth"
+import { AiSdkLoggingMiddleware } from "../session/ai-sdk-logging-middleware"
+import { Flag } from "../flag/flag"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -346,8 +348,22 @@ export namespace Provider {
     const sdk = await getSDK(provider.info)
 
     try {
-      const language = provider.getModel ? await provider.getModel(sdk, modelID) : sdk.languageModel(modelID)
-      log.info("found", { providerID, modelID })
+      const baseLanguage = provider.getModel ? await provider.getModel(sdk, modelID) : sdk.languageModel(modelID)
+      
+      // Wrap with logging middleware if HTTP debug logging is enabled
+      const language = Flag.OPENCODE_DEBUG_HTTP() 
+        ? wrapLanguageModel({
+            model: baseLanguage,
+            middleware: AiSdkLoggingMiddleware.middleware
+          })
+        : baseLanguage
+      
+      log.info("found", { 
+        providerID, 
+        modelID, 
+        withLoggingMiddleware: Flag.OPENCODE_DEBUG_HTTP() 
+      })
+      
       s.models.set(key, {
         info,
         language,

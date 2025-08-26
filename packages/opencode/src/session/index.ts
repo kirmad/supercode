@@ -50,9 +50,21 @@ import { CustomCommands } from "../commands/custom"
 import { Flags } from "../flags"
 import { DebugLogger } from "./debug-logger"
 import { CompactionManager } from "./compaction"
+import { HttpFileLogger } from "./http-file-logger"
+import { HttpInterceptor } from "./http-interceptor"
+import { AiSdkLoggingMiddleware } from "./ai-sdk-logging-middleware"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
+
+  // Initialize HTTP file logger
+  let httpFileLoggerInitialized = false
+  async function ensureHttpFileLoggerInitialized() {
+    if (!httpFileLoggerInitialized) {
+      await HttpFileLogger.init()
+      httpFileLoggerInitialized = true
+    }
+  }
 
   const OUTPUT_TOKEN_MAX = 32_000
 
@@ -447,6 +459,9 @@ export namespace Session {
     const l = log.clone().tag("session", input.sessionID)
     l.info("chatting")
 
+    // Ensure HTTP file logger is initialized
+    await ensureHttpFileLoggerInitialized()
+
     const inputAgent = input.agent ?? "build"
 
     // Process revert cleanup first, before creating new messages
@@ -825,6 +840,13 @@ export namespace Session {
       },
       sessionID: input.sessionID,
     }
+
+    // Set HTTP interceptor context for raw request/response logging
+    HttpInterceptor.setContext(input.sessionID, assistantMsg.id)
+    
+    // Set AI SDK middleware context for AI request/response logging
+    AiSdkLoggingMiddleware.setContext(input.sessionID, assistantMsg.id)
+
     await updateMessage(assistantMsg)
     await using _ = defer(async () => {
       if (assistantMsg.time.completed) return
@@ -964,6 +986,15 @@ export namespace Session {
       enabledTools: Object.keys(tools).filter((x) => x !== "invalid"),
       temperature: params.temperature,
       topP: params.topP
+    })
+
+    // Log AI request to file if HTTP logging is enabled
+    await HttpFileLogger.logAiRequest(input.sessionID, assistantMsg.id, input.providerID, input.modelID, {
+      messages: messagesToSend,
+      tools,
+      temperature: params.temperature,
+      topP: params.topP,
+      maxOutputTokens: outputLimit
     })
 
     const stream = streamText({
@@ -1136,6 +1167,22 @@ export namespace Session {
       duration
     )
 
+    // Log AI response to file if HTTP logging is enabled
+    await HttpFileLogger.logAiResponse(
+      input.sessionID,
+      assistantMsg.id,
+      input.providerID,
+      input.modelID,
+      {
+        success: true,
+        tokens: result.info.tokens,
+        cost: result.info.cost,
+        partsCount: result.parts.length,
+        completed: true
+      },
+      duration
+    )
+
     // Log the assistant's response content
     for (const part of result.parts) {
       if (part.type === "text") {
@@ -1158,6 +1205,10 @@ export namespace Session {
       item.callback(result)
     }
     state().queued.delete(input.sessionID)
+    
+    // Clear HTTP interceptor context
+    HttpInterceptor.clearContext()
+    
     return result
   }
 
@@ -1393,6 +1444,15 @@ export namespace Session {
                     value.input
                   )
 
+                  // Log tool call to file if HTTP logging is enabled
+                  await HttpFileLogger.logToolCallRequest(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    value.toolName,
+                    value.input
+                  )
+
                   const part = await updatePart({
                     ...match,
                     tool: value.toolName,
@@ -1415,6 +1475,17 @@ export namespace Session {
                   
                   // Debug logging: Log tool call result
                   DebugLogger.logToolCallResult(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    match.tool,
+                    value.output.output,
+                    true, // success
+                    duration
+                  )
+
+                  // Log tool result to file if HTTP logging is enabled
+                  await HttpFileLogger.logToolCallResponse(
                     assistantMsg.sessionID,
                     assistantMsg.id,
                     value.toolCallId,
@@ -1456,6 +1527,17 @@ export namespace Session {
                   
                   // Debug logging: Log tool call error
                   DebugLogger.logToolCallResult(
+                    assistantMsg.sessionID,
+                    assistantMsg.id,
+                    value.toolCallId,
+                    match.tool,
+                    (value.error as any).toString(),
+                    false, // not success
+                    duration
+                  )
+
+                  // Log tool error to file if HTTP logging is enabled
+                  await HttpFileLogger.logToolCallResponse(
                     assistantMsg.sessionID,
                     assistantMsg.id,
                     value.toolCallId,
@@ -1585,6 +1667,22 @@ export namespace Session {
           log.error("", {
             error: e,
           })
+
+          // Log AI error response to file if HTTP logging is enabled
+          const errorMessage = e instanceof Error ? e.toString() : JSON.stringify(e)
+          const processingDuration = Date.now() - assistantMsg.time.created
+          await HttpFileLogger.logAiResponse(
+            assistantMsg.sessionID,
+            assistantMsg.id,
+            assistantMsg.providerID,
+            assistantMsg.modelID,
+            {
+              success: false,
+              error: errorMessage
+            },
+            processingDuration
+          )
+
           switch (true) {
             case e instanceof DOMException && e.name === "AbortError":
               assistantMsg.error = new MessageV2.AbortedError(

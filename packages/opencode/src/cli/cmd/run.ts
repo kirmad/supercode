@@ -58,8 +58,18 @@ export const RunCommand = cmd({
         type: "string",
         describe: "agent to use",
       })
+      .option("debug-http", {
+        type: "boolean",
+        describe: "enable HTTP request/response logging to files",
+        default: false,
+      })
   },
   handler: async (args) => {
+    // Set HTTP debugging environment variable before bootstrap
+    if (args["debug-http"]) {
+      process.env.OPENCODE_DEBUG_HTTP = "true"
+    }
+    
     let message = args.message.join(" ")
 
     if (!process.stdin.isTTY) message += "\n" + (await Bun.stdin.text())

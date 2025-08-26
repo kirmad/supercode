@@ -24,6 +24,7 @@ import { Auth } from "../auth"
 import { createMCPRoutes } from "./mcp-api"
 import { createWebRoutes } from "./web-routes"
 import { createDebugLogsRoutes } from "./debug-logs-routes"
+import { createHttpLogsRoutes } from "./http-logs-routes"
 
 const ERRORS = {
   400: {
@@ -1215,6 +1216,7 @@ export namespace Server {
       .route("/web", createWebRoutes())
       .route("/", createMCPRoutes())
       .route("/", createDebugLogsRoutes())
+      .route("/", createHttpLogsRoutes())
       .put(
         "/auth/:id",
         describeRoute({

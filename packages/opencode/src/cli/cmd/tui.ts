@@ -70,8 +70,18 @@ export const TuiCommand = cmd({
         type: "string",
         describe: "hostname to listen on",
         default: "127.0.0.1",
+      })
+      .option("debug-http", {
+        type: "boolean",
+        describe: "enable HTTP request/response logging to files",
+        default: false,
       }),
   handler: async (args) => {
+    // Set HTTP debugging environment variable before bootstrap
+    if (args["debug-http"]) {
+      process.env.OPENCODE_DEBUG_HTTP = "true"
+    }
+    
     while (true) {
       const cwd = args.project ? path.resolve(args.project) : process.cwd()
       try {
@@ -145,6 +155,7 @@ export const TuiCommand = cmd({
             CGO_ENABLED: "0",
             OPENCODE_SERVER: server.url.toString(),
             OPENCODE_APP_INFO: JSON.stringify(app),
+            OPENCODE_DEBUG_HTTP: args["debug-http"] ? "true" : "false",
           },
           onExit: () => {
             server.stop()
