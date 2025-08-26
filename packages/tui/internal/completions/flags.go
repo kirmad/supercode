@@ -82,16 +82,20 @@ func (p *FlagsProvider) GetChildEntries(query string) ([]CompletionSuggestion, e
 						displayName = flag.Name
 					}
 					
-					display := "  " + s.Foreground(t.Primary()).Render(displayName)
+					// Use the passed-in style for the main flag name to respect selection highlighting
+					display := "  " + s.Render(displayName)
 					
-					// Add placement indicator
+					// Add placement indicator using muted colors relative to current style
 					if flag.Placement != "" {
-						display += " " + s.Foreground(t.Secondary()).Render("[" + flag.Placement + "]")
+						// Use a slightly muted version of the current style's foreground color
+						mutedStyle := s.Foreground(t.TextMuted())
+						display += " " + mutedStyle.Render("[" + flag.Placement + "]")
 					}
 					
-					// Add description if present
+					// Add description using muted colors relative to current style
 					if flag.Description != "" {
-						display += " " + s.Foreground(t.TextMuted()).Render("- " + flag.Description)
+						mutedStyle := s.Foreground(t.TextMuted())
+						display += " " + mutedStyle.Render("- " + flag.Description)
 					}
 					
 					return display
