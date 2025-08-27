@@ -48,14 +48,30 @@ export namespace SeedInstaller {
   async function findSeedsFolder(): Promise<string | null> {
     // First, try to find seeds folder in package installation (for published package)
     try {
-      // Get the directory where this script is located
-      const scriptDir = path.dirname(new URL(import.meta.url).pathname)
+      // For compiled binaries, import.meta.url points to the binary file
+      // We need to find seeds relative to the binary location
+      const scriptPath = new URL(import.meta.url).pathname
+      const scriptDir = path.dirname(scriptPath)
+      
       // Try multiple possible locations relative to the compiled binary
       const possiblePaths = [
-        path.join(scriptDir, "..", "seeds"),     // Development: packages/opencode/seeds
-        path.join(scriptDir, "..", "..", "seeds"), // Platform package: next to binary
-        path.join(scriptDir, "..", "..", "..", "seeds"), // Alternative location
+        // Development: packages/opencode/seeds (when running from source)
+        path.join(scriptDir, "..", "seeds"),
+        // Compiled binary in platform package: bin/supercode -> ../seeds
+        path.join(scriptDir, "..", "seeds"),
+        // Alternative: if binary is nested deeper
+        path.join(scriptDir, "..", "..", "seeds"),
       ]
+      
+      // Also try using process.argv[0] (the actual binary path) for compiled binaries
+      if (process.argv[0] && process.argv[0].includes('supercode')) {
+        const binaryDir = path.dirname(process.argv[0])
+        possiblePaths.push(
+          path.join(binaryDir, "..", "seeds"), // Binary in bin/, seeds at root
+        )
+      }
+      
+      log.debug("searching for seeds", { scriptPath, scriptDir, possiblePaths })
       
       for (const seedsPath of possiblePaths) {
         try {
@@ -69,8 +85,8 @@ export namespace SeedInstaller {
           continue
         }
       }
-    } catch {
-      // Not found in package, continue with project search
+    } catch (error) {
+      log.debug("error in package seed search", { error })
     }
     
     // Fall back to searching upward from current directory (for development)
