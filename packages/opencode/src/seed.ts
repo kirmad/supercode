@@ -28,6 +28,7 @@ export namespace SeedInstaller {
       const results = {
         commands: await copySeeds(seedsFolder, "commands", path.join(Global.Path.config, "commands")),
         flags: await copySeeds(seedsFolder, "flags", path.join(Global.Path.config, "flags")),  
+        agents: await copySeeds(seedsFolder, "agents", path.join(Global.Path.config, "agents")),
         prompts: await copySeeds(seedsFolder, "prompts", path.join(Global.Path.config, "prompts")),
         configs: await copySeeds(seedsFolder, "configs", path.join(Global.Path.config, "configs"))
       }

@@ -32,7 +32,7 @@ function reportInstallationResults(results: Record<string, {copied: string[], sk
 
 export const SeedCommand = cmd({
   command: "seed",
-  describe: "Manage OpenCode seeds (commands, flags, prompts)",
+  describe: "Manage OpenCode seeds (commands, flags, agents, prompts)",
   builder: (yargs) => {
     return yargs
       .command({
