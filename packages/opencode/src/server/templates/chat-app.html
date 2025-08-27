@@ -6,7 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SuperCode Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
-    <script type="module" crossorigin src="{{BASE_URL}}/web/static/app.js"></script>
+    <script>
+      // Dynamic configuration using window.location
+      window.APP_CONFIG = {
+        apiUrl: window.location.origin,
+        webUrl: window.location.origin + '/web',
+        chatOnlyMode: true
+      };
+    </script>
+    <script type="module" crossorigin src="/web/static/app.js"></script>
     <style>
 pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
   Theme: GitHub
@@ -43,10 +51,10 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
   <body class="chat-only-mode">
     <div id="root"></div>
     <script>
-      // Configuration object with base URL and chat mode flag
+      // Dynamic configuration using window.location
       window.APP_CONFIG = {
-        apiUrl: '{{BASE_URL}}',
-        webUrl: '{{BASE_URL}}/web',
+        apiUrl: window.location.origin,
+        webUrl: window.location.origin + '/web',
         chatOnlyMode: true
       };
       

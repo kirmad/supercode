@@ -3,10 +3,11 @@ import path from "path"
 import { Tool } from "./tool"
 import { App } from "../app/app"
 import DESCRIPTION from "./glob.txt"
+import { ToolDescription } from "./description"
 import { Ripgrep } from "../file/ripgrep"
 
-export const GlobTool = Tool.define("glob", {
-  description: DESCRIPTION,
+export const GlobTool = Tool.define("glob", async () => ({
+  description: await ToolDescription.loadDescription("glob", DESCRIPTION),
   parameters: z.object({
     pattern: z.string().describe("The glob pattern to match files against"),
     path: z
@@ -63,4 +64,4 @@ export const GlobTool = Tool.define("glob", {
       output: output.join("\n"),
     }
   },
-})
+}))

@@ -1,6 +1,8 @@
 import { z } from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
+import DESCRIPTION_READ from "./todoread.txt"
+import { ToolDescription } from "./description"
 import { App } from "../app/app"
 
 const TodoInfo = z.object({
@@ -18,8 +20,8 @@ const state = App.state("todo-tool", () => {
   return todos
 })
 
-export const TodoWriteTool = Tool.define("todowrite", {
-  description: DESCRIPTION_WRITE,
+export const TodoWriteTool = Tool.define("todowrite", async () => ({
+  description: await ToolDescription.loadDescription("todowrite", DESCRIPTION_WRITE),
   parameters: z.object({
     todos: z.array(TodoInfo).describe("The updated todo list"),
   }),
@@ -34,10 +36,10 @@ export const TodoWriteTool = Tool.define("todowrite", {
       },
     }
   },
-})
+}))
 
-export const TodoReadTool = Tool.define("todoread", {
-  description: "Use this tool to read your todo list",
+export const TodoReadTool = Tool.define("todoread", async () => ({
+  description: await ToolDescription.loadDescription("todoread", DESCRIPTION_READ),
   parameters: z.object({}),
   async execute(_params, opts) {
     const todos = state()[opts.sessionID] ?? []
@@ -49,4 +51,4 @@ export const TodoReadTool = Tool.define("todoread", {
       output: JSON.stringify(todos, null, 2),
     }
   },
-})
+}))

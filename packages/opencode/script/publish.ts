@@ -50,6 +50,10 @@ for (const [os, arch] of targets) {
   await $`rm -rf ./dist/${name}/bin/tui`
   // Copy seeds folder to platform package
   await $`cp -r ./seeds ./dist/${name}/seeds`
+  // Copy templates folder to platform package
+  await $`cp -r ./src/server/templates ./dist/${name}/templates`
+  // Copy static assets folder to platform package
+  await $`cp -r ./src/server/static ./dist/${name}/static`
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

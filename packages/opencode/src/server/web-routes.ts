@@ -28,11 +28,10 @@ export function createWebRoutes() {
       },
     }),
     async (c) => {
-      const baseUrl = `${c.req.url.split('/web')[0]}`
       c.header("Cache-Control", "no-cache, no-store, must-revalidate")
       c.header("Pragma", "no-cache")
       c.header("Expires", "0")
-      return c.html(getWebAppHTML(baseUrl))
+      return c.html(await getWebAppHTML())
     }
   )
 
@@ -54,11 +53,10 @@ export function createWebRoutes() {
       },
     }),
     async (c) => {
-      const baseUrl = `${c.req.url.split('/web')[0]}`
       c.header("Cache-Control", "no-cache, no-store, must-revalidate")
       c.header("Pragma", "no-cache")
       c.header("Expires", "0")
-      return c.html(getChatAppHTML(baseUrl))
+      return c.html(await getChatAppHTML())
     }
   )
 
@@ -83,7 +81,7 @@ export function createWebRoutes() {
       c.header("Cache-Control", "no-cache, no-store, must-revalidate")
       c.header("Pragma", "no-cache")
       c.header("Expires", "0")
-      return new Response(getWebAppJS(), {
+      return new Response(await getWebAppJS(), {
         headers: {
           "Content-Type": "application/javascript",
         },

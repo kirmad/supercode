@@ -3,6 +3,7 @@ import { Tool } from "./tool"
 import { App } from "../app/app"
 import * as path from "path"
 import DESCRIPTION from "./ls.txt"
+import { ToolDescription } from "./description"
 
 export const IGNORE_PATTERNS = [
   "node_modules/",
@@ -33,8 +34,8 @@ export const IGNORE_PATTERNS = [
 
 const LIMIT = 100
 
-export const ListTool = Tool.define("list", {
-  description: DESCRIPTION,
+export const ListTool = Tool.define("list", async () => ({
+  description: await ToolDescription.loadDescription("list", DESCRIPTION),
   parameters: z.object({
     path: z.string().describe("The absolute path to the directory to list (must be absolute, not relative)").optional(),
     ignore: z.array(z.string()).describe("List of glob patterns to ignore").optional(),
@@ -110,4 +111,4 @@ export const ListTool = Tool.define("list", {
       output,
     }
   },
-})
+}))

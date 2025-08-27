@@ -4,6 +4,7 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { Permission } from "../permission"
 import DESCRIPTION from "./write.txt"
+import { ToolDescription } from "./description"
 import { App } from "../app/app"
 import { Bus } from "../bus"
 import { File } from "../file"
@@ -11,8 +12,8 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Agent } from "../agent/agent"
 
-export const WriteTool = Tool.define("write", {
-  description: DESCRIPTION,
+export const WriteTool = Tool.define("write", async () => ({
+  description: await ToolDescription.loadDescription("write", DESCRIPTION),
   parameters: z.object({
     filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
     content: z.string().describe("The content to write to the file"),
@@ -71,4 +72,4 @@ export const WriteTool = Tool.define("write", {
       output,
     }
   },
-})
+}))

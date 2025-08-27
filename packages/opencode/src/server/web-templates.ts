@@ -1,33 +1,18 @@
-import { readFileSync } from "fs"
-import { join, dirname } from "path"
-import { fileURLToPath } from "url"
+import { TemplateFinder } from "./template-finder"
 
-export function getWebAppHTML(baseUrl: string): string {
+export async function getWebAppHTML(): Promise<string> {
   try {
-    // Get the correct path to the templates directory
-    // In development: packages/opencode/src/server/templates/web-app.html
-    // In production: packages/opencode/dist/server/templates/web-app.html
-    let templatesDir: string
+    // Use the robust template finder to locate the template
+    const htmlContent = await TemplateFinder.readTemplate("web-app.html")
     
-    if (typeof __filename !== 'undefined') {
-      // CommonJS environment
-      templatesDir = join(dirname(__filename), "templates")
-    } else {
-      // ES modules environment (fallback)
-      const currentDir = dirname(fileURLToPath(import.meta.url))
-      templatesDir = join(currentDir, "templates")
+    if (!htmlContent) {
+      throw new Error("Template content not found")
     }
     
-    const templatePath = join(templatesDir, "web-app.html")
-    let htmlContent = readFileSync(templatePath, "utf-8")
-    
-    // Perform template substitution
-    htmlContent = htmlContent.replace(/\{\{BASE_URL\}\}/g, baseUrl)
-    
+    // No template substitution needed - using dynamic configuration with window.location
     return htmlContent
   } catch (error) {
     console.error("Failed to load web app template:", error)
-    console.error(`Tried to load from: ${error instanceof Error ? (error as any).path || 'unknown path' : 'unknown'}`)
     
     // Fallback to a simple error page
     return `
@@ -45,32 +30,19 @@ export function getWebAppHTML(baseUrl: string): string {
   }
 }
 
-export function getChatAppHTML(baseUrl: string): string {
+export async function getChatAppHTML(): Promise<string> {
   try {
-    // Get the correct path to the templates directory
-    // In development: packages/opencode/src/server/templates/chat-app.html
-    // In production: packages/opencode/dist/server/templates/chat-app.html
-    let templatesDir: string
+    // Use the robust template finder to locate the template
+    const htmlContent = await TemplateFinder.readTemplate("chat-app.html")
     
-    if (typeof __filename !== 'undefined') {
-      // CommonJS environment
-      templatesDir = join(dirname(__filename), "templates")
-    } else {
-      // ES modules environment (fallback)
-      const currentDir = dirname(fileURLToPath(import.meta.url))
-      templatesDir = join(currentDir, "templates")
+    if (!htmlContent) {
+      throw new Error("Template content not found")
     }
     
-    const templatePath = join(templatesDir, "chat-app.html")
-    let htmlContent = readFileSync(templatePath, "utf-8")
-    
-    // Perform template substitution
-    htmlContent = htmlContent.replace(/\{\{BASE_URL\}\}/g, baseUrl)
-    
+    // No template substitution needed - using dynamic configuration with window.location
     return htmlContent
   } catch (error) {
     console.error("Failed to load chat app template:", error)
-    console.error(`Tried to load from: ${error instanceof Error ? (error as any).path || 'unknown path' : 'unknown'}`)
     
     // Fallback to a simple error page
     return `

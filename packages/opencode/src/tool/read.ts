@@ -5,14 +5,15 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
+import { ToolDescription } from "./description"
 import { App } from "../app/app"
 import { Filesystem } from "../util/filesystem"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
 
-export const ReadTool = Tool.define("read", {
-  description: DESCRIPTION,
+export const ReadTool = Tool.define("read", async () => ({
+  description: await ToolDescription.loadDescription("read", DESCRIPTION),
   parameters: z.object({
     filePath: z.string().describe("The path to the file to read"),
     offset: z.coerce.number().describe("The line number to start reading from (0-based)").optional(),
@@ -84,7 +85,7 @@ export const ReadTool = Tool.define("read", {
       },
     }
   },
-})
+}))
 
 function isImageFile(filePath: string): string | false {
   const ext = path.extname(filePath).toLowerCase()

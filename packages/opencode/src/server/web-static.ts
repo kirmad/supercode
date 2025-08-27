@@ -1,28 +1,17 @@
-import { readFileSync } from "fs"
-import { join, dirname } from "path"
-import { fileURLToPath } from "url"
+import { TemplateFinder } from "./template-finder"
 
-export function getWebAppJS(): string {
+export async function getWebAppJS(): Promise<string> {
   try {
-    // Get the correct path to the static directory
-    // In development: packages/opencode/src/server/static/app.js
-    // In production: packages/opencode/dist/server/static/app.js
-    let staticDir: string
+    // Use the robust template finder to locate the JavaScript file
+    const jsContent = await TemplateFinder.readStatic("app.js")
     
-    if (typeof __filename !== 'undefined') {
-      // CommonJS environment
-      staticDir = join(dirname(__filename), "static")
-    } else {
-      // ES modules environment (fallback)
-      const currentDir = dirname(fileURLToPath(import.meta.url))
-      staticDir = join(currentDir, "static")
+    if (!jsContent) {
+      throw new Error("Static JavaScript content not found")
     }
     
-    const jsPath = join(staticDir, "app.js")
-    return readFileSync(jsPath, "utf-8")
+    return jsContent
   } catch (error) {
     console.error("Failed to load web app JavaScript:", error)
-    console.error(`Tried to load from: ${error instanceof Error ? (error as any).path || 'unknown path' : 'unknown'}`)
     
     // Fallback to a simple error message
     return `

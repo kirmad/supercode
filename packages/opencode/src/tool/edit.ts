@@ -10,6 +10,7 @@ import { LSP } from "../lsp"
 import { createTwoFilesPatch } from "diff"
 import { Permission } from "../permission"
 import DESCRIPTION from "./edit.txt"
+import { ToolDescription } from "./description"
 import { App } from "../app/app"
 import { File } from "../file"
 import { Bus } from "../bus"
@@ -17,8 +18,8 @@ import { FileTime } from "../file/time"
 import { Filesystem } from "../util/filesystem"
 import { Agent } from "../agent/agent"
 
-export const EditTool = Tool.define("edit", {
-  description: DESCRIPTION,
+export const EditTool = Tool.define("edit", async () => ({
+  description: await ToolDescription.loadDescription("edit", DESCRIPTION),
   parameters: z.object({
     filePath: z.string().describe("The absolute path to the file to modify"),
     oldString: z.string().describe("The text to replace"),
@@ -127,7 +128,7 @@ export const EditTool = Tool.define("edit", {
       output,
     }
   },
-})
+}))
 
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 

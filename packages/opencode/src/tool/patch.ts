@@ -4,6 +4,7 @@ import * as fs from "fs/promises"
 import { Tool } from "./tool"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./patch.txt"
+import { ToolDescription } from "./description"
 
 const PatchParams = z.object({
   patchText: z.string().describe("The full patch text that describes all changes to be made"),
@@ -210,8 +211,8 @@ async function applyCommit(
   }
 }
 
-export const PatchTool = Tool.define("patch", {
-  description: DESCRIPTION,
+export const PatchTool = Tool.define("patch", async () => ({
+  description: await ToolDescription.loadDescription("patch", DESCRIPTION),
   parameters: PatchParams,
   execute: async (params, ctx) => {
     // Identify all files needed for the patch and verify they've been read
@@ -339,4 +340,4 @@ export const PatchTool = Tool.define("patch", {
       output,
     }
   },
-})
+}))

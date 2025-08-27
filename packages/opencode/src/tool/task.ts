@@ -1,5 +1,6 @@
 import { Tool } from "./tool"
 import DESCRIPTION from "./task.txt"
+import { ToolDescription } from "./description"
 import { z } from "zod"
 import { Session } from "../session"
 import { Bus } from "../bus"
@@ -9,7 +10,8 @@ import { Agent } from "../agent/agent"
 
 export const TaskTool = Tool.define("task", async () => {
   const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
-  const description = DESCRIPTION.replace(
+  const baseDescription = await ToolDescription.loadDescription("task", DESCRIPTION)
+  const description = baseDescription.replace(
     "{agents}",
     agents
       .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)

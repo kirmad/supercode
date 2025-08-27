@@ -2,11 +2,12 @@ import { z } from "zod"
 import { Tool } from "./tool"
 import { App } from "../app/app"
 import { Ripgrep } from "../file/ripgrep"
+import { ToolDescription } from "./description"
 
 import DESCRIPTION from "./grep.txt"
 
-export const GrepTool = Tool.define("grep", {
-  description: DESCRIPTION,
+export const GrepTool = Tool.define("grep", async () => ({
+  description: await ToolDescription.loadDescription("grep", DESCRIPTION),
   parameters: z.object({
     pattern: z.string().describe("The regex pattern to search for in file contents"),
     path: z.string().optional().describe("The directory to search in. Defaults to the current working directory."),
@@ -114,4 +115,4 @@ export const GrepTool = Tool.define("grep", {
       output: outputLines.join("\n"),
     }
   },
-})
+}))

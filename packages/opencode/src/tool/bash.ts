@@ -3,6 +3,7 @@ import { exec } from "child_process"
 
 import { Tool } from "./tool"
 import DESCRIPTION from "./bash.txt"
+import { ToolDescription } from "./description"
 import { App } from "../app/app"
 import { Permission } from "../permission"
 import { Filesystem } from "../util/filesystem"
@@ -43,8 +44,8 @@ const parser = lazy(async () => {
   }
 })
 
-export const BashTool = Tool.define("bash", {
-  description: DESCRIPTION,
+export const BashTool = Tool.define("bash", async () => ({
+  description: await ToolDescription.loadDescription("bash", DESCRIPTION),
   parameters: z.object({
     command: z.string().describe("The command to execute"),
     timeout: z.number().describe("Optional timeout in milliseconds").optional(),
@@ -187,4 +188,4 @@ export const BashTool = Tool.define("bash", {
       output,
     }
   },
-})
+}))
