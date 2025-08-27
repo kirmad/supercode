@@ -14,7 +14,8 @@
       "Bash(rm:*)",
       "Bash(curl:*)",
       "Bash(go build:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "mcp__cascade-thinking__cascade_thinking"
     ],
     "deny": [],
     "ask": []

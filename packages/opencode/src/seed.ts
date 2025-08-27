@@ -46,35 +46,107 @@ export namespace SeedInstaller {
    * Find the seeds folder in the project or package installation
    */
   async function findSeedsFolder(): Promise<string | null> {
-    // For compiled binaries, prioritize process.argv[0] over import.meta.url
+    // For compiled binaries, we need special handling
     try {
       const possiblePaths: string[] = []
       
-      // Method 1: Use actual binary path (most reliable for compiled binaries)
-      if (process.argv[0]) {
-        const binaryPath = process.argv[0]
-        const binaryDir = path.dirname(binaryPath)
+      // Method 1: Detect compiled Bun binary by checking argv[0] and virtual filesystem
+      const isCompiledBun = process.argv[0] === 'bun' || 
+                           (import.meta.url && import.meta.url.includes('$bunfs'))
+      
+      if (isCompiledBun) {
+        // For compiled Bun binaries, try to find seeds relative to where the binary likely is
+        // The binary is usually installed in node_modules/@kirmad/supercode-platform/bin/
+        // We need to look for the seeds folder at node_modules/@kirmad/supercode-platform/seeds/
         
-        // Common patterns for platform packages:
-        // Binary: /some/path/node_modules/@kirmad/supercode-platform/bin/supercode
-        // Seeds:  /some/path/node_modules/@kirmad/supercode-platform/seeds/
+        // Strategy: Look in common npm installation locations
+        const cwd = process.cwd()
+        const platformPackages = [
+          "supercode-darwin-arm64",
+          "supercode-linux-x64", 
+          "supercode-linux-arm64",
+          "supercode-windows-x64",
+          "supercode-darwin-x64",
+          "supercode-darwin-x64-baseline",
+          "supercode-linux-x64-baseline"
+        ]
+        
+        // Search in current directory and up to 3 parent directories
+        let searchDir = cwd
+        for (let i = 0; i < 4; i++) {
+          for (const pkg of platformPackages) {
+            possiblePaths.push(path.join(searchDir, "node_modules", "@kirmad", pkg, "seeds"))
+          }
+          const parentDir = path.dirname(searchDir)
+          if (parentDir === searchDir) break // Reached root
+          searchDir = parentDir
+        }
+        
+        // Also try some common global locations and Windows-specific paths
         possiblePaths.push(
-          path.join(binaryDir, "..", "seeds"), // bin/supercode -> ../seeds
-          path.join(binaryDir, "..", "..", "seeds"), // Alternative depth
+          path.join(cwd, "..", "..", "seeds"), // From global bin directory
+          path.join(cwd, "..", "seeds"),       // Alternative global structure
         )
         
-        log.debug("trying binary-based paths", { binaryPath, binaryDir })
+        // Windows-specific: try to find seeds relative to the wrapper script location
+        // On Windows, global packages are often in %APPDATA%\npm\node_modules
+        if (process.platform === "win32") {
+          const appData = process.env["APPDATA"]
+          if (appData) {
+            for (const pkg of platformPackages) {
+              // Direct installation in global node_modules
+              possiblePaths.push(path.join(appData, "npm", "node_modules", "@kirmad", pkg, "seeds"))
+              
+              // Nested installation inside main package (common pattern)
+              possiblePaths.push(path.join(appData, "npm", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, "seeds"))
+            }
+          }
+          
+          // Also try relative to where npm global binaries are installed
+          const npmGlobalBin = path.dirname(process.execPath)
+          for (const pkg of platformPackages) {
+            possiblePaths.push(
+              path.join(npmGlobalBin, "..", "node_modules", "@kirmad", pkg, "seeds"),
+              path.join(npmGlobalBin, "node_modules", "@kirmad", pkg, "seeds"),
+              // Nested pattern
+              path.join(npmGlobalBin, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, "seeds"),
+              path.join(npmGlobalBin, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, "seeds")
+            )
+          }
+        }
+        
+        log.debug("detected compiled Bun binary, trying npm package paths", { cwd, isCompiledBun, platform: process.platform, arch: process.arch })
+      } else {
+        // Method 2: Use actual binary path (for normal compiled binaries)
+        if (process.argv[0]) {
+          const binaryPath = process.argv[0]
+          const binaryDir = path.dirname(binaryPath)
+          
+          // Common patterns for platform packages:
+          // Binary: /some/path/node_modules/@kirmad/supercode-platform/bin/supercode
+          // Seeds:  /some/path/node_modules/@kirmad/supercode-platform/seeds/
+          possiblePaths.push(
+            path.join(binaryDir, "..", "seeds"), // bin/supercode -> ../seeds
+            path.join(binaryDir, "..", "..", "seeds"), // Alternative depth
+          )
+          
+          log.debug("trying binary-based paths", { binaryPath, binaryDir })
+        }
       }
       
-      // Method 2: Use import.meta.url (works for development)
+      // Method 3: Use import.meta.url (works for development)
       try {
         const scriptPath = new URL(import.meta.url).pathname
         const scriptDir = path.dirname(scriptPath)
-        possiblePaths.push(
-          path.join(scriptDir, "..", "seeds"),     // Development
-          path.join(scriptDir, "..", "..", "seeds"), // Alternative
-        )
-        log.debug("trying script-based paths", { scriptPath, scriptDir })
+        
+        // Skip if it's a virtual Bun filesystem path
+        if (!scriptPath.includes('$bunfs')) {
+          possiblePaths.push(
+            path.join(scriptDir, "..", "seeds"),     // Development
+            path.join(scriptDir, "..", "..", "seeds"), // Alternative
+          )
+          log.debug("trying script-based paths", { scriptPath, scriptDir })
+        }
       } catch {
         // import.meta.url might not work in all environments
       }
