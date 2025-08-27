@@ -48,6 +48,8 @@ for (const [os, arch] of targets) {
     await $`./dist/${name}/bin/supercode --version`
   }
   await $`rm -rf ./dist/${name}/bin/tui`
+  // Copy seeds folder to platform package
+  await $`cp -r ./seeds ./dist/${name}/seeds`
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

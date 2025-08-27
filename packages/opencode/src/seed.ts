@@ -50,12 +50,24 @@ export namespace SeedInstaller {
     try {
       // Get the directory where this script is located
       const scriptDir = path.dirname(new URL(import.meta.url).pathname)
-      const packageSeedsPath = path.join(scriptDir, "..", "seeds")
+      // Try multiple possible locations relative to the compiled binary
+      const possiblePaths = [
+        path.join(scriptDir, "..", "seeds"),     // Development: packages/opencode/seeds
+        path.join(scriptDir, "..", "..", "seeds"), // Platform package: next to binary
+        path.join(scriptDir, "..", "..", "..", "seeds"), // Alternative location
+      ]
       
-      const stats = await fs.stat(packageSeedsPath)
-      if (stats.isDirectory()) {
-        log.info("found seeds folder in package", { path: packageSeedsPath })
-        return packageSeedsPath
+      for (const seedsPath of possiblePaths) {
+        try {
+          const stats = await fs.stat(seedsPath)
+          if (stats.isDirectory()) {
+            log.info("found seeds folder in package", { path: seedsPath })
+            return seedsPath
+          }
+        } catch {
+          // Try next location
+          continue
+        }
       }
     } catch {
       // Not found in package, continue with project search
