@@ -3,19 +3,19 @@ import { Flags } from "../../src/flags/flags"
 import { App } from "../../src/app/app"
 
 describe("Flags Functionality Demo", () => {
-  test("demonstrates flag parsing functionality", () => {
+  test("demonstrates flag parsing functionality", async () => {
     // Test basic flag parsing
-    const rootFlag = Flags.parseFlag("--verbose")
+    const rootFlag = await Flags.parseFlag("--verbose")
     expect(rootFlag.isFlagReference).toBe(true)
     expect(rootFlag.flag).toBe("verbose")
 
-    const namespacedFlag = Flags.parseFlag("--build:verbose")
+    const namespacedFlag = await Flags.parseFlag("--build:verbose")
     expect(namespacedFlag.isFlagReference).toBe(true)
     expect(namespacedFlag.namespace).toBe("build")
     expect(namespacedFlag.flag).toBe("verbose")
 
     // Test flag reference parsing in text
-    const references = Flags.parseFlagReferences("--verbose implement --build:debug auth")
+    const references = await Flags.parseFlagReferences("--verbose implement --build:debug auth")
     expect(references).toHaveLength(2)
     expect(references[0].flag.flag).toBe("verbose")
     expect(references[1].flag.namespace).toBe("build")

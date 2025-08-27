@@ -110,10 +110,48 @@ func (p *FlagsProvider) GetChildEntries(query string) ([]CompletionSuggestion, e
 }
 
 func (p *FlagsProvider) loadFlags() []FlagInfo {
+	var allFlags []FlagInfo
+	flagMap := make(map[string]FlagInfo) // To handle overrides (project over global)
+
+	// Load global flags first
+	globalFlags := p.loadFlagsFromDir(getGlobalFlagsDir())
+	for _, flag := range globalFlags {
+		flagMap[flag.Name] = flag
+	}
+
+	// Load project flags (these override global ones)
+	projectFlags := p.loadFlagsFromDir(getProjectFlagsDir())
+	for _, flag := range projectFlags {
+		flagMap[flag.Name] = flag
+	}
+
+	// Convert map back to slice
+	for _, flag := range flagMap {
+		allFlags = append(allFlags, flag)
+	}
+
+	return allFlags
+}
+
+func getGlobalFlagsDir() string {
+	// Get XDG config directory, similar to packages/opencode/src/global/index.ts
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			slog.Debug("Failed to get user home directory", "error", err)
+			return ""
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+	return filepath.Join(configDir, "supercode", "flags")
+}
+
+func getProjectFlagsDir() string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		slog.Debug("Failed to get working directory", "error", err)
-		return []FlagInfo{}
+		return ""
 	}
 
 	// Find git repository root
@@ -122,14 +160,16 @@ func (p *FlagsProvider) loadFlags() []FlagInfo {
 		root = cwd // fallback to current directory
 	}
 
-	flagsDir := filepath.Join(root, ".opencode", "flags")
+	return filepath.Join(root, ".opencode", "flags")
+}
+
+func (p *FlagsProvider) loadFlagsFromDir(flagsDir string) []FlagInfo {
+	var flags []FlagInfo
 
 	// Check if flags directory exists
 	if _, err := os.Stat(flagsDir); err != nil {
-		return []FlagInfo{}
+		return flags
 	}
-
-	var flags []FlagInfo
 
 	filepath.Walk(flagsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -189,3 +229,4 @@ func (p *FlagsProvider) loadFlags() []FlagInfo {
 
 	return flags
 }
+

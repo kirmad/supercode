@@ -2,6 +2,7 @@ import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
 import { App } from "../app/app"
+import { Global } from "../global"
 
 export namespace CustomCommands {
   export interface ParsedCommand {
@@ -62,7 +63,7 @@ export namespace CustomCommands {
   }
 
   export async function getCommandInfo(input: string): Promise<CommandInfo | null> {
-    const parsed = parseCommand(input)
+    const parsed = await parseCommand(input)
     
     if (!parsed.isCustomCommand || !parsed.filePath) {
       return null
@@ -78,7 +79,7 @@ export namespace CustomCommands {
     }
   }
 
-  export function parseCommand(input: string): ParsedCommand {
+  export async function parseCommand(input: string): Promise<ParsedCommand> {
     const trimmed = input.trim()
     
     // Try namespaced command first (e.g., /sc:implement)
@@ -92,7 +93,7 @@ export namespace CustomCommands {
         namespace,
         command,
         args,
-        filePath: getCommandPath(namespace, command)
+        filePath: await getCommandPath(namespace, command)
       }
     }
     
@@ -106,7 +107,7 @@ export namespace CustomCommands {
         isCustomCommand: true,
         command,
         args,
-        filePath: getRootCommandPath(command)
+        filePath: await getRootCommandPath(command)
       }
     }
     
@@ -114,7 +115,7 @@ export namespace CustomCommands {
   }
 
   export async function executeCommand(input: string): Promise<string | null> {
-    const parsed = parseCommand(input)
+    const parsed = await parseCommand(input)
     
     if (!parsed.isCustomCommand || !parsed.filePath) {
       return null
@@ -217,27 +218,75 @@ export namespace CustomCommands {
     }
   }
 
-  function getCommandPath(namespace: string, command: string): string {
-    try {
-      const app = App.info()
-      const commandsDir = path.join(app.path.root, ".opencode", "commands")
-      return path.join(commandsDir, namespace, `${command}.md`)
-    } catch (error) {
-      // Fallback for testing or when app context is not available
-      const commandsDir = path.join(process.cwd(), ".opencode", "commands")
-      return path.join(commandsDir, namespace, `${command}.md`)
+  async function getCommandPath(namespace: string, command: string): Promise<string> {
+    const paths = await getCommandPaths(namespace, command)
+    // Return the first existing path, preferring project over global
+    for (const cmdPath of paths) {
+      try {
+        await fs.access(cmdPath)
+        return cmdPath
+      } catch (error) {
+        // File doesn't exist, continue to next path
+      }
     }
+    // Return project path as fallback (for error messages)
+    return paths[0]
   }
 
-  function getRootCommandPath(command: string): string {
+  function getCommandPaths(namespace: string, command: string): string[] {
+    const paths: string[] = []
+    
     try {
       const app = App.info()
-      const commandsDir = path.join(app.path.root, ".opencode", "commands")
-      return path.join(commandsDir, `${command}.md`)
+      // Project-specific path (higher priority)
+      const projectCommandsDir = path.join(app.path.root, ".opencode", "commands")
+      paths.push(path.join(projectCommandsDir, namespace, `${command}.md`))
+      
+      // Global path
+      const globalCommandsDir = path.join(Global.Path.config, "commands")
+      paths.push(path.join(globalCommandsDir, namespace, `${command}.md`))
     } catch (error) {
       // Fallback for testing or when app context is not available
       const commandsDir = path.join(process.cwd(), ".opencode", "commands")
-      return path.join(commandsDir, `${command}.md`)
+      paths.push(path.join(commandsDir, namespace, `${command}.md`))
     }
+    
+    return paths
+  }
+
+  async function getRootCommandPath(command: string): Promise<string> {
+    const paths = await getRootCommandPaths(command)
+    // Return the first existing path, preferring project over global
+    for (const cmdPath of paths) {
+      try {
+        await fs.access(cmdPath)
+        return cmdPath
+      } catch (error) {
+        // File doesn't exist, continue to next path
+      }
+    }
+    // Return project path as fallback (for error messages)
+    return paths[0]
+  }
+
+  function getRootCommandPaths(command: string): string[] {
+    const paths: string[] = []
+    
+    try {
+      const app = App.info()
+      // Project-specific path (higher priority)
+      const projectCommandsDir = path.join(app.path.root, ".opencode", "commands")
+      paths.push(path.join(projectCommandsDir, `${command}.md`))
+      
+      // Global path
+      const globalCommandsDir = path.join(Global.Path.config, "commands")
+      paths.push(path.join(globalCommandsDir, `${command}.md`))
+    } catch (error) {
+      // Fallback for testing or when app context is not available
+      const commandsDir = path.join(process.cwd(), ".opencode", "commands")
+      paths.push(path.join(commandsDir, `${command}.md`))
+    }
+    
+    return paths
   }
 }

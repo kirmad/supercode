@@ -7,8 +7,8 @@ import { App } from "../../src/app/app"
 const fixturePath = path.join(__dirname, "../fixtures/flags-test")
 
 describe("Flags.parseFlag", () => {
-  test("parses namespaced flag", () => {
-    const result = Flags.parseFlag("--build:verbose")
+  test("parses namespaced flag", async () => {
+    const result = await Flags.parseFlag("--build:verbose")
     expect(result).toMatchObject({
       isFlagReference: true,
       namespace: "build",
@@ -17,8 +17,8 @@ describe("Flags.parseFlag", () => {
     })
   })
 
-  test("parses root flag", () => {
-    const result = Flags.parseFlag("--verbose")
+  test("parses root flag", async () => {
+    const result = await Flags.parseFlag("--verbose")
     expect(result).toMatchObject({
       isFlagReference: true,
       flag: "verbose",
@@ -26,15 +26,15 @@ describe("Flags.parseFlag", () => {
     })
   })
 
-  test("ignores non-flag input", () => {
-    const result = Flags.parseFlag("regular text")
+  test("ignores non-flag input", async () => {
+    const result = await Flags.parseFlag("regular text")
     expect(result).toMatchObject({
       isFlagReference: false
     })
   })
 
-  test("ignores single dash", () => {
-    const result = Flags.parseFlag("-v")
+  test("ignores single dash", async () => {
+    const result = await Flags.parseFlag("-v")
     expect(result).toMatchObject({
       isFlagReference: false
     })
@@ -42,16 +42,16 @@ describe("Flags.parseFlag", () => {
 })
 
 describe("Flags.parseFlagReferences", () => {
-  test("finds single root flag", () => {
-    const references = Flags.parseFlagReferences("Please --verbose implement auth")
+  test("finds single root flag", async () => {
+    const references = await Flags.parseFlagReferences("Please --verbose implement auth")
     expect(references).toHaveLength(1)
     expect(references[0].flag.flag).toBe("verbose")
     expect(references[0].startIndex).toBe(7)
     expect(references[0].endIndex).toBe(16)
   })
 
-  test("finds single namespaced flag", () => {
-    const references = Flags.parseFlagReferences("--build:verbose create component")
+  test("finds single namespaced flag", async () => {
+    const references = await Flags.parseFlagReferences("--build:verbose create component")
     expect(references).toHaveLength(1)
     expect(references[0].flag.namespace).toBe("build")
     expect(references[0].flag.flag).toBe("verbose")
@@ -59,28 +59,28 @@ describe("Flags.parseFlagReferences", () => {
     expect(references[0].endIndex).toBe(15)
   })
 
-  test("finds multiple flags", () => {
-    const references = Flags.parseFlagReferences("--verbose --build:debug implement auth")
+  test("finds multiple flags", async () => {
+    const references = await Flags.parseFlagReferences("--verbose --build:debug implement auth")
     expect(references).toHaveLength(2)
     expect(references[0].flag.flag).toBe("verbose")
     expect(references[1].flag.namespace).toBe("build")
     expect(references[1].flag.flag).toBe("debug")
   })
 
-  test("handles overlapping patterns correctly", () => {
-    const references = Flags.parseFlagReferences("--build:verbose-test create")
+  test("handles overlapping patterns correctly", async () => {
+    const references = await Flags.parseFlagReferences("--build:verbose-test create")
     expect(references).toHaveLength(1)
     expect(references[0].flag.namespace).toBe("build")
     expect(references[0].flag.flag).toBe("verbose-test")
   })
 
-  test("finds no flags in regular text", () => {
-    const references = Flags.parseFlagReferences("regular text with no flags")
+  test("finds no flags in regular text", async () => {
+    const references = await Flags.parseFlagReferences("regular text with no flags")
     expect(references).toHaveLength(0)
   })
 
-  test("sorts flags by position", () => {
-    const references = Flags.parseFlagReferences("implement --second auth --first")
+  test("sorts flags by position", async () => {
+    const references = await Flags.parseFlagReferences("implement --second auth --first")
     expect(references).toHaveLength(2)
     expect(references[0].flag.flag).toBe("second")
     expect(references[1].flag.flag).toBe("first")

@@ -7,8 +7,8 @@ import { App } from "../../src/app/app"
 const fixturePath = path.join(__dirname, "../fixtures/custom-commands")
 
 describe("CustomCommands.parseCommand", () => {
-  test("parses namespaced command", () => {
-    const result = CustomCommands.parseCommand("/sc:implement create a button")
+  test("parses namespaced command", async () => {
+    const result = await CustomCommands.parseCommand("/sc:implement create a button")
     expect(result).toMatchObject({
       isCustomCommand: true,
       namespace: "sc",
@@ -17,8 +17,8 @@ describe("CustomCommands.parseCommand", () => {
     })
   })
 
-  test("parses root command", () => {
-    const result = CustomCommands.parseCommand("/bolo hello world")
+  test("parses root command", async () => {
+    const result = await CustomCommands.parseCommand("/bolo hello world")
     expect(result).toMatchObject({
       isCustomCommand: true,
       command: "bolo",
@@ -26,8 +26,8 @@ describe("CustomCommands.parseCommand", () => {
     })
   })
 
-  test("ignores non-command input", () => {
-    const result = CustomCommands.parseCommand("regular text")
+  test("ignores non-command input", async () => {
+    const result = await CustomCommands.parseCommand("regular text")
     expect(result).toMatchObject({
       isCustomCommand: false
     })

@@ -58,8 +58,8 @@ Show detailed build output.`
     }
   })
 
-  test("parses flag references correctly", () => {
-    const references = Flags.parseFlagReferences("--verbose --build:debug implement auth")
+  test("parses flag references correctly", async () => {
+    const references = await Flags.parseFlagReferences("--verbose --build:debug implement auth")
     expect(references).toHaveLength(2)
     expect(references[0].flag.flag).toBe("verbose")
     expect(references[1].flag.namespace).toBe("build")

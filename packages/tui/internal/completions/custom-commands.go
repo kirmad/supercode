@@ -4,7 +4,6 @@ import (
 	"github.com/kirmad/supercode/internal/styles"
 	"github.com/kirmad/supercode/internal/theme"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -70,16 +69,22 @@ func (p *CustomCommandsProvider) GetChildEntries(query string) ([]CompletionSugg
 			matches = append(matches, CompletionSuggestion{
 				Display: func(s styles.Style) string {
 					t := theme.CurrentTheme()
-					display := "  " + s.Foreground(t.Primary()).Render(cmd.Name)
 					
-					// Add argument hint if present
+					// Use the style's foreground color, which will be orange/primary for selected items
+					display := "  " + s.Render(cmd.Name)
+					
+					// For additional elements, use a muted color relative to current foreground
+					// This ensures they appear dimmer than the main command name
 					if cmd.ArgumentHint != "" {
-						display += " " + s.Foreground(t.Secondary()).Render(cmd.ArgumentHint)
+						// Create a dimmed version of the current style for hints
+						hintStyle := s.Copy().Foreground(t.Secondary())
+						display += " " + hintStyle.Render(cmd.ArgumentHint)
 					}
 					
-					// Add description if present
 					if cmd.Description != "" {
-						display += " " + s.Foreground(t.TextMuted()).Render("- " + cmd.Description)
+						// Create a more dimmed version for descriptions
+						descStyle := s.Copy().Foreground(t.TextMuted())
+						display += " " + descStyle.Render("- " + cmd.Description)
 					}
 					
 					return display
@@ -94,10 +99,48 @@ func (p *CustomCommandsProvider) GetChildEntries(query string) ([]CompletionSugg
 }
 
 func (p *CustomCommandsProvider) loadCommands() []CommandInfo {
+	var allCommands []CommandInfo
+	commandMap := make(map[string]CommandInfo) // To handle overrides (project over global)
+
+	// Load global commands first
+	globalCommands := p.loadCommandsFromDir(getGlobalCommandsDir())
+	for _, cmd := range globalCommands {
+		commandMap[cmd.Name] = cmd
+	}
+
+	// Load project commands (these override global ones)
+	projectCommands := p.loadCommandsFromDir(getProjectCommandsDir())
+	for _, cmd := range projectCommands {
+		commandMap[cmd.Name] = cmd
+	}
+
+	// Convert map back to slice
+	for _, cmd := range commandMap {
+		allCommands = append(allCommands, cmd)
+	}
+
+	return allCommands
+}
+
+func getGlobalCommandsDir() string {
+	// Get XDG config directory, similar to packages/opencode/src/global/index.ts
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			slog.Debug("Failed to get user home directory", "error", err)
+			return ""
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+	return filepath.Join(configDir, "supercode", "commands")
+}
+
+func getProjectCommandsDir() string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		slog.Debug("Failed to get working directory", "error", err)
-		return []CommandInfo{}
+		return ""
 	}
 
 	// Find git repository root (like packages/opencode does)
@@ -106,14 +149,16 @@ func (p *CustomCommandsProvider) loadCommands() []CommandInfo {
 		root = cwd // fallback to current directory
 	}
 
-	commandsDir := filepath.Join(root, ".opencode", "commands")
+	return filepath.Join(root, ".opencode", "commands")
+}
+
+func (p *CustomCommandsProvider) loadCommandsFromDir(commandsDir string) []CommandInfo {
+	var commands []CommandInfo
 
 	// Check if commands directory exists
 	if _, err := os.Stat(commandsDir); err != nil {
-		return []CommandInfo{}
+		return commands
 	}
-
-	var commands []CommandInfo
 
 	filepath.Walk(commandsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -138,7 +183,7 @@ func (p *CustomCommandsProvider) loadCommands() []CommandInfo {
 
 		if cmdName != "" {
 			// Read file content to parse front matter
-			content, err := ioutil.ReadFile(path)
+			content, err := os.ReadFile(path)
 			if err != nil {
 				slog.Debug("Failed to read command file", "path", path, "error", err)
 				// Still add the command without description or argument hint

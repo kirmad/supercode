@@ -2,6 +2,7 @@ import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
 import { App } from "../app/app"
+import { Global } from "../global"
 
 export namespace Flags {
   export interface ParsedFlag {
@@ -69,7 +70,7 @@ export namespace Flags {
   }
 
   export async function getFlagInfo(namespace: string | undefined, flag: string): Promise<FlagInfo | null> {
-    const filePath = getFlagPath(namespace, flag)
+    const filePath = await getFlagPath(namespace, flag)
     
     try {
       const content = await fs.readFile(filePath, "utf-8")
@@ -81,7 +82,7 @@ export namespace Flags {
     }
   }
 
-  export function parseFlag(flagText: string): ParsedFlag {
+  export async function parseFlag(flagText: string): Promise<ParsedFlag> {
     // Try namespaced flag first (e.g., --build:verbose)
     const namespacedMatch = flagText.match(/^--([a-zA-Z0-9_-]+):([a-zA-Z0-9_:-]+)$/)
     if (namespacedMatch) {
@@ -92,7 +93,7 @@ export namespace Flags {
         namespace,
         flag,
         fullMatch,
-        filePath: getFlagPath(namespace, flag)
+        filePath: await getFlagPath(namespace, flag)
       }
     }
     
@@ -105,14 +106,14 @@ export namespace Flags {
         isFlagReference: true,
         flag,
         fullMatch,
-        filePath: getFlagPath(undefined, flag)
+        filePath: await getFlagPath(undefined, flag)
       }
     }
     
     return { isFlagReference: false }
   }
 
-  export function parseFlagReferences(input: string): FlagReference[] {
+  export async function parseFlagReferences(input: string): Promise<FlagReference[]> {
     const references: FlagReference[] = []
     
     // First find all namespaced flags
@@ -120,7 +121,7 @@ export namespace Flags {
     for (const match of namespacedMatches) {
       if (match.index !== undefined) {
         const flagText = match[0]
-        const parsedFlag = parseFlag(flagText)
+        const parsedFlag = await parseFlag(flagText)
         if (parsedFlag.isFlagReference) {
           references.push({
             flag: parsedFlag,
@@ -146,7 +147,7 @@ export namespace Flags {
         )
         
         if (!overlaps) {
-          const parsedFlag = parseFlag(flagText)
+          const parsedFlag = await parseFlag(flagText)
           if (parsedFlag.isFlagReference) {
             references.push({
               flag: parsedFlag,
@@ -165,7 +166,7 @@ export namespace Flags {
   }
 
   export async function processFlagReferences(input: string): Promise<string> {
-    const references = parseFlagReferences(input)
+    const references = await parseFlagReferences(input)
     
     if (references.length === 0) {
       return input
@@ -319,25 +320,51 @@ export namespace Flags {
     }
   }
 
-  function getFlagPath(namespace: string | undefined, flag: string): string {
+  async function getFlagPath(namespace: string | undefined, flag: string): Promise<string> {
+    const paths = getFlagPaths(namespace, flag)
+    // Return the first existing path, preferring project over global
+    for (const flagPath of paths) {
+      try {
+        await fs.access(flagPath)
+        return flagPath
+      } catch (error) {
+        // File doesn't exist, continue to next path
+      }
+    }
+    // Return project path as fallback (for error messages)
+    return paths[0]
+  }
+
+  function getFlagPaths(namespace: string | undefined, flag: string): string[] {
+    const paths: string[] = []
+    
     try {
       const app = App.info()
-      const flagsDir = path.join(app.path.root, ".opencode", "flags")
-      
+      // Project-specific paths (higher priority)
+      const projectFlagsDir = path.join(app.path.root, ".opencode", "flags")
       if (namespace) {
-        return path.join(flagsDir, namespace, `${flag}.md`)
+        paths.push(path.join(projectFlagsDir, namespace, `${flag}.md`))
       } else {
-        return path.join(flagsDir, `${flag}.md`)
+        paths.push(path.join(projectFlagsDir, `${flag}.md`))
+      }
+      
+      // Global paths
+      const globalFlagsDir = path.join(Global.Path.config, "flags")
+      if (namespace) {
+        paths.push(path.join(globalFlagsDir, namespace, `${flag}.md`))
+      } else {
+        paths.push(path.join(globalFlagsDir, `${flag}.md`))
       }
     } catch (error) {
       // Fallback for testing or when app context is not available
       const flagsDir = path.join(process.cwd(), ".opencode", "flags")
-      
       if (namespace) {
-        return path.join(flagsDir, namespace, `${flag}.md`)
+        paths.push(path.join(flagsDir, namespace, `${flag}.md`))
       } else {
-        return path.join(flagsDir, `${flag}.md`)
+        paths.push(path.join(flagsDir, `${flag}.md`))
       }
     }
+    
+    return paths
   }
 }
