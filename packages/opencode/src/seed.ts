@@ -46,42 +46,51 @@ export namespace SeedInstaller {
    * Find the seeds folder in the project or package installation
    */
   async function findSeedsFolder(): Promise<string | null> {
-    // First, try to find seeds folder in package installation (for published package)
+    // For compiled binaries, prioritize process.argv[0] over import.meta.url
     try {
-      // For compiled binaries, import.meta.url points to the binary file
-      // We need to find seeds relative to the binary location
-      const scriptPath = new URL(import.meta.url).pathname
-      const scriptDir = path.dirname(scriptPath)
+      const possiblePaths: string[] = []
       
-      // Try multiple possible locations relative to the compiled binary
-      const possiblePaths = [
-        // Development: packages/opencode/seeds (when running from source)
-        path.join(scriptDir, "..", "seeds"),
-        // Compiled binary in platform package: bin/supercode -> ../seeds
-        path.join(scriptDir, "..", "seeds"),
-        // Alternative: if binary is nested deeper
-        path.join(scriptDir, "..", "..", "seeds"),
-      ]
-      
-      // Also try using process.argv[0] (the actual binary path) for compiled binaries
-      if (process.argv[0] && process.argv[0].includes('supercode')) {
-        const binaryDir = path.dirname(process.argv[0])
+      // Method 1: Use actual binary path (most reliable for compiled binaries)
+      if (process.argv[0]) {
+        const binaryPath = process.argv[0]
+        const binaryDir = path.dirname(binaryPath)
+        
+        // Common patterns for platform packages:
+        // Binary: /some/path/node_modules/@kirmad/supercode-platform/bin/supercode
+        // Seeds:  /some/path/node_modules/@kirmad/supercode-platform/seeds/
         possiblePaths.push(
-          path.join(binaryDir, "..", "seeds"), // Binary in bin/, seeds at root
+          path.join(binaryDir, "..", "seeds"), // bin/supercode -> ../seeds
+          path.join(binaryDir, "..", "..", "seeds"), // Alternative depth
         )
+        
+        log.debug("trying binary-based paths", { binaryPath, binaryDir })
       }
       
-      log.debug("searching for seeds", { scriptPath, scriptDir, possiblePaths })
+      // Method 2: Use import.meta.url (works for development)
+      try {
+        const scriptPath = new URL(import.meta.url).pathname
+        const scriptDir = path.dirname(scriptPath)
+        possiblePaths.push(
+          path.join(scriptDir, "..", "seeds"),     // Development
+          path.join(scriptDir, "..", "..", "seeds"), // Alternative
+        )
+        log.debug("trying script-based paths", { scriptPath, scriptDir })
+      } catch {
+        // import.meta.url might not work in all environments
+      }
+      
+      log.debug("searching for seeds in paths", { possiblePaths })
       
       for (const seedsPath of possiblePaths) {
         try {
-          const stats = await fs.stat(seedsPath)
+          const resolvedPath = path.resolve(seedsPath)
+          const stats = await fs.stat(resolvedPath)
           if (stats.isDirectory()) {
-            log.info("found seeds folder in package", { path: seedsPath })
-            return seedsPath
+            log.info("found seeds folder in package", { path: resolvedPath })
+            return resolvedPath
           }
-        } catch {
-          // Try next location
+        } catch (error) {
+          log.debug("path not found", { seedsPath, error: error instanceof Error ? error.message : error })
           continue
         }
       }
