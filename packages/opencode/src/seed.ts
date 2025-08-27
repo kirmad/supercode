@@ -43,10 +43,25 @@ export namespace SeedInstaller {
   }
   
   /**
-   * Find the seeds folder in the project
+   * Find the seeds folder in the project or package installation
    */
   async function findSeedsFolder(): Promise<string | null> {
-    // Start from current directory and walk up to find seeds folder
+    // First, try to find seeds folder in package installation (for published package)
+    try {
+      // Get the directory where this script is located
+      const scriptDir = path.dirname(new URL(import.meta.url).pathname)
+      const packageSeedsPath = path.join(scriptDir, "..", "seeds")
+      
+      const stats = await fs.stat(packageSeedsPath)
+      if (stats.isDirectory()) {
+        log.info("found seeds folder in package", { path: packageSeedsPath })
+        return packageSeedsPath
+      }
+    } catch {
+      // Not found in package, continue with project search
+    }
+    
+    // Fall back to searching upward from current directory (for development)
     let currentDir = process.cwd()
     
     for (let i = 0; i < 5; i++) { // Limit search depth
@@ -55,7 +70,7 @@ export namespace SeedInstaller {
       try {
         const stats = await fs.stat(seedsPath)
         if (stats.isDirectory()) {
-          log.info("found seeds folder", { path: seedsPath })
+          log.info("found seeds folder in project", { path: seedsPath })
           return seedsPath
         }
       } catch {
