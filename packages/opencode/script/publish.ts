@@ -95,7 +95,9 @@ if (!dry) await $`cd ./dist/${pkg.name} && bun publish --access public --tag ${n
 
 if (!snapshot) {
   for (const key of Object.keys(optionalDependencies)) {
-    await $`cd dist/${key}/bin && zip -r ../../${key}.zip *`
+    // Extract clean filename by removing @scope/ prefix
+    const zipName = key.replace(/^@[^/]+\//, '')
+    await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip *`
   }
 
   // Calculate SHA values
