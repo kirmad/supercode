@@ -335,8 +335,13 @@ export namespace Session {
   export async function getParts(sessionID: string, messageID: string) {
     const result = [] as MessageV2.Part[]
     for (const item of await Storage.list("session/part/" + sessionID + "/" + messageID)) {
-      const read = await Storage.readJSON<MessageV2.Part>(item)
-      result.push(read)
+      try {
+        const read = await Storage.readJSON<MessageV2.Part>(item)
+        result.push(read)
+      }
+      catch (e) {
+        log.error("Failed to read message part", { item, e })
+      }
     }
     result.sort((a, b) => (a.id > b.id ? 1 : -1))
     return result
