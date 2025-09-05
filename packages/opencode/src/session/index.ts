@@ -846,6 +846,7 @@ export namespace Session {
     )
     system.push(...(await SystemPrompt.environment()))
     system.push(...(await SystemPrompt.custom()))
+    system.push(...(await SystemPrompt.instructions()))
     // max 2 system prompt messages for caching purposes
     const [first, ...rest] = system
     system = [first, rest.join("\n")]
@@ -1994,6 +1995,7 @@ export namespace Session {
       ...(await SystemPrompt.summarize(model.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
+      ...(await SystemPrompt.instructions()),
     ]
 
     const next: MessageV2.Info = {
@@ -2194,6 +2196,7 @@ export namespace Session {
       ...(await SystemPrompt.header(input.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
+      ...(await SystemPrompt.instructions()),
     ]
     
     const finalSummaryMsg: MessageV2.Info = {

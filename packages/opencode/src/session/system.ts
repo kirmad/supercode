@@ -188,6 +188,38 @@ export namespace SystemPrompt {
     return Promise.all(found).then((result) => result.filter(Boolean))
   }
 
+  /**
+   * Collect and process .instructions.md files
+   * Traverses from current directory up to repository root, collecting all <filename>.instructions.md files
+   * Applies instructions in reverse order: root first, then each child level, ending with current directory
+   */
+  export async function instructions() {
+    const project = Instance.project
+    const paths = new Set<string>()
+    
+    // If not in a git repo, just look in current directory using Filesystem.globUp
+    const stop = project.vcs === "git" ? Instance.worktree : Instance.directory
+    
+    try {
+      const matches = await Filesystem.globUp("*.instructions.md", Instance.directory, stop)
+      matches.forEach((path) => paths.add(path))
+    } catch (error) {
+      // Ignore glob errors
+    }
+    
+    // Convert paths to array and sort for consistent ordering
+    // Sort by path length (shorter = higher in directory tree = should come first)
+    const sortedPaths = Array.from(paths).sort((a, b) => a.length - b.length)
+    
+    // Load content from all instruction files
+    const found = sortedPaths.map((p) =>
+      Bun.file(p)
+        .text()
+        .catch(() => ""),
+    )
+    return Promise.all(found).then((result) => result.filter(Boolean))
+  }
+
   export async function summarize(providerID: string) {
     switch (providerID) {
       case "anthropic":
