@@ -4,13 +4,13 @@ import { exec } from "child_process"
 import { Tool } from "./tool"
 import DESCRIPTION from "./bash.txt"
 import { ToolDescription } from "./description"
-import { App } from "../app/app"
 import { Permission } from "../permission"
 import { Filesystem } from "../util/filesystem"
 import { lazy } from "../util/lazy"
 import { Log } from "../util/log"
 import { Wildcard } from "../util/wildcard"
 import { $ } from "bun"
+import { Instance } from "../project/instance"
 import { Agent } from "../agent/agent"
 
 const MAX_OUTPUT_LENGTH = 30_000
@@ -57,7 +57,6 @@ export const BashTool = Tool.define("bash", async () => ({
   }),
   async execute(params, ctx) {
     const timeout = Math.min(params.timeout ?? DEFAULT_TIMEOUT, MAX_TIMEOUT)
-    const app = App.info()
     const tree = await parser().then((p) => p.parse(params.command))
     const permissions = await Agent.get(ctx.agent).then((x) => x.permission.bash)
 
@@ -89,9 +88,9 @@ export const BashTool = Tool.define("bash", async () => ({
             .text()
             .then((x) => x.trim())
           log.info("resolved path", { arg, resolved })
-          if (resolved && !Filesystem.contains(app.path.cwd, resolved)) {
+          if (resolved && !Filesystem.contains(Instance.directory, resolved)) {
             throw new Error(
-              `This command references paths outside of ${app.path.cwd} so it is not allowed to be executed.`,
+              `This command references paths outside of ${Instance.directory} so it is not allowed to be executed.`,
             )
           }
         }
@@ -124,7 +123,7 @@ export const BashTool = Tool.define("bash", async () => ({
     }
 
     const process = exec(params.command, {
-      cwd: app.path.cwd,
+      cwd: Instance.directory,
       signal: ctx.abort,
       timeout,
     })

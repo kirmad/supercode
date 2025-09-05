@@ -3,7 +3,7 @@ import path from "path"
 import { ulid } from "ulid"
 import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 
 /**
  * HTTP File Logger - Logs HTTP requests/responses to separate files when enabled via --debug-http flag
@@ -37,10 +37,9 @@ export namespace HttpFileLogger {
       let rootPath: string
       
       try {
-        const app = App.info()
-        rootPath = app.path.root
+        rootPath = Instance.worktree
       } catch (error) {
-        // Fallback to current working directory if App context not available
+        // Fallback to current working directory if Instance context not available
         rootPath = process.cwd()
         log.info("Using current directory as fallback for HTTP logging", { rootPath })
       }

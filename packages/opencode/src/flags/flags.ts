@@ -1,7 +1,7 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 import { Global } from "../global"
 
 export namespace Flags {
@@ -339,9 +339,8 @@ export namespace Flags {
     const paths: string[] = []
     
     try {
-      const app = App.info()
       // Project-specific paths (higher priority)
-      const projectFlagsDir = path.join(app.path.root, ".opencode", "flags")
+      const projectFlagsDir = path.join(Instance.worktree, ".opencode", "flags")
       if (namespace) {
         paths.push(path.join(projectFlagsDir, namespace, `${flag}.md`))
       } else {

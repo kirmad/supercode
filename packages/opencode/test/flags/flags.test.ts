@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Flags } from "../../src/flags/flags"
 import { promises as fs } from "fs"
 import path from "path"
-import { App } from "../../src/app/app"
+import { Instance } from "../../src/project/instance"
 
 const fixturePath = path.join(__dirname, "../fixtures/flags-test")
 
@@ -109,7 +109,7 @@ describe("Flags.processFlagReferences", () => {
       "Provide detailed explanations for all steps."
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("Please --verbose implement auth")
       expect(result).toBe("Please Provide detailed explanations for all steps. implement auth")
     })
@@ -124,7 +124,7 @@ placement: "before"
 You are an expert developer.`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--context implement auth")
       expect(result).toBe("You are an expert developer.\n\nimplement auth")
     })
@@ -139,7 +139,7 @@ placement: "after"
 Ensure code follows best practices.`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("implement auth --quality")
       expect(result).toBe("implement auth\n\nEnsure code follows best practices.")
     })
@@ -151,7 +151,7 @@ Ensure code follows best practices.`
       "Show detailed build output."
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--build:verbose create component")
       expect(result).toBe("Show detailed build output. create component")
     })
@@ -179,14 +179,14 @@ Include tests.`
       "with detailed docs"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--before implement --replace --after")
       expect(result).toBe("Context: Expert mode.\n\nimplement with detailed docs\n\nInclude tests.")
     })
   })
 
   test("handles missing flags gracefully", async () => {
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--nonexistent flag test")
       expect(result).toBe("--nonexistent flag test")
     })
@@ -198,7 +198,7 @@ Include tests.`
       "Arguments were: $ARGUMENTS (should be empty)"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--template test")
       expect(result).toBe("Arguments were:  (should be empty) test")
     })
@@ -216,7 +216,7 @@ Include tests.`
       "Content: @included.txt"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--includer test")
       expect(result).toBe("Content: This is included content. test")
     })
@@ -228,7 +228,7 @@ Include tests.`
       "Current dir: !`pwd`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--shell test")
       expect(result).toContain("Current dir:")
       expect(result).toContain("test")
@@ -241,7 +241,7 @@ Include tests.`
       "This fails: !`nonexistentcommand`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--error test")
       expect(result).toContain("[Error executing 'nonexistentcommand':")
       expect(result).toContain("test")
@@ -254,7 +254,7 @@ Include tests.`
       "Content: @nonexistent.txt"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await Flags.processFlagReferences("--badinclude test")
       expect(result).toContain("[Error including file 'nonexistent.txt':")
       expect(result).toContain("test")
@@ -286,7 +286,7 @@ placement: "before"
 Test content`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const info = await Flags.getFlagInfo(undefined, "test")
       expect(info).toMatchObject({
         metadata: {
@@ -308,7 +308,7 @@ description: "Nested flag"
 Nested content`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const info = await Flags.getFlagInfo("nested", "flag")
       expect(info).toMatchObject({
         metadata: {
@@ -321,7 +321,7 @@ Nested content`
   })
 
   test("returns null for missing flag", async () => {
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const info = await Flags.getFlagInfo(undefined, "nonexistent")
       expect(info).toBe(null)
     })
@@ -333,7 +333,7 @@ Nested content`
       "Just content, no front matter"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const info = await Flags.getFlagInfo(undefined, "simple")
       expect(info).toMatchObject({
         metadata: {

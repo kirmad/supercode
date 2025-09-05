@@ -9,11 +9,10 @@ import { rehypeHeadingIds } from "@astrojs/markdown-remark"
 import rehypeAutolinkHeadings from "rehype-autolink-headings"
 import { spawnSync } from "child_process"
 
-const github = "https://github.com/sst/opencode"
-
 // https://astro.build/config
 export default defineConfig({
   site: config.url,
+  base: "/docs",
   output: "server",
   adapter: cloudflare({
     imageService: "passthrough",
@@ -44,12 +43,12 @@ export default defineConfig({
           tag: "link",
           attrs: {
             rel: "icon",
-            href: "/favicon.svg",
+            href: "/docs/favicon.svg",
           },
         },
       ],
       editLink: {
-        baseUrl: `${github}/edit/dev/packages/web/`,
+        baseUrl: `${config.github}/edit/dev/packages/web/`,
       },
       markdown: {
         headingLinks: false,
@@ -61,37 +60,43 @@ export default defineConfig({
         replacesTitle: true,
       },
       sidebar: [
-        "docs",
-        "docs/config",
-        "docs/providers",
-        "docs/enterprise",
-        "docs/troubleshooting",
+        "",
+        "config",
+        "providers",
+        "enterprise",
+        "troubleshooting",
 
         {
           label: "Usage",
-          items: ["docs/tui", "docs/cli", "docs/ide", "docs/share", "docs/github"],
+          items: ["tui", "cli", "ide", "zen", "share", "github", "gitlab"],
         },
 
         {
           label: "Configure",
           items: [
-            "docs/rules",
-            "docs/agents",
-            "docs/models",
-            "docs/themes",
-            "docs/plugins",
-            "docs/keybinds",
-            "docs/formatters",
-            "docs/permissions",
-            "docs/lsp",
-            "docs/mcp-servers",
+            "rules",
+            "agents",
+            "models",
+            "themes",
+            "keybinds",
+            "commands",
+            "formatters",
+            "permissions",
+            "lsp",
+            "mcp-servers",
           ],
+        },
+
+        {
+          label: "Develop",
+          items: ["sdk", "server", "plugins"],
         },
       ],
       components: {
         Hero: "./src/components/Hero.astro",
         Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
+        SiteTitle: "./src/components/SiteTitle.astro",
       },
       plugins: [
         theme({

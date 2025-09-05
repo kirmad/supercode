@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Flags } from "../../src/flags/flags"
 import { promises as fs } from "fs"
 import path from "path"
-import { App } from "../../src/app/app"
+import { Instance } from "../../src/project/instance"
 
 const fixturePath = path.join(__dirname, "../fixtures/flags-integration")
 
@@ -69,7 +69,7 @@ Optimize the build:
 - Use production builds`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "--expert implement --verbose authentication system --quality --build:optimization"
       const result = await Flags.processFlagReferences(input)
       
@@ -121,7 +121,7 @@ placement: "after"
 Set up hot reloading for development.`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "Create a React component --typescript --test:unit --dev:hot-reload"
       const result = await Flags.processFlagReferences(input)
       
@@ -164,7 +164,7 @@ Working directory: !\`pwd\`
 File count: !\`find . -type f | wc -l\``
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "--context create new feature --summary"
       const result = await Flags.processFlagReferences(input)
       
@@ -194,7 +194,7 @@ File count: !\`find . -type f | wc -l\``
       "Command: !`invalidcommandthatdoesnotexist`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "--good implement --bad-include auth --bad-command --nonexistent"
       const result = await Flags.processFlagReferences(input)
       
@@ -233,7 +233,7 @@ description: "Cypress E2E tests"
 Set up Cypress for end-to-end testing.`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "Setup project --build:webpack:dev --test:e2e:cypress"
       const result = await Flags.processFlagReferences(input)
       
@@ -276,7 +276,7 @@ placement: "after"
 After 2`
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "--before2 --before1 main content --after1 --after2"
       const result = await Flags.processFlagReferences(input)
       
@@ -301,7 +301,7 @@ After 2`
       "Production optimized build"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const input = "Build --v --verbose-mode --build:prod-optimized"
       const result = await Flags.processFlagReferences(input)
       

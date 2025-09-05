@@ -11,7 +11,7 @@ import { createTwoFilesPatch } from "diff"
 import { Permission } from "../permission"
 import DESCRIPTION from "./edit.txt"
 import { ToolDescription } from "./description"
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 import { File } from "../file"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
@@ -35,9 +35,8 @@ export const EditTool = Tool.define("edit", async () => ({
       throw new Error("oldString and newString must be different")
     }
 
-    const app = App.info()
-    const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(app.path.cwd, params.filePath)
-    if (!Filesystem.contains(app.path.cwd, filePath)) {
+    const filePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
+    if (!Filesystem.contains(Instance.directory, filePath)) {
       throw new Error(`File ${filePath} is not in the current working directory`)
     }
 
@@ -124,7 +123,7 @@ export const EditTool = Tool.define("edit", async () => ({
         diagnostics,
         diff,
       },
-      title: `${path.relative(app.path.root, filePath)}`,
+      title: `${path.relative(Instance.worktree, filePath)}`,
       output,
     }
   },

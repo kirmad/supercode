@@ -16,6 +16,7 @@ import { Ide } from "../../ide"
 import { Flag } from "../../flag/flag"
 import { Session } from "../../session"
 import { McpInit } from "../../util/mcp-init"
+import { Instance } from "../../project/instance"
 
 declare global {
   const OPENCODE_TUI_PATH: string
@@ -90,14 +91,20 @@ export const TuiCommand = cmd({
         UI.error("Failed to change directory to " + cwd)
         return
       }
-      const result = await bootstrap({ cwd }, async (app) => {
+      const result = await bootstrap(cwd, async () => {
         const sessionID = await (async () => {
           if (args.continue) {
-            const list = Session.list()
-            const first = await list.next()
-            await list.return()
-            if (first.done) return
-            return first.value.id
+            const it = Session.list()
+            try {
+              for await (const s of it) {
+                if (s.parentID === undefined) {
+                  return s.id
+                }
+              }
+              return
+            } finally {
+              await it.return()
+            }
           }
           if (args.session) {
             return args.session
@@ -154,7 +161,7 @@ export const TuiCommand = cmd({
             ...process.env,
             CGO_ENABLED: "0",
             OPENCODE_SERVER: server.url.toString(),
-            OPENCODE_APP_INFO: JSON.stringify(app),
+            OPENCODE_PROJECT: JSON.stringify(Instance.project),
             OPENCODE_DEBUG_HTTP: args["debug-http"] ? "true" : "false",
           },
           onExit: () => {

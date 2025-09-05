@@ -10,6 +10,7 @@ import { bootstrap } from "../bootstrap"
 import { MessageV2 } from "../../session/message-v2"
 import { Identifier } from "../../id/id"
 import { Agent } from "../../agent/agent"
+import { Command } from "../../command"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -34,6 +35,10 @@ export const RunCommand = cmd({
         type: "string",
         array: true,
         default: [],
+      })
+      .option("command", {
+        describe: "the command to run, use message for args",
+        type: "string",
       })
       .option("continue", {
         alias: ["c"],
@@ -74,14 +79,32 @@ export const RunCommand = cmd({
 
     if (!process.stdin.isTTY) message += "\n" + (await Bun.stdin.text())
 
-    await bootstrap({ cwd: process.cwd() }, async () => {
+    if (message.trim().length === 0 && !args.command) {
+      UI.error("You must provide a message or a command")
+      return
+    }
+
+    await bootstrap(process.cwd(), async () => {
+      if (args.command) {
+        const exists = await Command.get(args.command)
+        if (!exists) {
+          UI.error(`Command "${args.command}" not found`)
+          return
+        }
+      }
       const session = await (async () => {
         if (args.continue) {
-          const list = Session.list()
-          const first = await list.next()
-          await list.return()
-          if (first.done) return
-          return first.value
+          const it = Session.list()
+          try {
+            for await (const s of it) {
+              if (s.parentID === undefined) {
+                return s
+              }
+            }
+            return
+          } finally {
+            await it.return()
+          }
         }
 
         if (args.session) return Session.get(args.session)
@@ -171,16 +194,26 @@ export const RunCommand = cmd({
         UI.error(err)
       })
 
+      if (args.command) {
+        await Session.command({
+          messageID: Identifier.ascending("message"),
+          sessionID: session.id,
+          agent: agent.name,
+          model: providerID + "/" + modelID,
+          command: args.command,
+          arguments: message,
+        })
+        return
+      }
+
       const messageID = Identifier.ascending("message")
-      const result = await Session.chat({
+      const result = await Session.prompt({
         sessionID: session.id,
         messageID,
-        ...(agent.model
-          ? agent.model
-          : {
-              providerID,
-              modelID,
-            }),
+        model: {
+          providerID,
+          modelID,
+        },
         agent: agent.name,
         parts: [
           {
@@ -193,7 +226,7 @@ export const RunCommand = cmd({
 
       const isPiped = !process.stdout.isTTY
       if (isPiped) {
-        const match = result.parts.findLast((x) => x.type === "text")
+        const match = result.parts.findLast((x: any) => x.type === "text") as any
         if (match) process.stdout.write(UI.markdown(match.text))
         if (errorMsg) process.stdout.write(errorMsg)
       }

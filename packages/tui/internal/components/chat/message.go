@@ -55,6 +55,8 @@ func WithBackgroundColor(color compat.AdaptiveColor) renderingOption {
 func WithNoBorder() renderingOption {
 	return func(c *blockRenderer) {
 		c.border = false
+		c.paddingLeft++
+		c.paddingRight++
 	}
 }
 
@@ -185,7 +187,7 @@ func renderContentBlock(
 			style = style.BorderRightForeground(borderColor)
 		}
 	} else {
-		style = style.PaddingLeft(renderer.paddingLeft + 1).PaddingRight(renderer.paddingRight + 1)
+		style = style.PaddingLeft(renderer.paddingLeft).PaddingRight(renderer.paddingRight)
 	}
 
 	content = style.Render(content)
@@ -213,6 +215,7 @@ func renderText(
 	extra string,
 	isThinking bool,
 	isQueued bool,
+	shimmer bool,
 	fileParts []opencode.FilePart,
 	agentParts []opencode.AgentPart,
 	toolCalls ...opencode.ToolPart,
@@ -234,7 +237,12 @@ func renderText(
 		}
 		content = util.ToMarkdown(text, width, backgroundColor)
 		if isThinking {
-			label := util.Shimmer("Thinking...", backgroundColor, t.TextMuted(), t.Accent())
+			var label string
+			if shimmer {
+				label = util.Shimmer("Thinking...", backgroundColor, t.TextMuted(), t.Accent())
+			} else {
+				label = styles.NewStyle().Background(backgroundColor).Foreground(t.TextMuted()).Render("Thinking...")
+			}
 			label = styles.NewStyle().Background(backgroundColor).Width(width - 6).Render(label)
 			content = label + "\n\n" + content
 		} else if strings.TrimSpace(text) == "Generating..." {
@@ -665,10 +673,22 @@ func renderToolDetails(
 				body = strings.Join(steps, "\n")
 
 				body += "\n\n"
-				body += baseStyle(app.Keybind(commands.SessionChildCycleCommand)) +
-					mutedStyle(", ") +
-					baseStyle(app.Keybind(commands.SessionChildCycleReverseCommand)) +
-					mutedStyle(" navigate child sessions")
+
+				// Build navigation hint with proper spacing
+				cycleKeybind := app.Keybind(commands.SessionChildCycleCommand)
+				cycleReverseKeybind := app.Keybind(commands.SessionChildCycleReverseCommand)
+
+				var navParts []string
+				if cycleKeybind != "" {
+					navParts = append(navParts, baseStyle(cycleKeybind))
+				}
+				if cycleReverseKeybind != "" {
+					navParts = append(navParts, baseStyle(cycleReverseKeybind))
+				}
+
+				if len(navParts) > 0 {
+					body += strings.Join(navParts, mutedStyle(", ")) + mutedStyle(" navigate child sessions")
+				}
 			}
 			body = defaultStyle(body)
 		default:
@@ -903,7 +923,9 @@ func renderArgs(args *map[string]any, titleKey string) string {
 			continue
 		}
 		if key == "filePath" || key == "path" {
-			value = util.Relative(value.(string))
+			if strValue, ok := value.(string); ok {
+				value = util.Relative(strValue)
+			}
 		}
 		if key == titleKey {
 			title = fmt.Sprintf("%s", value)

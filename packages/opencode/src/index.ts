@@ -20,6 +20,7 @@ import { McpCommand } from "./cli/cmd/mcp"
 import { GithubCommand } from "./cli/cmd/github"
 import { SeedCommand } from "./cli/cmd/seed"
 import { SeedInstaller } from "./seed"
+import { ExportCommand } from "./cli/cmd/export"
 
 const cancel = new AbortController()
 
@@ -87,6 +88,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ServeCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
+  .command(ExportCommand)
   .command(GithubCommand)
   .command(SeedCommand)
   .fail((msg) => {
@@ -113,6 +115,7 @@ try {
       name: e.name,
       message: e.message,
       cause: e.cause?.toString(),
+      stack: e.stack,
     })
   }
 

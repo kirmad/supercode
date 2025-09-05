@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { CustomCommands } from "../../src/commands/custom"
 import { promises as fs } from "fs"
 import path from "path"
-import { App } from "../../src/app/app"
+import { Instance } from "../../src/project/instance"
 
 // Use the current working directory for testing
 const testDir = process.cwd()
@@ -20,7 +20,7 @@ describe("CustomCommands.executeCommand Integration", () => {
     )
 
     try {
-      await App.provide({ cwd: testDir }, async () => {
+      await Instance.provide(testDir, async () => {
         const result = await CustomCommands.executeCommand("/integration-test")
         expect(result).toContain("Current directory:")
         expect(result).toContain("Echo test: integration-test")
@@ -43,7 +43,7 @@ describe("CustomCommands.executeCommand Integration", () => {
     )
 
     try {
-      await App.provide({ cwd: testDir }, async () => {
+      await Instance.provide(testDir, async () => {
         const result = await CustomCommands.executeCommand("/args-shell-test hello world")
         expect(result).toContain("Arguments: hello world")
         expect(result).toContain("Directory:")

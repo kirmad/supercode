@@ -6,7 +6,7 @@ import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
 import { ToolDescription } from "./description"
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -24,8 +24,7 @@ export const ReadTool = Tool.define("read", async () => ({
     if (!path.isAbsolute(filepath)) {
       filepath = path.join(process.cwd(), filepath)
     }
-    const app = App.info()
-    if (!ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(app.path.cwd, filepath)) {
+    if (!ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath)) {
       throw new Error(`File ${filepath} is not in the current working directory`)
     }
 
@@ -78,7 +77,7 @@ export const ReadTool = Tool.define("read", async () => ({
     FileTime.read(ctx.sessionID, filepath)
 
     return {
-      title: path.relative(App.info().path.root, filepath),
+      title: path.relative(Instance.worktree, filepath),
       output,
       metadata: {
         preview,

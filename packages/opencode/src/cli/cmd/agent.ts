@@ -5,25 +5,26 @@ import { Global } from "../../global"
 import { Agent } from "../../agent/agent"
 import path from "path"
 import matter from "gray-matter"
-import { App } from "../../app/app"
+import { Instance } from "../../project/instance"
 
 const AgentCreateCommand = cmd({
   command: "create",
   describe: "create a new agent",
   async handler() {
-    await App.provide({ cwd: process.cwd() }, async (app) => {
+    await Instance.provide(process.cwd(), async () => {
       UI.empty()
       prompts.intro("Create agent")
+      const project = Instance.project
 
       let scope: "global" | "project" = "global"
-      if (app.git) {
+      if (project.vcs === "git") {
         const scopeResult = await prompts.select({
           message: "Location",
           options: [
             {
               label: "Current project",
               value: "project" as const,
-              hint: app.path.root,
+              hint: Instance.worktree,
             },
             {
               label: "Global",
@@ -46,7 +47,10 @@ const AgentCreateCommand = cmd({
       const spinner = prompts.spinner()
 
       spinner.start("Generating agent configuration...")
-      const generated = await Agent.generate({ description: query })
+      const generated = await Agent.generate({ description: query }).catch((error) => {
+        spinner.stop(`LLM failed to generate agent: ${error.message}`, 1)
+        throw new UI.CancelledError()
+      })
       spinner.stop(`Agent ${generated.identifier} generated`)
 
       const availableTools = [
@@ -113,7 +117,7 @@ const AgentCreateCommand = cmd({
 
       const content = matter.stringify(generated.systemPrompt, frontmatter)
       const filePath = path.join(
-        scope === "global" ? Global.Path.config : path.join(app.path.root, ".opencode"),
+        scope === "global" ? Global.Path.config : path.join(Instance.worktree, ".opencode"),
         `agent`,
         `${generated.identifier}.md`,
       )

@@ -174,6 +174,10 @@ func (m *messagesComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 		m.tail = true
 		return m, nil
+	case app.SendCommand:
+		m.viewport.GotoBottom()
+		m.tail = true
+		return m, nil
 	case dialog.ThemeSelectedMsg:
 		m.cache.Clear()
 		m.loading = true
@@ -336,6 +340,25 @@ func (m *messagesComponent) renderView() tea.Cmd {
 
 		width := m.width // always use full width
 
+		// Find the last streaming ReasoningPart to only shimmer that one
+		lastStreamingReasoningID := ""
+		if m.showThinkingBlocks {
+			for mi := len(m.app.Messages) - 1; mi >= 0 && lastStreamingReasoningID == ""; mi-- {
+				if _, ok := m.app.Messages[mi].Info.(opencode.AssistantMessage); !ok {
+					continue
+				}
+				parts := m.app.Messages[mi].Parts
+				for pi := len(parts) - 1; pi >= 0; pi-- {
+					if rp, ok := parts[pi].(opencode.ReasoningPart); ok {
+						if strings.TrimSpace(rp.Text) != "" && rp.Time.End == 0 {
+							lastStreamingReasoningID = rp.ID
+							break
+						}
+					}
+				}
+			}
+		}
+
 		reverted := false
 		revertedMessageCount := 0
 		revertedToolCount := 0
@@ -437,6 +460,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 								files,
 								false,
 								isQueued,
+								false,
 								fileParts,
 								agentParts,
 							)
@@ -513,6 +537,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 									"",
 									false,
 									false,
+									false,
 									[]opencode.FilePart{},
 									[]opencode.AgentPart{},
 									toolCallParts...,
@@ -528,6 +553,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 								m.showToolDetails,
 								width,
 								"",
+								false,
 								false,
 								false,
 								[]opencode.FilePart{},
@@ -600,6 +626,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 						}
 						if part.Text != "" {
 							text := part.Text
+							shimmer := part.Time.End == 0 && part.ID == lastStreamingReasoningID
 							content = renderText(
 								m.app,
 								message.Info,
@@ -610,6 +637,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 								"",
 								true,
 								false,
+								shimmer,
 								[]opencode.FilePart{},
 								[]opencode.AgentPart{},
 							)
@@ -642,6 +670,7 @@ func (m *messagesComponent) renderView() tea.Cmd {
 						m.showToolDetails,
 						width,
 						"",
+						false,
 						false,
 						false,
 						[]opencode.FilePart{},
@@ -740,22 +769,25 @@ func (m *messagesComponent) renderView() tea.Cmd {
 				context.Background(),
 				m.app.CurrentPermission.SessionID,
 				m.app.CurrentPermission.MessageID,
+				opencode.SessionMessageParams{},
 			)
 			if err != nil || response == nil {
 				slog.Error("Failed to get message from child session", "error", err)
 			} else {
 				for _, part := range response.Parts {
 					if part.CallID == m.app.CurrentPermission.CallID {
-						content := renderToolDetails(
-							m.app,
-							part.AsUnion().(opencode.ToolPart),
-							m.app.CurrentPermission,
-							width,
-						)
-						if content != "" {
-							partCount++
-							lineCount += lipgloss.Height(content) + 1
-							blocks = append(blocks, content)
+						if toolPart, ok := part.AsUnion().(opencode.ToolPart); ok {
+							content := renderToolDetails(
+								m.app,
+								toolPart,
+								m.app.CurrentPermission,
+								width,
+							)
+							if content != "" {
+								partCount++
+								lineCount += lipgloss.Height(content) + 1
+								blocks = append(blocks, content)
+							}
 						}
 					}
 				}
@@ -1142,10 +1174,10 @@ func (m *messagesComponent) UndoLastMessage() (tea.Model, tea.Cmd) {
 		)
 		if err != nil {
 			slog.Error("Failed to undo message", "error", err)
-			return toast.NewErrorToast("Failed to undo message")
+			return toast.NewErrorToast("Failed to undo message")()
 		}
 		if response == nil {
-			return toast.NewErrorToast("Failed to undo message")
+			return toast.NewErrorToast("Failed to undo message")()
 		}
 		return app.MessageRevertedMsg{Session: *response, Message: revertedMessage}
 	}
@@ -1207,13 +1239,14 @@ func (m *messagesComponent) RedoLastMessage() (tea.Model, tea.Cmd) {
 			response, err := m.app.Client.Session.Unrevert(
 				context.Background(),
 				m.app.Session.ID,
+				opencode.SessionUnrevertParams{},
 			)
 			if err != nil {
 				slog.Error("Failed to unrevert session", "error", err)
-				return toast.NewErrorToast("Failed to redo message")
+				return toast.NewErrorToast("Failed to redo message")()
 			}
 			if response == nil {
-				return toast.NewErrorToast("Failed to redo message")
+				return toast.NewErrorToast("Failed to redo message")()
 			}
 			return app.SessionUnrevertedMsg{Session: *response}
 		}
@@ -1230,10 +1263,10 @@ func (m *messagesComponent) RedoLastMessage() (tea.Model, tea.Cmd) {
 		)
 		if err != nil {
 			slog.Error("Failed to redo message", "error", err)
-			return toast.NewErrorToast("Failed to redo message")
+			return toast.NewErrorToast("Failed to redo message")()
 		}
 		if response == nil {
-			return toast.NewErrorToast("Failed to redo message")
+			return toast.NewErrorToast("Failed to redo message")()
 		}
 		return app.MessageRevertedMsg{Session: *response, Message: revertedMessage}
 	}

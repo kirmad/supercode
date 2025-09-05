@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { CustomCommands } from "../../src/commands/custom"
 import { promises as fs } from "fs"
 import path from "path"
-import { App } from "../../src/app/app"
+import { Instance } from "../../src/project/instance"
 
 const fixturePath = path.join(__dirname, "../fixtures/custom-commands")
 
@@ -43,7 +43,7 @@ describe("CustomCommands.executeCommand", () => {
       "Hello $ARGUMENTS!"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/test world")
       expect(result).toBe("Hello world!")
     })
@@ -57,7 +57,7 @@ describe("CustomCommands.executeCommand", () => {
       "Current directory: !`pwd`\nDate: !`date +%Y-%m-%d`\nEcho: !`echo Hello Shell`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/shell-test")
       expect(result).toContain("Current directory:")
       expect(result).toContain("Date:")
@@ -73,7 +73,7 @@ describe("CustomCommands.executeCommand", () => {
       "This will fail: !`invalidcommandthatdoesnotexist`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/error-test")
       expect(result).toContain("[Error executing")
       expect(result).toContain("invalidcommandthatdoesnotexist")
@@ -88,7 +88,7 @@ describe("CustomCommands.executeCommand", () => {
       "Arguments: $ARGUMENTS\nDirectory: !`pwd`\nEcho args: !`echo \"$ARGUMENTS\"`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/combined-test hello world")
       expect(result).toContain("Arguments: hello world")
       expect(result).toContain("Directory:")
@@ -105,7 +105,7 @@ describe("CustomCommands.executeCommand", () => {
       "First: !`echo first`\nSecond: !`echo second`\nThird: !`echo third`"
     )
 
-    await App.provide({ cwd: fixturePath }, async () => {
+    await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/multiple-test")
       expect(result).toBe("First: first\nSecond: second\nThird: third")
     })

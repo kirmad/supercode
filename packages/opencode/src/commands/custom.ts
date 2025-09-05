@@ -1,7 +1,7 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 import { Global } from "../global"
 
 export namespace CustomCommands {
@@ -237,9 +237,8 @@ export namespace CustomCommands {
     const paths: string[] = []
     
     try {
-      const app = App.info()
       // Project-specific path (higher priority)
-      const projectCommandsDir = path.join(app.path.root, ".opencode", "commands")
+      const projectCommandsDir = path.join(Instance.worktree, ".opencode", "commands")
       paths.push(path.join(projectCommandsDir, namespace, `${command}.md`))
       
       // Global path
@@ -273,9 +272,8 @@ export namespace CustomCommands {
     const paths: string[] = []
     
     try {
-      const app = App.info()
       // Project-specific path (higher priority)
-      const projectCommandsDir = path.join(app.path.root, ".opencode", "commands")
+      const projectCommandsDir = path.join(Instance.worktree, ".opencode", "commands")
       paths.push(path.join(projectCommandsDir, `${command}.md`))
       
       // Global path

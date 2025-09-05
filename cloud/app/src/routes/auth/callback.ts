@@ -1,15 +1,12 @@
+import { redirect } from "@solidjs/router"
 import type { APIEvent } from "@solidjs/start/server"
-import { AuthClient, useAuthSession } from "~/context/auth"
+import { AuthClient } from "~/context/auth"
+import { useAuthSession } from "~/context/auth.session"
 
 export async function GET(input: APIEvent) {
   const url = new URL(input.request.url)
   const code = url.searchParams.get("code")
   if (!code) throw new Error("No code found")
-  const redirectURI = `${url.origin}${url.pathname}`
-  console.log({
-    redirectURI,
-    code,
-  })
   const result = await AuthClient.exchange(code, `${url.origin}${url.pathname}`)
   if (result.err) {
     throw new Error(result.err.message)
@@ -30,7 +27,5 @@ export async function GET(input: APIEvent) {
       current: id,
     }
   })
-  return {
-    result,
-  }
+  return redirect("/auth")
 }

@@ -1,10 +1,10 @@
 import { z } from "zod"
 import path from "path"
 import { Tool } from "./tool"
-import { App } from "../app/app"
 import DESCRIPTION from "./glob.txt"
 import { ToolDescription } from "./description"
 import { Ripgrep } from "../file/ripgrep"
+import { Instance } from "../project/instance"
 
 export const GlobTool = Tool.define("glob", async () => ({
   description: await ToolDescription.loadDescription("glob", DESCRIPTION),
@@ -18,9 +18,8 @@ export const GlobTool = Tool.define("glob", async () => ({
       ),
   }),
   async execute(params) {
-    const app = App.info()
-    let search = params.path ?? app.path.cwd
-    search = path.isAbsolute(search) ? search : path.resolve(app.path.cwd, search)
+    let search = params.path ?? Instance.directory
+    search = path.isAbsolute(search) ? search : path.resolve(Instance.directory, search)
 
     const limit = 100
     const files = []
@@ -56,7 +55,7 @@ export const GlobTool = Tool.define("glob", async () => ({
     }
 
     return {
-      title: path.relative(app.path.root, search),
+      title: path.relative(Instance.worktree, search),
       metadata: {
         count: files.length,
         truncated,

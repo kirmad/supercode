@@ -1,4 +1,4 @@
-import { App } from "../app/app"
+import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
 import path from "path"
 import os from "os"
@@ -17,7 +17,8 @@ export namespace ToolDescription {
       return descriptionCache.get(cacheKey)!
     }
 
-    const { cwd, root } = App.info().path
+    const cwd = Instance.directory
+    const root = Instance.worktree
     
     // Try both .md and .txt extensions for overrides
     const extensions = ['.md', '.txt']

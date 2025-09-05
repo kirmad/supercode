@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test"
 import { Flags } from "../../src/flags/flags"
-import { App } from "../../src/app/app"
+import { Instance } from "../../src/project/instance"
 
 describe("Flags Functionality Demo", () => {
   test("demonstrates flag parsing functionality", async () => {
@@ -24,7 +24,7 @@ describe("Flags Functionality Demo", () => {
 
   test("demonstrates working flag processing with real flags", async () => {
     // This test uses actual flags created in the project directory
-    await App.provide({ cwd: "/Users/kirmadi/git/supercode" }, async () => {
+    await Instance.provide("/Users/kirmadi/git/supercode", async () => {
       // Test basic replacement
       const result1 = await Flags.processFlagReferences("--verbose test")
       expect(result1).toContain("Provide detailed explanations")
@@ -41,7 +41,7 @@ describe("Flags Functionality Demo", () => {
   })
 
   test("demonstrates flag info retrieval", async () => {
-    await App.provide({ cwd: "/Users/kirmadi/git/supercode" }, async () => {
+    await Instance.provide("/Users/kirmadi/git/supercode", async () => {
       const info = await Flags.getFlagInfo(undefined, "before")
       expect(info).not.toBe(null)
       expect(info!.metadata.placement).toBe("before")
@@ -53,7 +53,7 @@ describe("Flags Functionality Demo", () => {
   })
 
   test("handles non-existent flags gracefully", async () => {
-    await App.provide({ cwd: "/Users/kirmadi/git/supercode" }, async () => {
+    await Instance.provide("/Users/kirmadi/git/supercode", async () => {
       const result = await Flags.processFlagReferences("--nonexistent test")
       expect(result).toBe("--nonexistent test")
       

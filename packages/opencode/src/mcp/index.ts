@@ -2,7 +2,6 @@ import { experimental_createMCPClient, type Tool } from "ai"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
-import { App } from "../app/app"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { NamedError } from "../util/error"
@@ -10,6 +9,7 @@ import { ToolDescription } from "../tool/description"
 import { z } from "zod"
 import { Session } from "../session"
 import { Bus } from "../bus"
+import { Instance } from "../project/instance"
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
@@ -21,8 +21,7 @@ export namespace MCP {
     }),
   )
 
-  const state = App.state(
-    "mcp",
+  const state = Instance.state(
     async () => {
       const cfg = await Config.get()
       const clients: {
@@ -56,7 +55,7 @@ export namespace MCP {
           let lastError: Error | undefined
           for (const { name, transport } of transports) {
             const client = await experimental_createMCPClient({
-              name: key,
+              name: "opencode",
               transport,
             }).catch((error) => {
               lastError = error instanceof Error ? error : new Error(String(error))
@@ -93,7 +92,7 @@ export namespace MCP {
         if (mcp.type === "local") {
           const [cmd, ...args] = mcp.command
           const client = await experimental_createMCPClient({
-            name: key,
+            name: "opencode",
             transport: new StdioClientTransport({
               stderr: "ignore",
               command: cmd,
