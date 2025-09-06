@@ -14,8 +14,6 @@
   <a href="https://github.com/kirmad/supercode/actions"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/kirmad/supercode/ci.yml?style=flat-square&branch=main" /></a>
 </p>
 
-[![SuperCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://github.com/kirmad/supercode)
-
 ---
 
 ### Installation
