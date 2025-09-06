@@ -1,0 +1,176 @@
+name: Release Supercode
+run-name: "${{ format('Supercode v{0}', inputs.version || github.ref_name) }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., 1.0.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.24.0"
+          cache: true
+          cache-dependency-path: packages/tui/go.sum
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Releasing version: $VERSION"
+
+      - name: Build TUI binaries
+        run: |
+          cd packages/tui
+          
+          # Build for multiple platforms
+          PLATFORMS=(
+            "linux/amd64"
+            "linux/arm64"
+            "darwin/amd64"
+            "darwin/arm64"
+            "windows/amd64"
+          )
+          
+          for PLATFORM in "${PLATFORMS[@]}"; do
+            GOOS="${PLATFORM%/*}"
+            GOARCH="${PLATFORM#*/}"
+            OUTPUT="opencode-${GOOS}-${GOARCH}"
+            
+            if [ "$GOOS" = "windows" ]; then
+              OUTPUT="${OUTPUT}.exe"
+            fi
+            
+            echo "Building for $GOOS/$GOARCH..."
+            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
+              -ldflags "-X main.version=${{ env.VERSION }}" \
+              -o "../../dist/${OUTPUT}" \
+              ./cmd/opencode
+          done
+          
+          cd ../..
+          
+          # Create archives
+          cd dist
+          for FILE in opencode-*; do
+            if [[ "$FILE" == *.exe ]]; then
+              zip "${FILE%.exe}.zip" "$FILE"
+            else
+              tar -czf "${FILE}.tar.gz" "$FILE"
+            fi
+          done
+          cd ..
+
+      - name: Update version in package files
+        run: |
+          # Update version in all package.json files
+          find . -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" | while read file; do
+            if grep -q '"version":' "$file"; then
+              sed -i 's/"version": "[^"]*"/"version": "${{ env.VERSION }}"/' "$file"
+            fi
+          done
+
+      - name: Build OpenCode package
+        run: |
+          cd packages/opencode
+          bun run build
+          cd ../..
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous release tag
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release of Supercode!" > release_notes.md
+            echo "" >> release_notes.md
+            echo "## Features" >> release_notes.md
+            echo "- Initial release with all OpenCode features" >> release_notes.md
+            echo "- Auto-update functionality" >> release_notes.md
+            echo "- Multi-platform support" >> release_notes.md
+          else
+            echo "## What's Changed" > release_notes.md
+            echo "" >> release_notes.md
+            
+            # Get commit messages since last tag
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s" | \
+              grep -v -E "^- (release:|chore:|ci:|docs:|wip:|ignore:)" | \
+              head -20 >> release_notes.md || echo "- Various improvements and bug fixes" >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "## Installation" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Using curl (recommended)" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo 'curl -fsSL https://raw.githubusercontent.com/kirmad/supercode/dev/install | bash' >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Using npm" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo 'npm install -g @kirmad/supercode' >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Using bun" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo 'bun install -g @kirmad/supercode' >> release_notes.md
+          echo '```' >> release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          body_path: release_notes.md
+          prerelease: ${{ inputs.prerelease || false }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          generate_release_notes: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm
+        if: ${{ !inputs.prerelease }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          cd packages/opencode
+          npm publish --access public --tag latest
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

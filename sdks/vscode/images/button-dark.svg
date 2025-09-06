@@ -1,4 +1,19 @@
 <svg width="70" height="70" viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path fill-rule="evenodd" clip-rule="evenodd" d="M0 13H35V58H0V13ZM26.25 22.1957H8.75V48.701H26.25V22.1957Z" fill="black"/>
-<path d="M43.75 13H70V22.1957H52.5V48.701H70V57.8967H43.75V13Z" fill="black"/>
+  <!-- Dark background -->
+  <rect width="70" height="70" fill="#1a1a1a"/>
+  
+  <!-- Letter S made of separate thick rectangular segments -->
+  <!-- Top horizontal bar -->
+  <path d="M0 13H32V22.1957H0V13Z" fill="white"/>
+  <!-- Left vertical bar (top part) -->
+  <path d="M0 13H10V35.4217H0V13Z" fill="white"/>
+  <!-- Middle horizontal bar -->
+  <path d="M0 30.8478H32V40.0435H0V30.8478Z" fill="white"/>
+  <!-- Right vertical bar (bottom part) -->
+  <path d="M22 35.4217H32V57.8967H22V35.4217Z" fill="white"/>
+  <!-- Bottom horizontal bar -->
+  <path d="M0 48.701H32V57.8967H0V48.701Z" fill="white"/>
+  
+  <!-- Letter C -->
+  <path d="M38 13H70V22.1957H48V48.701H70V57.8967H38V13Z" fill="white"/>
 </svg>

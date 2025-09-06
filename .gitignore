@@ -26,3 +26,4 @@ opencodetmp/*
 packages/tui/test-tui
 .trash/
 .serena/cache/**/*.pkl
+**/logs/*.log
