@@ -1,85 +1,68 @@
 <p align="center">
-  <a href="https://opencode.ai">
+  <a href="https://github.com/kirmad/supercode">
     <picture>
       <source srcset="packages/web/src/assets/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
       <source srcset="packages/web/src/assets/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/web/src/assets/logo-ornate-light.svg" alt="opencode logo">
+      <img src="packages/web/src/assets/logo-ornate-light.svg" alt="supercode logo">
     </picture>
   </a>
 </p>
-<p align="center">AI coding agent, built for the terminal.</p>
+<p align="center">AI coding agent, optimized for large repos with better GitHub Copilot support.</p>
 <p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/sst/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/sst/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  <a href="https://github.com/kirmad/supercode"><img alt="GitHub" src="https://img.shields.io/github/stars/kirmad/supercode?style=flat-square" /></a>
+  <a href="https://github.com/kirmad/supercode/releases"><img alt="Release" src="https://img.shields.io/github/v/release/kirmad/supercode?style=flat-square" /></a>
+  <a href="https://github.com/kirmad/supercode/actions"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/kirmad/supercode/ci.yml?style=flat-square&branch=main" /></a>
 </p>
 
-[![opencode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
+[![SuperCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://github.com/kirmad/supercode)
 
 ---
 
 ### Installation
 
 ```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
-
-# Package managers
-npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-brew install sst/tap/opencode      # macOS and Linux
-paru -S opencode-bin               # Arch Linux
+npm i -g @kirmad/supercode@latest        # or bun/pnpm/yarn
 ```
 
 > [!TIP]
-> Remove versions older than 0.1.x before installing.
+> SuperCode is optimized for large repositories with better GitHub Copilot support.
 
 #### Installation Directory
 
-The install script respects the following priority order for the installation path:
+SuperCode respects the following priority order for the installation path:
 
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
+1. `$SUPERCODE_INSTALL_DIR` - Custom installation directory
 2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
 3. `$HOME/bin` - Standard user binary directory (if exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
+4. `$HOME/.supercode/bin` - Default fallback
 
 ```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+# Examples for custom installations
+SUPERCODE_INSTALL_DIR=/usr/local/bin
+XDG_BIN_DIR=$HOME/.local/bin
 ```
 
 ### Documentation
 
-For more info on how to configure opencode [**head over to our docs**](https://opencode.ai/docs).
+For more info on how to configure SuperCode, see the [project documentation](https://github.com/kirmad/supercode/docs) or check the original OpenCode docs for additional reference.
 
 ### Contributing
 
-opencode is an opinionated tool so any fundamental feature needs to go through a
-design process with the core team.
+SuperCode welcomes contributions focused on:
 
-> [!IMPORTANT]
-> We do not accept PRs for core features.
+- Large repository performance optimizations
+- Better GitHub Copilot integration features
+- Bug fixes and stability improvements
+- Support for additional AI providers
+- Documentation improvements
+- Environment-specific optimizations
 
-However we still merge a ton of PRs - you can contribute:
-
-- Bug fixes
-- Improvements to LLM performance
-- Support for new providers
-- Fixes for env specific quirks
-- Missing standard behavior
-- Documentation
-
-Take a look at the git history to see what kind of PRs we end up merging.
-
-> [!NOTE]
-> If you do not follow the above guidelines we might close your PR.
-
-To run opencode locally you need.
+To run SuperCode locally you need:
 
 - Bun
 - Golang 1.24.x
 
-And run.
+And run:
 
 ```bash
 $ bun install
@@ -88,23 +71,26 @@ $ bun dev
 
 #### Development Notes
 
-**API Client**: After making changes to the TypeScript API endpoints in `packages/opencode/src/server/server.ts`, you will need the opencode team to generate a new stainless sdk for the clients.
+**API Client**: After making changes to the TypeScript API endpoints in `packages/opencode/src/server/server.ts`, you may need to regenerate SDK clients for proper functionality.
 
 ### FAQ
 
-#### How is this different than Claude Code?
+#### How is SuperCode different from other AI coding agents?
 
-It's very similar to Claude Code in terms of capability. Here are the key differences:
+SuperCode is specifically optimized for working with large repositories with better GitHub Copilot support. Key features include:
 
-- 100% open source
-- Not coupled to any provider. Although Anthropic is recommended, opencode can be used with OpenAI, Google or even local models. As models evolve the gaps between them will close and pricing will drop so being provider-agnostic is important.
-- A focus on TUI. opencode is built by neovim users and the creators of [terminal.shop](https://terminal.shop); we are going to push the limits of what's possible in the terminal.
-- A client/server architecture. This for example can allow opencode to run on your computer, while you can drive it remotely from a mobile app. Meaning that the TUI frontend is just one of the possible clients.
-
-#### What's the other repo?
-
-The other confusingly named repo has no relation to this one. You can [read the story behind it here](https://x.com/thdxr/status/1933561254481666466).
+- **Large Repository Optimization**: Enhanced performance when working with monorepos and complex codebases
+- **Better GitHub Copilot Support**: Improved integration with GitHub Copilot for superior AI-assisted development
+- **Multi-provider Support**: Works with Anthropic, OpenAI, Google, and local models
+- **Terminal-First Design**: Built by terminal enthusiasts for developers who love command-line workflows
+- **Client/Server Architecture**: Flexible deployment options, including remote access capabilities
 
 ---
 
-**Join our community** [Discord](https://discord.gg/opencode) | [YouTube](https://www.youtube.com/c/sst-dev) | [X.com](https://x.com/anomaly_inv)
+**Community** [GitHub Discussions](https://github.com/kirmad/supercode/discussions) | [Issues](https://github.com/kirmad/supercode/issues)
+
+---
+
+## Acknowledgments
+
+SuperCode is a fork of [OpenCode](https://github.com/sst/opencode), optimized for use with large repositories and better GitHub Copilot support. We thank the original OpenCode team for creating an excellent foundation for AI-powered terminal-based coding agents.

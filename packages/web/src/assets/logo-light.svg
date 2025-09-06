@@ -1,12 +1,35 @@
 <svg width="289" height="50" viewBox="0 0 289 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M264.5 0H288.5V8.5H272.5V16.5H288.5V25H272.5V33H288.5V41.5H264.5V0Z" fill="black"/>
-<path d="M248.5 0H224.5V41.5H248.5V33H232.5V8.5H248.5V0Z" fill="black"/>
-<path d="M256.5 8.5H248.5V33H256.5V8.5Z" fill="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M184.5 0H216.5V41.5H184.5V0ZM208.5 8.5H192.5V33H208.5V8.5Z" fill="black"/>
-<path d="M144.5 8.5H136.5V41.5H144.5V8.5Z" fill="black"/>
-<path d="M136.5 0H112.5V41.5H120.5V8.5H136.5V0Z" fill="black"/>
-<path d="M80.5 0H104.5V8.5H88.5V16.5H104.5V25H88.5V33H104.5V41.5H80.5V0Z" fill="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M40.5 0H72.5V41.5H48.5V49.5H40.5V0ZM64.5 8.5H48.5V33H64.5V8.5Z" fill="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M0.5 0H32.5V41.5955H0.5V0ZM24.5 8.5H8.5V33H24.5V8.5Z" fill="black"/>
-<path d="M152.5 0H176.5V8.5H160.5V33H176.5V41.5H152.5V0Z" fill="black"/>
+<!-- S -->
+<path d="M0.5 0H24.5V8.5H8.5V8.5H0.5V0Z" fill="black"/>
+<path d="M0.5 8.5H8.5V25H0.5V8.5Z" fill="black"/>
+<path d="M8.5 16.5H24.5V25H8.5V16.5Z" fill="black"/>
+<path d="M16.5 25H24.5V33H16.5V25Z" fill="black"/>
+<path d="M0.5 33H24.5V41.5H0.5V33Z" fill="black"/>
+<!-- U -->
+<path d="M28.5 0H36.5V33H28.5V0Z" fill="black"/>
+<path d="M60.5 0H68.5V33H60.5V0Z" fill="black"/>
+<path d="M36.5 33H60.5V41.5H36.5V33Z" fill="black"/>
+<!-- P -->
+<path d="M72.5 0H80.5V41.5H72.5V0Z" fill="black"/>
+<path d="M80.5 0H96.5V8.5H80.5V0Z" fill="black"/>
+<path d="M88.5 8.5H96.5V25H88.5V8.5Z" fill="black"/>
+<path d="M80.5 16.5H88.5V25H80.5V16.5Z" fill="black"/>
+<!-- E -->
+<path d="M100.5 0H124.5V8.5H108.5V16.5H120.5V25H108.5V33H124.5V41.5H100.5V0Z" fill="black"/>
+<!-- R -->
+<path d="M128.5 0H136.5V41.5H128.5V0Z" fill="black"/>
+<path d="M136.5 0H152.5V8.5H136.5V0Z" fill="black"/>
+<path d="M144.5 8.5H152.5V16.5H144.5V8.5Z" fill="black"/>
+<path d="M136.5 16.5H144.5V25H136.5V16.5Z" fill="black"/>
+<path d="M144.5 25H152.5V33H144.5V25Z" fill="black"/>
+<path d="M152.5 33H152.5V41.5H144.5V33H152.5Z" fill="black"/>
+<!-- C -->
+<path d="M156.5 0H180.5V8.5H164.5V33H180.5V41.5H156.5V0Z" fill="black"/>
+<!-- O -->
+<path fill-rule="evenodd" clip-rule="evenodd" d="M184.5 0H208.5V41.5H184.5V0ZM192.5 8.5H200.5V33H192.5V8.5Z" fill="black"/>
+<!-- D -->
+<path fill-rule="evenodd" clip-rule="evenodd" d="M212.5 0H236.5V41.5H212.5V0ZM220.5 8.5V33H228.5V8.5H220.5Z" fill="black"/>
+<path d="M236.5 8.5H244.5V33H236.5V8.5Z" fill="black"/>
+<!-- E -->
+<path d="M248.5 0H272.5V8.5H256.5V16.5H268.5V25H256.5V33H272.5V41.5H248.5V0Z" fill="black"/>
 </svg>
