@@ -36,12 +36,12 @@ console.log("Publishing SDK and plugin packages first...")
 if (!dry) {
   // Publish SDK
   console.log("Publishing @kirmadi/supercode-sdk")
-  await $`cd ../sdk/js && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ../sdk/js && npm config set //registry.npmjs.org/:_authToken ${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}`
   await $`cd ../sdk/js && npm publish --access public --tag ${npmTag}`
   
   // Publish plugin
   console.log("Publishing @kirmadi/supercode-plugin")
-  await $`cd ../plugin && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ../plugin && npm config set //registry.npmjs.org/:_authToken ${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}`
   await $`cd ../plugin && npm publish --access public --tag ${npmTag}`
 }
 
