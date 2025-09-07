@@ -175,13 +175,10 @@ if (!dry) {
 if (!snapshot) {
   for (const key of Object.keys(optionalDependencies)) {
     const zipName = key.replace(/^@[^/]+\//, '')
-    const [, , os] = key.split('-')
+    const [, os] = key.split('-')  // Fixed: os is at index 1, not 2
     const binName = os === "windows" ? "supercode.exe" : "supercode"
     
-    // Debug: List files in bin directory
-    console.log(`Creating ${zipName}.zip from ${key}/bin - looking for ${binName}`)
-    await $`ls -la dist/${key}/bin/`
-    
+    console.log(`Creating ${zipName}.zip from ${key}/bin - looking for ${binName} (os: ${os})`)
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
   }
 }
