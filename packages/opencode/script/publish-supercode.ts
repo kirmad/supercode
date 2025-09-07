@@ -188,6 +188,10 @@ if (!snapshot) {
   // Create GitHub release with zip files
   if (!dry && zipFiles.length > 0) {
     console.log(`Creating GitHub release v${version} with ${zipFiles.length} assets`)
+    console.log(`Current working directory: ${process.cwd()}`)
+    
+    // List zip files to verify they exist
+    await $`ls -la *.zip || echo "No zip files found in current directory"`
     
     try {
       // Create the release
@@ -195,7 +199,8 @@ if (!snapshot) {
       
       // Upload all zip files as assets
       for (const zipFile of zipFiles) {
-        console.log(`Uploading ${zipFile} to release`)
+        console.log(`Uploading ${zipFile} to release from ${process.cwd()}`)
+        await $`ls -la ${zipFile} || echo "File ${zipFile} not found"`
         await $`gh release upload v${version} ${zipFile} --repo kirmad/supercode --clobber`
       }
       
