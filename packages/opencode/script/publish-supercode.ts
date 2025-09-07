@@ -31,6 +31,22 @@ await $`rm -rf dist`
 const optionalDependencies: Record<string, string> = {}
 const npmTag = snapshot ? "snapshot" : "latest"
 
+// First publish SDK and plugin packages so they're available as dependencies
+console.log("Publishing SDK and plugin packages first...")
+if (!dry) {
+  // Publish SDK
+  console.log("Publishing @kirmadi/supercode-sdk")
+  await $`cd ../sdk/js && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ../sdk/js && npm version ${version} --no-git-tag-version`
+  await $`cd ../sdk/js && npm publish --access public --tag ${npmTag}`
+  
+  // Publish plugin
+  console.log("Publishing @kirmadi/supercode-plugin")
+  await $`cd ../plugin && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ../plugin && npm version ${version} --no-git-tag-version`
+  await $`cd ../plugin && npm publish --access public --tag ${npmTag}`
+}
+
 for (const [os, arch] of targets) {
   console.log(`Building ${os}-${arch}`)
   const name = `@kirmad/supercode-${os}-${arch}`
