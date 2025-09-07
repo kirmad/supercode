@@ -34,15 +34,19 @@ const npmTag = snapshot ? "snapshot" : "latest"
 // First publish SDK and plugin packages so they're available as dependencies
 console.log("Publishing SDK and plugin packages first...")
 if (!dry) {
-  // Publish SDK
+  // Publish SDK - copy to temp directory to avoid workspace config issues
   console.log("Publishing @kirmadi/supercode-sdk")
-  await $`cd ../sdk/js && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
-  await $`cd ../sdk/js && npm publish --access public --tag ${npmTag}`
+  await $`mkdir -p ./dist/@kirmadi/supercode-sdk-temp`
+  await $`cp -r ../sdk/js/* ./dist/@kirmadi/supercode-sdk-temp/`
+  await $`cd ./dist/@kirmadi/supercode-sdk-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ./dist/@kirmadi/supercode-sdk-temp && npm publish --access public --tag ${npmTag}`
   
-  // Publish plugin
+  // Publish plugin - copy to temp directory to avoid workspace config issues  
   console.log("Publishing @kirmadi/supercode-plugin")
-  await $`cd ../plugin && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
-  await $`cd ../plugin && npm publish --access public --tag ${npmTag}`
+  await $`mkdir -p ./dist/@kirmadi/supercode-plugin-temp`
+  await $`cp -r ../plugin/* ./dist/@kirmadi/supercode-plugin-temp/`
+  await $`cd ./dist/@kirmadi/supercode-plugin-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ./dist/@kirmadi/supercode-plugin-temp && npm publish --access public --tag ${npmTag}`
 }
 
 for (const [os, arch] of targets) {
