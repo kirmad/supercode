@@ -95,7 +95,7 @@ for (const [os, arch] of targets) {
   // Publish platform package to npm
   if (!dry) {
     // Configure npm authentication for CI
-    await $`cd dist/${name} && echo "//registry.npmjs.org/:_authToken=${process.env.NPM_CONFIG_TOKEN || process.env.NPM_TOKEN}" > .npmrc`
+    await $`cd dist/${name} && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
     await $`cd dist/${name} && chmod -R 755 . && npm publish --access public --tag ${npmTag}`
   }
   
@@ -167,7 +167,7 @@ await Bun.file(`./dist/@kirmad/supercode/package.json`).write(
 // Publish main package
 if (!dry) {
   // Configure npm authentication for CI
-  await $`cd ./dist/@kirmad/supercode && echo "//registry.npmjs.org/:_authToken=${process.env.NPM_CONFIG_TOKEN || process.env.NPM_TOKEN}" > .npmrc`
+  await $`cd ./dist/@kirmad/supercode && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
   await $`cd ./dist/@kirmad/supercode && npm publish --access public --tag ${npmTag}`
 }
 
