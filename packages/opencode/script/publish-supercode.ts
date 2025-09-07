@@ -177,6 +177,11 @@ if (!snapshot) {
     const zipName = key.replace(/^@[^/]+\//, '')
     const [, , os] = key.split('-')
     const binName = os === "windows" ? "supercode.exe" : "supercode"
+    
+    // Debug: List files in bin directory
+    console.log(`Creating ${zipName}.zip from ${key}/bin - looking for ${binName}`)
+    await $`ls -la dist/${key}/bin/`
+    
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
   }
 }
