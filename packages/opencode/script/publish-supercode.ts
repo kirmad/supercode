@@ -223,7 +223,7 @@ if (!snapshot) {
     
     console.log(`Creating ${zipName}.zip from ${key}/bin - looking for ${binName} (os: ${os})`)
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
-    zipFiles.push(`../../${zipName}.zip`)
+    zipFiles.push(`${zipName}.zip`)
   }
 
   // Create GitHub release with zip files
