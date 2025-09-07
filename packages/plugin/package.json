@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@kirmadi/supercode-plugin",
+  "name": "@kirmad/supercode-plugin",
   "version": "0.6.22",
   "type": "module",
   "scripts": {
@@ -16,7 +16,7 @@
     "dist"
   ],
   "dependencies": {
-    "@kirmadi/supercode-sdk": "workspace:*"
+    "@kirmad/supercode-sdk": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/node22": "catalog:",

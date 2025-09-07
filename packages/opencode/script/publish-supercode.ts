@@ -35,18 +35,18 @@ const npmTag = snapshot ? "snapshot" : "latest"
 console.log("Publishing SDK and plugin packages first...")
 if (!dry) {
   // Publish SDK - copy to temp directory to avoid workspace config issues
-  console.log("Publishing @kirmadi/supercode-sdk")
-  await $`mkdir -p ./dist/@kirmadi/supercode-sdk-temp`
-  await $`cp -r ../sdk/js/* ./dist/@kirmadi/supercode-sdk-temp/`
-  await $`cd ./dist/@kirmadi/supercode-sdk-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
-  await $`cd ./dist/@kirmadi/supercode-sdk-temp && npm publish --access public --tag ${npmTag}`
+  console.log("Publishing @kirmad/supercode-sdk")
+  await $`mkdir -p ./dist/@kirmad/supercode-sdk-temp`
+  await $`cp -r ../sdk/js/* ./dist/@kirmad/supercode-sdk-temp/`
+  await $`cd ./dist/@kirmad/supercode-sdk-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ./dist/@kirmad/supercode-sdk-temp && npm publish --access public --tag ${npmTag}`
   
   // Publish plugin - copy to temp directory to avoid workspace config issues  
-  console.log("Publishing @kirmadi/supercode-plugin")
-  await $`mkdir -p ./dist/@kirmadi/supercode-plugin-temp`
-  await $`cp -r ../plugin/* ./dist/@kirmadi/supercode-plugin-temp/`
-  await $`cd ./dist/@kirmadi/supercode-plugin-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
-  await $`cd ./dist/@kirmadi/supercode-plugin-temp && npm publish --access public --tag ${npmTag}`
+  console.log("Publishing @kirmad/supercode-plugin")
+  await $`mkdir -p ./dist/@kirmad/supercode-plugin-temp`
+  await $`cp -r ../plugin/* ./dist/@kirmad/supercode-plugin-temp/`
+  await $`cd ./dist/@kirmad/supercode-plugin-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  await $`cd ./dist/@kirmad/supercode-plugin-temp && npm publish --access public --tag ${npmTag}`
 }
 
 for (const [os, arch] of targets) {
