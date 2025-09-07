@@ -196,7 +196,7 @@ if (!snapshot) {
       // Upload all zip files as assets
       for (const zipFile of zipFiles) {
         console.log(`Uploading ${zipFile} to release`)
-        await $`gh release upload v${version} ${zipFile} --repo kirmad/supercode`
+        await $`gh release upload v${version} ${zipFile} --repo kirmad/supercode --clobber`
       }
       
       console.log(`GitHub release v${version} created successfully with ${zipFiles.length} assets`)
