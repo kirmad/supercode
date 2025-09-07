@@ -48,25 +48,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Install makepkg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pacman-package-manager
-      - name: Setup SSH for AUR
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          git config --global user.email "opencode@sst.dev"
-          git config --global user.name "opencode"
-          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts || true
+      # AUR publishing disabled for supercode fork
+      # - name: Install makepkg
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y pacman-package-manager
+      # - name: Setup SSH for AUR
+      #   run: |
+      #     mkdir -p ~/.ssh
+      #     echo "${{ secrets.AUR_KEY }}" > ~/.ssh/id_rsa
+      #     chmod 600 ~/.ssh/id_rsa
+      #     git config --global user.email "supercode@kirmadi.dev"
+      #     git config --global user.name "supercode"
+      #     ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts || true
       - name: Install dependencies
         run: bun install
 
       - name: Publish
         run: |
-          OPENCODE_VERSION=${{ inputs.version }} ./script/publish.ts
+          # Modified for supercode fork - publishes to @kirmad scope on npm
+          OPENCODE_VERSION=${{ inputs.version }} ./script/publish-supercode.ts
         env:
-          GITHUB_TOKEN: ${{ secrets.SST_GITHUB_TOKEN }}
-          AUR_KEY: ${{ secrets.AUR_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # AUR_KEY: ${{ secrets.AUR_KEY }}  # Not needed for supercode
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,19 +1,31 @@
 {
   "name": "supercode",
-  "displayName": "supercode",
-  "description": "supercode for VS Code",
+  "displayName": "Supercode",
+  "description": "Supercode - AI coding agent for VS Code",
   "version": "0.6.22",
-  "publisher": "sst-dev",
+  "publisher": "kirmadi",
   "repository": {
     "type": "git",
     "url": "https://github.com/kirmadi/supercode"
   },
+  "bugs": {
+    "url": "https://github.com/kirmadi/supercode/issues"
+  },
+  "homepage": "https://github.com/kirmadi/supercode",
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {
     "color": "#000000",
     "theme": "dark"
   },
+  "keywords": [
+    "ai",
+    "coding",
+    "assistant",
+    "supercode",
+    "opencode",
+    "terminal"
+  ],
   "engines": {
     "vscode": "^1.94.0"
   },

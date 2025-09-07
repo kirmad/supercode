@@ -2,6 +2,11 @@ name: publish-vscode
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., 0.1.0)"
+        required: false
+        type: string
   push:
     tags:
       - "vscode-v*.*.*"
@@ -26,11 +31,62 @@ jobs:
       - run: git fetch --force --tags
       - run: bun install -g @vscode/vsce
 
-      - name: Publish
+      - name: Set version
         run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/vscode-v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Publishing VS Code extension version: $VERSION"
+        working-directory: ./sdks/vscode
+
+      - name: Update version and prepare
+        run: |
+          # Update version in package.json if specified
+          if [ -n "${{ inputs.version }}" ]; then
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${{ env.VERSION }}\"/" package.json
+          fi
+          
+          # Install dependencies
           bun install
-          ./script/publish
+        working-directory: ./sdks/vscode
+
+      - name: Publish Extension
+        run: |
+          # Run the publish script which handles both marketplaces
+          ./script/publish "${{ env.VERSION }}"
         working-directory: ./sdks/vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OPENVSX_TOKEN: ${{ secrets.OPENVSX_TOKEN }}
+
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.version != '') }}
+        run: |
+          # Check if release already exists
+          if gh release view "vscode-v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "Release vscode-v${{ env.VERSION }} already exists, skipping"
+          else
+            # Create release notes
+            echo "# Supercode VS Code Extension v${{ env.VERSION }}" > release_notes.md
+            echo "" >> release_notes.md
+            echo "## Installation" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "Install from:" >> release_notes.md
+            echo "- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kirmadi.supercode)" >> release_notes.md
+            echo "- [Open VSX](https://open-vsx.org/extension/kirmadi/supercode)" >> release_notes.md
+            echo "- Or install the .vsix file directly from this release" >> release_notes.md
+            
+            # Create GitHub release
+            gh release create "vscode-v${{ env.VERSION }}" \
+              --title "VS Code Extension v${{ env.VERSION }}" \
+              --notes-file release_notes.md \
+              ./dist/supercode-*.vsix || echo "Release creation failed or already exists"
+          fi
+        working-directory: ./sdks/vscode
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

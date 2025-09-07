@@ -1,20 +1,57 @@
 #!/usr/bin/env bash
 
-# Get the latest Git tag
-latest_tag=$(git tag --sort=committerdate | grep -E '^vscode-v[0-9]+\.[0-9]+\.[0-9]+$' | tail -1)
-if [ -z "$latest_tag" ]; then
-    echo "No tags found"
-    exit 1
+# Supercode VS Code Extension Publish Script
+set -e
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${GREEN}Publishing Supercode VS Code Extension${NC}"
+
+# Get version from tag or use current package.json version
+if [ -n "$1" ]; then
+    version="$1"
+    echo -e "${YELLOW}Using provided version: $version${NC}"
+else
+    # Try to get the latest Git tag
+    latest_tag=$(git tag --sort=committerdate | grep -E '^vscode-v[0-9]+\.[0-9]+\.[0-9]+$' | tail -1)
+    if [ -n "$latest_tag" ]; then
+        version=$(echo $latest_tag | sed 's/^vscode-v//')
+        echo -e "${YELLOW}Using tag version: $version${NC}"
+    else
+        # Fall back to package.json version
+        version=$(node -p "require('./package.json').version")
+        echo -e "${YELLOW}Using package.json version: $version${NC}"
+    fi
 fi
-echo "Latest tag: $latest_tag"
-version=$(echo $latest_tag | sed 's/^vscode-v//')
-echo "Latest version: $version"
 
-# package-marketplace
-vsce package --no-git-tag-version --no-update-package-json --no-dependencies --skip-license -o dist/opencode.vsix $version
+# Create dist directory if it doesn't exist
+mkdir -p dist
 
-# publish-marketplace
-vsce publish --packagePath dist/opencode.vsix
+# Package the extension
+echo -e "${YELLOW}Packaging extension...${NC}"
+vsce package --no-git-tag-version --no-update-package-json --no-dependencies --skip-license -o dist/supercode-$version.vsix $version
 
-# publish-openvsx
-npx ovsx publish dist/opencode.vsix -p $OPENVSX_TOKEN
+# Publish to VS Code Marketplace if token is available
+if [ -n "$VSCE_PAT" ]; then
+    echo -e "${YELLOW}Publishing to VS Code Marketplace...${NC}"
+    vsce publish --packagePath dist/supercode-$version.vsix
+    echo -e "${GREEN}✅ Published to VS Code Marketplace${NC}"
+else
+    echo -e "${RED}VSCE_PAT not set, skipping VS Code Marketplace${NC}"
+fi
+
+# Publish to Open VSX if token is available
+if [ -n "$OPENVSX_TOKEN" ]; then
+    echo -e "${YELLOW}Publishing to Open VSX...${NC}"
+    npx ovsx publish dist/supercode-$version.vsix -p $OPENVSX_TOKEN
+    echo -e "${GREEN}✅ Published to Open VSX${NC}"
+else
+    echo -e "${RED}OPENVSX_TOKEN not set, skipping Open VSX${NC}"
+fi
+
+echo -e "${GREEN}✅ Extension v$version packaged successfully!${NC}"
+echo -e "${GREEN}Package saved to: dist/supercode-$version.vsix${NC}"
