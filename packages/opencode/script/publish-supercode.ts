@@ -165,7 +165,7 @@ if (!dry) {
 // Create zip files for GitHub release
 if (!snapshot) {
   for (const key of Object.keys(optionalDependencies)) {
-    const zipName = key.replace(/^@[^/]+\/supercode-/, 'opencode-')
+    const zipName = key.replace(/^@[^/]+\//, '')
     const [, , os] = key.split('-')
     const binName = os === "windows" ? "supercode.exe" : "supercode"
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
