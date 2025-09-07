@@ -173,6 +173,8 @@ if (!dry) {
 
 // Create zip files for GitHub release
 if (!snapshot) {
+  const zipFiles: string[] = []
+  
   for (const key of Object.keys(optionalDependencies)) {
     const zipName = key.replace(/^@[^/]+\//, '')
     const [, os] = key.split('-')  // Fixed: os is at index 1, not 2
@@ -180,6 +182,28 @@ if (!snapshot) {
     
     console.log(`Creating ${zipName}.zip from ${key}/bin - looking for ${binName} (os: ${os})`)
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
+    zipFiles.push(`${zipName}.zip`)
+  }
+
+  // Create GitHub release with zip files
+  if (!dry && zipFiles.length > 0) {
+    console.log(`Creating GitHub release v${version} with ${zipFiles.length} assets`)
+    
+    try {
+      // Create the release
+      await $`gh release create v${version} --title "v${version}" --notes "Release v${version}" --repo kirmad/supercode`
+      
+      // Upload all zip files as assets
+      for (const zipFile of zipFiles) {
+        console.log(`Uploading ${zipFile} to release`)
+        await $`gh release upload v${version} ${zipFile} --repo kirmad/supercode`
+      }
+      
+      console.log(`GitHub release v${version} created successfully with ${zipFiles.length} assets`)
+    } catch (error) {
+      console.error("Failed to create GitHub release:", error)
+      // Don't fail the entire publish if release creation fails
+    }
   }
 }
 
