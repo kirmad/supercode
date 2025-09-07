@@ -36,11 +36,11 @@ console.log("Publishing SDK and plugin packages first...")
 if (!dry) {
   // Publish SDK
   console.log("Publishing @kirmadi/supercode-sdk")
-  await $`cd ../sdk/js && NPM_CONFIG__AUTH_TOKEN=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]} npm publish --access public --tag ${npmTag}`
+  await $`cd ../sdk/js && NPM_TOKEN=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]} npm publish --access public --tag ${npmTag}`
   
   // Publish plugin
   console.log("Publishing @kirmadi/supercode-plugin")
-  await $`cd ../plugin && NPM_CONFIG__AUTH_TOKEN=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]} npm publish --access public --tag ${npmTag}`
+  await $`cd ../plugin && NPM_TOKEN=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]} npm publish --access public --tag ${npmTag}`
 }
 
 for (const [os, arch] of targets) {
