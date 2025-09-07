@@ -13,9 +13,6 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -39,111 +36,279 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ">=1.24.0"
-          cache: true
-          cache-dependency-path: packages/tui/go.sum
 
       - name: Install dependencies
         run: bun install
 
       - name: Set version
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-          else
-            VERSION="${{ inputs.version }}"
-          fi
+          VERSION="${{ inputs.version }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Releasing version: $VERSION"
 
-      - name: Build TUI binaries
+      - name: Update version in package.json files
         run: |
-          cd packages/tui
-          
-          # Build for multiple platforms
-          PLATFORMS=(
-            "linux/amd64"
-            "linux/arm64"
-            "darwin/amd64"
-            "darwin/arm64"
-            "windows/amd64"
-          )
-          
-          for PLATFORM in "${PLATFORMS[@]}"; do
-            GOOS="${PLATFORM%/*}"
-            GOARCH="${PLATFORM#*/}"
-            OUTPUT="opencode-${GOOS}-${GOARCH}"
-            
-            if [ "$GOOS" = "windows" ]; then
-              OUTPUT="${OUTPUT}.exe"
-            fi
-            
-            echo "Building for $GOOS/$GOARCH..."
-            CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
-              -ldflags "-X main.version=${{ env.VERSION }}" \
-              -o "../../dist/${OUTPUT}" \
-              ./cmd/opencode
-          done
-          
-          cd ../..
-          
-          # Create archives
-          cd dist
-          for FILE in opencode-*; do
-            if [[ "$FILE" == *.exe ]]; then
-              zip "${FILE%.exe}.zip" "$FILE"
-            else
-              tar -czf "${FILE}.tar.gz" "$FILE"
-            fi
-          done
-          cd ..
-
-      - name: Update version in package files
-        run: |
-          # Update version in all package.json files
+          # Update all package.json files
           find . -name "package.json" -not -path "*/node_modules/*" -not -path "*/dist/*" | while read file; do
             if grep -q '"version":' "$file"; then
-              sed -i 's/"version": "[^"]*"/"version": "${{ env.VERSION }}"/' "$file"
+              sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$file"
+              echo "Updated version in: $file"
             fi
           done
+          
+          # Update lock file
+          bun install
 
-      - name: Build OpenCode package
+      - name: Build platform-specific packages
         run: |
           cd packages/opencode
-          bun run build
+          
+          # Clean dist directory
+          rm -rf dist
+          mkdir -p dist
+          
+          # Define platforms
+          PLATFORMS=(
+            "linux:x64"
+            "linux:arm64"
+            "darwin:x64"
+            "darwin:arm64"
+            "windows:x64"
+          )
+          
+          # Build TUI and OpenCode for each platform
+          for PLATFORM in "${PLATFORMS[@]}"; do
+            IFS=':' read -r OS ARCH <<< "$PLATFORM"
+            
+            echo "Building for $OS-$ARCH..."
+            
+            # Set Go architecture
+            GOARCH="amd64"
+            if [ "$ARCH" = "arm64" ]; then
+              GOARCH="arm64"
+            fi
+            
+            # Build TUI
+            echo "  Building TUI..."
+            cd ../tui
+            CGO_ENABLED=0 GOOS=$OS GOARCH=$GOARCH go build \
+              -ldflags "-s -w -X main.Version=$VERSION" \
+              -o "../opencode/dist/tui-$OS-$ARCH" \
+              ./cmd/opencode/main.go
+            
+            if [ "$OS" = "windows" ]; then
+              mv "../opencode/dist/tui-$OS-$ARCH" "../opencode/dist/tui-$OS-$ARCH.exe"
+            fi
+            
+            cd ../opencode
+            
+            # Build OpenCode with embedded TUI
+            echo "  Building OpenCode..."
+            TUI_PATH="./dist/tui-$OS-$ARCH"
+            if [ "$OS" = "windows" ]; then
+              TUI_PATH="./dist/tui-$OS-$ARCH.exe"
+            fi
+            
+            OUTPUT_NAME="supercode"
+            if [ "$OS" = "windows" ]; then
+              OUTPUT_NAME="supercode.exe"
+            fi
+            
+            # Create platform package directory
+            PKG_NAME="@kirmad/supercode-$OS-$ARCH"
+            mkdir -p "dist/$PKG_NAME/bin"
+            
+            # Build the binary
+            bun build \
+              --define "OPENCODE_TUI_PATH='$TUI_PATH'" \
+              --define "OPENCODE_VERSION='$VERSION'" \
+              --compile \
+              --target="bun-$OS-$ARCH" \
+              --outfile="dist/$PKG_NAME/bin/$OUTPUT_NAME" \
+              ./src/index.ts
+            
+            # Copy necessary files
+            cp -r ./seeds "dist/$PKG_NAME/seeds" 2>/dev/null || true
+            cp -r ./src/server/templates "dist/$PKG_NAME/templates" 2>/dev/null || true
+            cp -r ./src/server/static "dist/$PKG_NAME/static" 2>/dev/null || true
+            
+            # Create package.json for platform-specific package
+            cat > "dist/$PKG_NAME/package.json" <<EOF
+          {
+            "name": "$PKG_NAME",
+            "version": "$VERSION",
+            "description": "Supercode - Platform-specific binary for $OS-$ARCH",
+            "bin": {
+              "supercode": "./bin/$OUTPUT_NAME"
+            },
+            "os": ["$( [ "$OS" = "windows" ] && echo "win32" || echo "$OS" )"],
+            "cpu": ["$ARCH"],
+            "publishConfig": {
+              "access": "public"
+            }
+          }
+          EOF
+            
+            # Create zip for GitHub release
+            cd dist
+            if [ "$OS" = "windows" ]; then
+              zip -r "supercode-$OS-$ARCH.zip" "$PKG_NAME/bin/$OUTPUT_NAME"
+            else
+              zip -r "supercode-$OS-$ARCH.zip" "$PKG_NAME/bin/supercode"
+            fi
+            cd ..
+            
+            # Clean up TUI binary (it's embedded now)
+            rm -f "dist/tui-$OS-$ARCH" "dist/tui-$OS-$ARCH.exe"
+          done
+          
+          # Create main package that depends on platform packages
+          mkdir -p dist/@kirmad/supercode
+          
+          # Copy wrapper scripts
+          cp -r ./bin dist/@kirmad/supercode/bin
+          
+          # Create postinstall script
+          cat > dist/@kirmad/supercode/postinstall.mjs <<'EOF'
+          #!/usr/bin/env node
+          import { platform, arch } from 'os';
+          import { execSync } from 'child_process';
+          import { existsSync } from 'fs';
+          import { join } from 'path';
+          
+          const os = platform() === 'win32' ? 'windows' : platform();
+          const architecture = arch() === 'x64' ? 'x64' : 'arm64';
+          const packageName = `@kirmad/supercode-${os}-${architecture}`;
+          
+          console.log(`Installing platform-specific binary: ${packageName}`);
+          
+          try {
+            // Check if the platform package is already installed
+            const binPath = join(process.cwd(), 'node_modules', packageName, 'bin', os === 'windows' ? 'supercode.exe' : 'supercode');
+            if (!existsSync(binPath)) {
+              execSync(`npm install ${packageName}@${process.env.npm_package_version}`, { stdio: 'inherit' });
+            }
+          } catch (error) {
+            console.error('Failed to install platform-specific binary:', error.message);
+            process.exit(1);
+          }
+          EOF
+          
+          chmod +x dist/@kirmad/supercode/postinstall.mjs
+          
+          # Create main package.json with optionalDependencies
+          cat > dist/@kirmad/supercode/package.json <<EOF
+          {
+            "name": "@kirmad/supercode",
+            "version": "$VERSION",
+            "description": "Supercode - The AI coding agent built for the terminal",
+            "bin": {
+              "supercode": "./bin/supercode.js"
+            },
+            "scripts": {
+              "postinstall": "node ./postinstall.mjs"
+            },
+            "optionalDependencies": {
+              "@kirmad/supercode-linux-x64": "$VERSION",
+              "@kirmad/supercode-linux-arm64": "$VERSION",
+              "@kirmad/supercode-darwin-x64": "$VERSION",
+              "@kirmad/supercode-darwin-arm64": "$VERSION",
+              "@kirmad/supercode-windows-x64": "$VERSION"
+            },
+            "keywords": ["ai", "coding", "assistant", "terminal", "cli"],
+            "author": "kirmad",
+            "license": "MIT",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/kirmad/supercode.git"
+            },
+            "bugs": {
+              "url": "https://github.com/kirmad/supercode/issues"
+            },
+            "homepage": "https://github.com/kirmad/supercode",
+            "publishConfig": {
+              "access": "public"
+            }
+          }
+          EOF
+          
           cd ../..
+          
+          echo "Build complete. Packages ready for publishing."
+          ls -la packages/opencode/dist/
+
+      - name: Publish to npm
+        if: ${{ !inputs.prerelease }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # Setup npm authentication
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          
+          cd packages/opencode/dist
+          
+          # Publish platform-specific packages first
+          for PKG in @kirmad/supercode-*; do
+            if [ -d "$PKG" ] && [ "$PKG" != "@kirmad/supercode" ]; then
+              echo "Publishing $PKG..."
+              cd "$PKG"
+              npm publish --access public
+              cd ..
+            fi
+          done
+          
+          # Publish main package
+          echo "Publishing main package @kirmad/supercode..."
+          cd @kirmad/supercode
+          npm publish --access public
+          
+          cd ../../../..
+          
+          echo "All packages published successfully!"
+
+      - name: Commit version changes
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git add -A
+          git diff --staged --quiet || git commit -m "release: v${{ env.VERSION }}"
+
+      - name: Create and push tag
+        run: |
+          git tag -a "v${{ env.VERSION }}" -m "Release v${{ env.VERSION }}"
+          git push origin HEAD --tags
 
       - name: Generate release notes
-        id: release_notes
         run: |
           # Get the previous release tag
-          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 "v${{ env.VERSION }}^" 2>/dev/null || echo "")
           
           if [ -z "$PREV_TAG" ]; then
-            echo "First release of Supercode!" > release_notes.md
+            echo "# Supercode v${{ env.VERSION }}" > release_notes.md
+            echo "" >> release_notes.md
+            echo "First release of Supercode!" >> release_notes.md
             echo "" >> release_notes.md
             echo "## Features" >> release_notes.md
-            echo "- Initial release with all OpenCode features" >> release_notes.md
+            echo "- Fork of OpenCode with enhanced features" >> release_notes.md
             echo "- Auto-update functionality" >> release_notes.md
-            echo "- Multi-platform support" >> release_notes.md
+            echo "- Multi-platform support (Linux, macOS, Windows)" >> release_notes.md
           else
-            echo "## What's Changed" > release_notes.md
+            echo "# Supercode v${{ env.VERSION }}" > release_notes.md
+            echo "" >> release_notes.md
+            echo "## What's Changed" >> release_notes.md
             echo "" >> release_notes.md
             
             # Get commit messages since last tag
             git log ${PREV_TAG}..HEAD --pretty=format:"- %s" | \
-              grep -v -E "^- (release:|chore:|ci:|docs:|wip:|ignore:)" | \
+              grep -v -E "^- (release:|chore:|ci:|docs:|wip:)" | \
               head -20 >> release_notes.md || echo "- Various improvements and bug fixes" >> release_notes.md
           fi
           
           echo "" >> release_notes.md
+          echo "" >> release_notes.md
           echo "## Installation" >> release_notes.md
           echo "" >> release_notes.md
-          echo "### Using curl (recommended)" >> release_notes.md
-          echo '```bash' >> release_notes.md
-          echo 'curl -fsSL https://raw.githubusercontent.com/kirmad/supercode/dev/install | bash' >> release_notes.md
-          echo '```' >> release_notes.md
-          echo "" >> release_notes.md
-          echo "### Using npm" >> release_notes.md
+          echo "### Using npm (recommended)" >> release_notes.md
           echo '```bash' >> release_notes.md
           echo 'npm install -g @kirmad/supercode' >> release_notes.md
           echo '```' >> release_notes.md
@@ -152,25 +317,20 @@ jobs:
           echo '```bash' >> release_notes.md
           echo 'bun install -g @kirmad/supercode' >> release_notes.md
           echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Direct download" >> release_notes.md
+          echo "Download the appropriate binary for your platform from the assets below." >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## Auto-update" >> release_notes.md
+          echo "Supercode will automatically check for updates and prompt you to upgrade when a new version is available." >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}
-          name: v${{ env.VERSION }}
+          name: Supercode v${{ env.VERSION }}
           body_path: release_notes.md
           prerelease: ${{ inputs.prerelease || false }}
           files: |
-            dist/*.tar.gz
-            dist/*.zip
-          generate_release_notes: false
+            packages/opencode/dist/*.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: ${{ !inputs.prerelease }}
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-          cd packages/opencode
-          npm publish --access public --tag latest
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
