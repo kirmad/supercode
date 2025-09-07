@@ -38,6 +38,10 @@
     "vscode-languageserver-types": "3.17.5",
     "zod-to-json-schema": "3.24.5"
   },
+  "optionalDependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0"
+  },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.1",
     "@hono/zod-validator": "catalog:",
