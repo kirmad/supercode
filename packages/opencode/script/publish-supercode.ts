@@ -82,9 +82,14 @@ for (const [os, arch] of targets) {
     ),
   )
   
-  // Rename binary for Windows
+  // Check if Windows binary needs renaming (Bun might have already added .exe)
   if (os === "windows") {
-    await $`mv dist/${name}/bin/supercode dist/${name}/bin/supercode.exe`
+    const exeExists = await $`test -f dist/${name}/bin/supercode.exe`.nothrow()
+    const binExists = await $`test -f dist/${name}/bin/supercode`.nothrow()
+    
+    if (binExists.exitCode === 0 && exeExists.exitCode !== 0) {
+      await $`mv dist/${name}/bin/supercode dist/${name}/bin/supercode.exe`
+    }
   }
   
   // Publish platform package to npm
