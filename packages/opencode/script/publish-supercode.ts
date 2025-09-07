@@ -31,21 +31,36 @@ await $`rm -rf dist`
 const optionalDependencies: Record<string, string> = {}
 const npmTag = snapshot ? "snapshot" : "latest"
 
+// Check for npm authentication
+const homeNpmrc = `${process.env["HOME"]}/.npmrc`
+const hasHomeNpmrc = await Bun.file(homeNpmrc).exists()
+
 // First publish SDK and plugin packages so they're available as dependencies
 console.log("Publishing SDK and plugin packages first...")
-if (!dry) {
+// Skip SDK/plugin publishing if they already exist
+const skipSdkPlugin = process.env["SKIP_SDK_PLUGIN"] === "true"
+if (!dry && !skipSdkPlugin) {
   // Publish SDK - copy to temp directory to avoid workspace config issues
   console.log("Publishing @kirmad/supercode-sdk")
   await $`mkdir -p ./dist/@kirmad/supercode-sdk-temp`
   await $`cp -r ../sdk/js/* ./dist/@kirmad/supercode-sdk-temp/`
-  await $`cd ./dist/@kirmad/supercode-sdk-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  // Copy npmrc if it exists, otherwise create from env var
+  if (hasHomeNpmrc) {
+    await $`cp ${homeNpmrc} ./dist/@kirmad/supercode-sdk-temp/.npmrc`
+  } else if (process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]) {
+    await $`cd ./dist/@kirmad/supercode-sdk-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  }
   await $`cd ./dist/@kirmad/supercode-sdk-temp && npm publish --access public --tag ${npmTag}`
   
   // Publish plugin - copy to temp directory to avoid workspace config issues  
   console.log("Publishing @kirmad/supercode-plugin")
   await $`mkdir -p ./dist/@kirmad/supercode-plugin-temp`
   await $`cp -r ../plugin/* ./dist/@kirmad/supercode-plugin-temp/`
-  await $`cd ./dist/@kirmad/supercode-plugin-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  if (hasHomeNpmrc) {
+    await $`cp ${homeNpmrc} ./dist/@kirmad/supercode-plugin-temp/.npmrc`
+  } else if (process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]) {
+    await $`cd ./dist/@kirmad/supercode-plugin-temp && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  }
   await $`cd ./dist/@kirmad/supercode-plugin-temp && npm publish --access public --tag ${npmTag}`
 }
 
@@ -112,8 +127,12 @@ for (const [os, arch] of targets) {
   
   // Publish platform package to npm
   if (!dry) {
-    // Configure npm authentication for CI
-    await $`cd dist/${name} && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+    // Configure npm authentication - copy from home or use env var
+    if (hasHomeNpmrc) {
+      await $`cp ${homeNpmrc} dist/${name}/.npmrc`
+    } else if (process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]) {
+      await $`cd dist/${name} && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+    }
     await $`cd dist/${name} && chmod -R 755 . && npm publish --access public --tag ${npmTag}`
   }
   
@@ -184,8 +203,12 @@ await Bun.file(`./dist/@kirmad/supercode/package.json`).write(
 
 // Publish main package
 if (!dry) {
-  // Configure npm authentication for CI
-  await $`cd ./dist/@kirmad/supercode && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  // Configure npm authentication - copy from home or use env var
+  if (hasHomeNpmrc) {
+    await $`cp ${homeNpmrc} ./dist/@kirmad/supercode/.npmrc`
+  } else if (process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]) {
+    await $`cd ./dist/@kirmad/supercode && echo "//registry.npmjs.org/:_authToken=${process.env["NPM_CONFIG_TOKEN"] || process.env["NPM_TOKEN"]}" > .npmrc`
+  }
   await $`cd ./dist/@kirmad/supercode && npm publish --access public --tag ${npmTag}`
 }
 

@@ -10,5 +10,9 @@
     "customConditions": [
       "development"
     ]
-  }
+  },
+  "exclude": [
+    "dist/**/*temp*/**",
+    "**/*temp*/**"
+  ]
 }
