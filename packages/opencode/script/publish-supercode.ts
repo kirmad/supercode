@@ -3,7 +3,6 @@
 const dir = new URL("..", import.meta.url).pathname
 process.chdir(dir)
 import { $ } from "bun"
-import pkg from "../package.json"
 
 const dry = process.env["OPENCODE_DRY"] === "true"
 const version = process.env["OPENCODE_VERSION"]!
@@ -166,8 +165,8 @@ if (!dry) {
 // Create zip files for GitHub release
 if (!snapshot) {
   for (const key of Object.keys(optionalDependencies)) {
-    const zipName = key.replace(/^@[^/]+\//, '')
-    const [, , os, arch] = key.split('-')
+    const zipName = key.replace(/^@[^/]+\/supercode-/, 'opencode-')
+    const [, , os] = key.split('-')
     const binName = os === "windows" ? "supercode.exe" : "supercode"
     await $`cd dist/${key}/bin && zip -r ../../../${zipName}.zip ${binName}`
   }
