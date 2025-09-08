@@ -97,8 +97,7 @@ if (!snapshot) {
   notes += "bun install -g @kirmad/supercode\n"
   notes += "```\n"
 
-  // Create GitHub release with detailed changelog and zip assets
-  await $`gh release create v${version} --title "v${version}" --notes ${notes} ./packages/opencode/dist/*.zip --repo kirmad/supercode`
+  // GitHub release created by packages/opencode/script/publish-supercode.ts
 }
 
 if (snapshot) {
