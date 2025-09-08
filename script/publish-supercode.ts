@@ -35,14 +35,6 @@ console.log("\n=== Building Supercode ===\n")
 // Build and publish platform-specific packages
 await import(`../packages/opencode/script/publish-supercode.ts`)
 
-// Build SDKs if needed
-console.log("\n=== SDK ===\n")
-await import(`../packages/sdk/js/script/publish.ts`)
-
-// Build plugin if needed
-console.log("\n=== Plugin ===\n")
-await import(`../packages/plugin/script/publish.ts`)
-
 const dir = new URL("..", import.meta.url).pathname
 process.chdir(dir)
 
