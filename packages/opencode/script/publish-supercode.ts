@@ -226,25 +226,9 @@ if (!snapshot) {
     zipFiles.push(`${zipName}.zip`)
   }
 
-  // Create GitHub release with zip files
+  // Zip files will be included in GitHub release created by main script
   if (!dry && zipFiles.length > 0) {
-    console.log(`Creating GitHub release v${version} with ${zipFiles.length} assets`)
-    
-    try {
-      // Create the release
-      await $`gh release create v${version} --title "v${version}" --notes "Release v${version}" --repo kirmad/supercode`
-      
-      // Upload all zip files as assets
-      for (const zipFile of zipFiles) {
-        console.log(`Uploading ${zipFile} to release`)
-        await $`gh release upload v${version} ${zipFile} --repo kirmad/supercode --clobber`
-      }
-      
-      console.log(`GitHub release v${version} created successfully with ${zipFiles.length} assets`)
-    } catch (error) {
-      console.error("Failed to create GitHub release:", error)
-      // Don't fail the entire publish if release creation fails
-    }
+    console.log(`Created ${zipFiles.length} zip files for GitHub release`)
   }
 }
 
