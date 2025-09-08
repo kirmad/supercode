@@ -226,7 +226,8 @@ if (!snapshot) {
     zipFiles.push(`${zipName}.zip`)
   }
 
-  // Create GitHub release with zip files
+  // Create GitHub release with zip files  
+  console.log(`Debug: dry=${dry}, zipFiles.length=${zipFiles.length}, snapshot=${snapshot}`)
   if (!dry && zipFiles.length > 0) {
     console.log(`Creating GitHub release v${version} with ${zipFiles.length} assets`)
     
@@ -244,6 +245,14 @@ if (!snapshot) {
     } catch (error) {
       console.error("Failed to create GitHub release:", error)
       // Don't fail the entire publish if release creation fails
+    }
+  } else {
+    if (dry) {
+      console.log(`Skipping GitHub release creation (dry run mode)`)
+    } else if (zipFiles.length === 0) {
+      console.log(`Skipping GitHub release creation (no zip files created)`)
+    } else {
+      console.log(`Skipping GitHub release creation (unknown reason)`)
     }
   }
 }

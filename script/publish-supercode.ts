@@ -39,6 +39,10 @@ const dir = new URL("..", import.meta.url).pathname
 process.chdir(dir)
 
 if (!snapshot) {
+  // Configure git identity for CI/CD environment
+  await $`git config --global user.email "supercode@kirmadi.dev"`
+  await $`git config --global user.name "Supercode Release Bot"`
+  
   // Commit and tag
   await $`git commit -am "release: v${version}"`
   await $`git tag v${version}`
