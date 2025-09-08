@@ -149,7 +149,12 @@ export namespace Installation {
           log.error("GitHub API error", data)
           throw new Error("failed to fetch latest version")
         }
-        return data.tag_name.slice(1) as string
+        const version = data.tag_name.slice(1).trim()
+        if (version === "") {
+          log.error("Empty version from GitHub API", { tag_name: data.tag_name })
+          throw new Error("empty version received from GitHub API")
+        }
+        return version as string
       })
   }
 }

@@ -175,7 +175,7 @@ export const TuiCommand = cmd({
           const config = await Config.global()
           if (config.autoupdate === false || Flag.OPENCODE_DISABLE_AUTOUPDATE) return
           const latest = await Installation.latest().catch(() => {})
-          if (!latest) return
+          if (!latest || latest.trim() === "") return
           if (Installation.VERSION === latest) return
           const method = await Installation.method()
           if (method === "unknown") return

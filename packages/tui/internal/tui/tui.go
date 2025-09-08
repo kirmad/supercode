@@ -479,6 +479,10 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.CompletionDialogCloseMsg:
 		a.showCompletionDialog = false
 	case opencode.EventListResponseEventInstallationUpdated:
+		// Only show toast if version is not empty
+		if strings.TrimSpace(msg.Properties.Version) == "" {
+			return a, nil
+		}
 		return a, toast.NewSuccessToast(
 			"supercode updated to "+msg.Properties.Version+", restart to apply.",
 			toast.WithTitle("New version installed"),
