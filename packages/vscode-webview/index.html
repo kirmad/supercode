@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SuperCode Webview - Development</title>
+    <style>
+      /* Mock VS Code theme variables for development */
+      :root {
+        --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --vscode-font-size: 13px;
+        --vscode-foreground: #cccccc;
+        --vscode-editor-background: #1e1e1e;
+        --vscode-statusBar-background: #007acc;
+        --vscode-statusBar-foreground: #ffffff;
+        --vscode-statusBar-border: #007acc;
+        --vscode-panel-border: #2d2d30;
+        --vscode-input-background: #3c3c3c;
+        --vscode-input-foreground: #cccccc;
+        --vscode-input-border: #3c3c3c;
+        --vscode-focusBorder: #007acc;
+        --vscode-button-background: #0e639c;
+        --vscode-button-foreground: #ffffff;
+        --vscode-button-hoverBackground: #1177bb;
+        --vscode-button-secondaryBackground: #5a5d5e;
+        --vscode-button-secondaryForeground: #ffffff;
+        --vscode-editor-selectionBackground: rgba(173, 214, 255, 0.15);
+        --vscode-editor-inactiveSelectionBackground: rgba(173, 214, 255, 0.05);
+        --vscode-descriptionForeground: #9d9d9d;
+        --vscode-inputValidation-errorBackground: #5a1d1d;
+        --vscode-inputValidation-errorForeground: #f48771;
+        --vscode-inputValidation-errorBorder: #be1100;
+        --vscode-inputValidation-warningBackground: #352a05;
+        --vscode-inputValidation-warningForeground: #bf8803;
+        --vscode-inputValidation-warningBorder: #bf8803;
+        --vscode-scrollbarSlider-background: rgba(79, 79, 79, 0.4);
+        --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
+        --vscode-scrollbarSlider-activeBackground: rgba(191, 191, 191, 0.4);
+      }
+    </style>
+    <script>
+      // Mock VS Code API for development
+      window.vscode = {
+        postMessage: (message) => {
+          console.log('Mock VS Code API - postMessage:', message)
+          
+          // Simulate responses for development
+          if (message.command === 'requestStatus') {
+            setTimeout(() => {
+              window.dispatchEvent(new MessageEvent('message', {
+                data: { command: 'statusUpdate', status: 'connected', port: 8080 }
+              }))
+            }, 1000)
+          }
+          
+          if (message.command === 'sendMessage') {
+            // Simulate adding the user message
+            setTimeout(() => {
+              window.dispatchEvent(new MessageEvent('message', {
+                data: { 
+                  command: 'addMessage', 
+                  type: 'system', 
+                  content: 'Message sent to SuperCode. Processing...' 
+                }
+              }))
+            }, 500)
+            
+            // Simulate an assistant response
+            setTimeout(() => {
+              window.dispatchEvent(new MessageEvent('message', {
+                data: { 
+                  command: 'addMessage', 
+                  type: 'assistant', 
+                  content: `I received your message: "${message.text}". This is a mock response for development.` 
+                }
+              }))
+            }, 2000)
+          }
+        },
+        getState: () => null,
+        setState: (state) => console.log('Mock VS Code API - setState:', state)
+      }
+      
+      // Mock port
+      window.supercodePort = 8080
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

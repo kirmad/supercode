@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperCode</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src {{cspSource}} 'unsafe-inline';">
+    <link href="{{cssUri}}" rel="stylesheet" />
+</head>
+<body>
+    <div id="app"></div>
+    <script>
+        // VS Code API setup
+        const vscode = acquireVsCodeApi();
+        window.vscode = vscode;
+        window.supercodePort = {{port}};
+    </script>
+    <script src="{{scriptUri}}"></script>
+</body>
+</html>
