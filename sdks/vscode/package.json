@@ -55,12 +55,24 @@
       {
         "command": "supercode.addFilepathToTerminal",
         "title": "Add Filepath to Terminal"
+      },
+      {
+        "command": "supercode.openNewWebview",
+        "title": "Open SuperCode UI",
+        "icon": {
+          "light": "images/button-dark.svg",
+          "dark": "images/button-light.svg"
+        }
       }
     ],
     "menus": {
       "editor/title": [
         {
           "command": "supercode.openNewTerminal",
+          "group": "navigation"
+        },
+        {
+          "command": "supercode.openNewWebview",
           "group": "navigation"
         }
       ]
@@ -89,6 +101,14 @@
         "mac": "cmd+alt+k",
         "win": "ctrl+alt+K",
         "linux": "ctrl+alt+K"
+      },
+      {
+        "command": "supercode.openNewWebview",
+        "title": "Open SuperCode UI",
+        "key": "cmd+shift+u",
+        "mac": "cmd+shift+u",
+        "win": "ctrl+shift+U",
+        "linux": "ctrl+shift+U"
       }
     ]
   },

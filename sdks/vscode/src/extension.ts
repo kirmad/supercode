@@ -1,8 +1,11 @@
 import * as vscode from "vscode";
+import { SuperCodeWebviewManager } from "./webview/SuperCodeWebviewManager";
 
 const TERMINAL_NAME = "supercode";
 
 export function activate(context: vscode.ExtensionContext) {
+  // Initialize webview manager
+  const webviewManager = new SuperCodeWebviewManager(context);
   let openNewTerminalDisposable = vscode.commands.registerCommand("supercode.openNewTerminal", async () => {
     await openTerminal();
   });
@@ -33,7 +36,17 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(openTerminalDisposable, addFilepathDisposable);
+  // Register webview command
+  let openNewWebviewDisposable = vscode.commands.registerCommand("supercode.openNewWebview", async () => {
+    await webviewManager.openNewWebview();
+  });
+
+  context.subscriptions.push(openTerminalDisposable, openNewTerminalDisposable, addFilepathDisposable, openNewWebviewDisposable);
+
+  // Dispose webview manager on extension deactivation
+  context.subscriptions.push({
+    dispose: () => webviewManager.dispose()
+  });
 
   async function openTerminal() {
     // Create a new terminal in split screen

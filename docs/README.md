@@ -10,6 +10,10 @@ Welcome to the OpenCode documentation! This directory contains comprehensive gui
 - **[Architecture](./architecture.md)** - System architecture, data flow, and technology stack details
 - **[Development Guide](./development-guide.md)** - Comprehensive guide for developers working on OpenCode
 
+### 🎯 Feature Documentation
+
+- **[VS Code Extension Chat Interface](./feature/vscode-extension-chat/)** - Complete implementation guide for HTML-based chat interface for VS Code extensions
+
 ## Quick Navigation
 
 ### For New Contributors
