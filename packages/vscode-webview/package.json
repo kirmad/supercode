@@ -1,0 +1,27 @@
+{
+  "name": "@supercode/vscode-webview",
+  "version": "0.1.0",
+  "description": "Vite-based web interface for SuperCode VS Code extension",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:vscode": "vite build && node scripts/build-for-vscode.js",
+    "build:static": "vite build && node scripts/build-static-files.js",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}

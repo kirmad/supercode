@@ -63,6 +63,11 @@
           "light": "images/button-dark.svg",
           "dark": "images/button-light.svg"
         }
+      },
+      {
+        "command": "supercode.openStaticWebview",
+        "title": "Open SuperCode Static Interface",
+        "category": "SuperCode"
       }
     ],
     "menus": {

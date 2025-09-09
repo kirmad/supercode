@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { SuperCodeWebviewManager } from "./webview/SuperCodeWebviewManager";
+import { registerOpenStaticWebviewCommand } from "./commands/openStaticWebview";
 
 const TERMINAL_NAME = "supercode";
 
@@ -40,6 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
   let openNewWebviewDisposable = vscode.commands.registerCommand("supercode.openNewWebview", async () => {
     await webviewManager.openNewWebview();
   });
+
+  // Register static webview command (demonstrates clean static files approach)
+  registerOpenStaticWebviewCommand(context);
 
   context.subscriptions.push(openTerminalDisposable, openNewTerminalDisposable, addFilepathDisposable, openNewWebviewDisposable);
 
