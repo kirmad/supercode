@@ -10,7 +10,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:vscode": "vite build && node scripts/build-for-vscode.js",
     "build:static": "vite build && node scripts/build-static-files.js",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
