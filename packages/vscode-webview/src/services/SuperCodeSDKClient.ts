@@ -1,4 +1,4 @@
-// Use official SDK from local build
+// Use official SDK - relative import for development, switch to '@kirmad/supercode-sdk/client' when publishing
 import { SSEMessage } from '../types/SuperCodeTypes';
 
 // Type imports for SDK
@@ -35,7 +35,8 @@ export class SuperCodeSDKClient {
 
   private async initializeClient(): Promise<void> {
     try {
-      const { createOpencodeClient } = await import('@kirmad/supercode-sdk');
+      // Use relative import for development in monorepo, but structure for easy switch to published package
+      const { createOpencodeClient } = await import('../../../sdk/js/dist/client.js');
       this.client = createOpencodeClient({
         baseUrl: `http://localhost:${this.config.port}`,
       });

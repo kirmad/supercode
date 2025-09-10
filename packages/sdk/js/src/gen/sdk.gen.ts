@@ -87,6 +87,18 @@ import type {
   TuiClearPromptResponses,
   TuiExecuteCommandData,
   TuiExecuteCommandResponses,
+  TuiGetModelData,
+  TuiGetModelResponses,
+  TuiGetAgentData,
+  TuiGetAgentResponses,
+  TuiSetModelData,
+  TuiSetModelResponses,
+  TuiSetAgentData,
+  TuiSetAgentResponses,
+  TuiNotifyModelChangedData,
+  TuiNotifyModelChangedResponses,
+  TuiNotifyAgentChangedData,
+  TuiNotifyAgentChangedResponses,
   TuiShowToastData,
   TuiShowToastResponses,
   WebAppData,
@@ -617,6 +629,86 @@ class Tui extends _HeyApiClient {
   public executeCommand<ThrowOnError extends boolean = false>(options?: Options<TuiExecuteCommandData, ThrowOnError>) {
     return (options?.client ?? this._client).post<TuiExecuteCommandResponses, unknown, ThrowOnError>({
       url: "/tui/execute-command",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Get currently selected model in TUI
+   */
+  public getModel<ThrowOnError extends boolean = false>(options?: Options<TuiGetModelData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<TuiGetModelResponses, unknown, ThrowOnError>({
+      url: "/tui/get-model",
+      ...options,
+    })
+  }
+
+  /**
+   * Get currently selected agent in TUI
+   */
+  public getAgent<ThrowOnError extends boolean = false>(options?: Options<TuiGetAgentData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<TuiGetAgentResponses, unknown, ThrowOnError>({
+      url: "/tui/get-agent",
+      ...options,
+    })
+  }
+
+  /**
+   * Set current model in TUI (external control)
+   */
+  public setModel<ThrowOnError extends boolean = false>(options?: Options<TuiSetModelData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<TuiSetModelResponses, unknown, ThrowOnError>({
+      url: "/tui/set-model",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Set current agent in TUI (external control)
+   */
+  public setAgent<ThrowOnError extends boolean = false>(options?: Options<TuiSetAgentData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<TuiSetAgentResponses, unknown, ThrowOnError>({
+      url: "/tui/set-agent",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Internal API: TUI notifies server that model has changed
+   */
+  public notifyModelChanged<ThrowOnError extends boolean = false>(
+    options?: Options<TuiNotifyModelChangedData, ThrowOnError>,
+  ) {
+    return (options?.client ?? this._client).post<TuiNotifyModelChangedResponses, unknown, ThrowOnError>({
+      url: "/tui/notify-model-changed",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Internal API: TUI notifies server that agent has changed
+   */
+  public notifyAgentChanged<ThrowOnError extends boolean = false>(
+    options?: Options<TuiNotifyAgentChangedData, ThrowOnError>,
+  ) {
+    return (options?.client ?? this._client).post<TuiNotifyAgentChangedResponses, unknown, ThrowOnError>({
+      url: "/tui/notify-agent-changed",
       ...options,
       headers: {
         "Content-Type": "application/json",

@@ -56,6 +56,12 @@ export type Event =
   | ({
       type: "server.connected"
     } & EventServerConnected)
+  | ({
+      type: "tui.model.changed"
+    } & EventTuiModelChanged)
+  | ({
+      type: "tui.agent.changed"
+    } & EventTuiAgentChanged)
 
 export type EventInstallationUpdated = {
   type: "installation.updated"
@@ -620,6 +626,24 @@ export type EventServerConnected = {
   type: "server.connected"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventTuiModelChanged = {
+  type: "tui.model.changed"
+  properties: {
+    providerID: string
+    modelID: string
+    providerName?: string
+    modelName?: string
+  }
+}
+
+export type EventTuiAgentChanged = {
+  type: "tui.agent.changed"
+  properties: {
+    agentName: string
+    displayName?: string
   }
 }
 
@@ -2235,6 +2259,135 @@ export type TuiExecuteCommandResponses = {
 }
 
 export type TuiExecuteCommandResponse = TuiExecuteCommandResponses[keyof TuiExecuteCommandResponses]
+
+export type TuiGetModelData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/get-model"
+}
+
+export type TuiGetModelResponses = {
+  /**
+   * Current model information
+   */
+  200: {
+    providerID: string
+    modelID: string
+    providerName?: string
+    modelName?: string
+  }
+}
+
+export type TuiGetModelResponse = TuiGetModelResponses[keyof TuiGetModelResponses]
+
+export type TuiGetAgentData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/get-agent"
+}
+
+export type TuiGetAgentResponses = {
+  /**
+   * Current agent information
+   */
+  200: {
+    agentName: string
+    displayName?: string
+  }
+}
+
+export type TuiGetAgentResponse = TuiGetAgentResponses[keyof TuiGetAgentResponses]
+
+export type TuiSetModelData = {
+  body?: {
+    providerID: string
+    modelID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/set-model"
+}
+
+export type TuiSetModelResponses = {
+  /**
+   * Model set command sent to TUI
+   */
+  200: boolean
+}
+
+export type TuiSetModelResponse = TuiSetModelResponses[keyof TuiSetModelResponses]
+
+export type TuiSetAgentData = {
+  body?: {
+    agentName: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/set-agent"
+}
+
+export type TuiSetAgentResponses = {
+  /**
+   * Agent set command sent to TUI
+   */
+  200: boolean
+}
+
+export type TuiSetAgentResponse = TuiSetAgentResponses[keyof TuiSetAgentResponses]
+
+export type TuiNotifyModelChangedData = {
+  body?: {
+    providerID: string
+    modelID: string
+    providerName?: string
+    modelName?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/notify-model-changed"
+}
+
+export type TuiNotifyModelChangedResponses = {
+  /**
+   * Model change notification processed
+   */
+  200: boolean
+}
+
+export type TuiNotifyModelChangedResponse = TuiNotifyModelChangedResponses[keyof TuiNotifyModelChangedResponses]
+
+export type TuiNotifyAgentChangedData = {
+  body?: {
+    agentName: string
+    displayName?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/notify-agent-changed"
+}
+
+export type TuiNotifyAgentChangedResponses = {
+  /**
+   * Agent change notification processed
+   */
+  200: boolean
+}
+
+export type TuiNotifyAgentChangedResponse = TuiNotifyAgentChangedResponses[keyof TuiNotifyAgentChangedResponses]
 
 export type TuiShowToastData = {
   body?: {

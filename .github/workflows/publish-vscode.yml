@@ -50,10 +50,21 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${{ env.VERSION }}\"/" package.json
           fi
-          
-          # Install dependencies
-          bun install
         working-directory: ./sdks/vscode
+
+      - name: Install dependencies and build SDK
+        run: |
+          # Install dependencies in root (includes workspace linking)
+          bun install
+          
+          # Build the SDK package (required for VSCode extension)
+          cd packages/sdk/js
+          bun run build
+          cd -
+          
+          # Install VSCode extension dependencies  
+          cd sdks/vscode
+          bun install
 
       - name: Publish Extension
         run: |

@@ -4,7 +4,9 @@
   "version": "0.6.36",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "exports": {
     ".": {
