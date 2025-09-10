@@ -35,7 +35,8 @@ export class SuperCodeSDKClient {
 
   private async initializeClient(): Promise<void> {
     try {
-      const { createOpencodeClient } = await import('@kirmad/supercode-sdk');
+      // TODO: Use @kirmad/supercode-sdk once exports are fixed
+      const { createOpencodeClient } = await import('../../../../packages/sdk/js/dist/client.js');
       this.client = createOpencodeClient({
         baseUrl: `http://localhost:${this.config.port}`,
       });
