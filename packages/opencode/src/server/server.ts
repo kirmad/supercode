@@ -69,7 +69,19 @@ export namespace Server {
   
   // Enable CORS for browser integration
   app.use('*', cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:3000'],
+    origin: (origin) => {
+      // Allow localhost origins for development
+      const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:3000']
+      if (allowedOrigins.includes(origin)) return origin
+      
+      // Allow VSCode webview origins
+      if (origin?.startsWith('vscode-webview://')) return origin
+      
+      // Allow null origin for local development
+      if (origin === null || origin === undefined) return true
+      
+      return false
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Accept', 'Authorization'],
     credentials: true

@@ -1,12 +1,9 @@
 import * as vscode from "vscode";
-import { SuperCodeWebviewManager } from "./webview/SuperCodeWebviewManager";
 import { registerOpenStaticWebviewCommand } from "./commands/openStaticWebview";
 
 const TERMINAL_NAME = "supercode";
 
 export function activate(context: vscode.ExtensionContext) {
-  // Initialize webview manager
-  const webviewManager = new SuperCodeWebviewManager(context);
   let openNewTerminalDisposable = vscode.commands.registerCommand("supercode.openNewTerminal", async () => {
     await openTerminal();
   });
@@ -37,20 +34,10 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Register webview command
-  let openNewWebviewDisposable = vscode.commands.registerCommand("supercode.openNewWebview", async () => {
-    await webviewManager.openNewWebview();
-  });
-
   // Register static webview command (demonstrates clean static files approach)
   registerOpenStaticWebviewCommand(context);
 
-  context.subscriptions.push(openTerminalDisposable, openNewTerminalDisposable, addFilepathDisposable, openNewWebviewDisposable);
-
-  // Dispose webview manager on extension deactivation
-  context.subscriptions.push({
-    dispose: () => webviewManager.dispose()
-  });
+  context.subscriptions.push(openTerminalDisposable, openNewTerminalDisposable, addFilepathDisposable);
 
   async function openTerminal() {
     // Create a new terminal in split screen

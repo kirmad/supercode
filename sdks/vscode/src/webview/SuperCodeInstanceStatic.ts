@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { StaticWebviewManager } from './StaticWebviewManager';
-import { ConnectionStatus } from './SuperCodeInstance';
+import { ConnectionStatus } from './ConnectionStatus';
 
 /**
  * SuperCode instance that uses static files approach (HTML + CSS + JS files)
@@ -13,13 +13,17 @@ export class SuperCodeInstanceStatic {
   private process: ChildProcess | undefined;
   private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   private healthCheckInterval: NodeJS.Timeout | undefined;
+  private connectToExisting: boolean = false;
 
   constructor(
     private instanceId: string,
     private port: number,
     private context: vscode.ExtensionContext,
-    private onDispose: () => void
-  ) {}
+    private onDispose: () => void,
+    connectToExisting: boolean = false
+  ) {
+    this.connectToExisting = connectToExisting;
+  }
 
   /**
    * Initializes the SuperCode instance with static file webview content
@@ -29,13 +33,21 @@ export class SuperCodeInstanceStatic {
       console.log(`[SuperCode-Static-${this.getShortId()}] Initializing instance on port ${this.port}`);
       
       this.createWebviewPanel();
-      this.sendMessageToWebview('system', `🚀 Launching SuperCode with static files on port ${this.port}...`);
       
-      await this.spawnSuperCodeProcess();
-      this.sendMessageToWebview('system', '✅ Process started, establishing connection...');
-      
-      await this.establishConnection();
-      this.sendMessageToWebview('system', '🎉 Connected! SuperCode is ready.');
+      if (this.connectToExisting) {
+        this.sendMessageToWebview('system', `🔗 Connecting to existing SuperCode instance on port ${this.port}...`);
+        
+        await this.establishConnection();
+        this.sendMessageToWebview('system', '🎉 Connected to existing SuperCode instance!');
+      } else {
+        this.sendMessageToWebview('system', `🚀 Launching SuperCode with static files on port ${this.port}...`);
+        
+        await this.spawnSuperCodeProcess();
+        this.sendMessageToWebview('system', '✅ Process started, establishing connection...');
+        
+        await this.establishConnection();
+        this.sendMessageToWebview('system', '🎉 Connected! SuperCode is ready.');
+      }
       
       this.startHealthCheck();
       console.log(`[SuperCode-Static-${this.getShortId()}] Static interface initialization complete`);
@@ -45,7 +57,8 @@ export class SuperCodeInstanceStatic {
       this.setConnectionStatus(ConnectionStatus.ERROR);
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.sendMessageToWebview('error', `Failed to start SuperCode: ${errorMessage}`);
+      const action = this.connectToExisting ? 'connect to' : 'start';
+      this.sendMessageToWebview('error', `Failed to ${action} SuperCode: ${errorMessage}`);
     }
   }
 
@@ -558,4 +571,4 @@ export class SuperCodeInstanceStatic {
 }
 
 // Re-export the ConnectionStatus enum for convenience
-export { ConnectionStatus } from './SuperCodeInstance';
+export { ConnectionStatus } from './ConnectionStatus';

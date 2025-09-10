@@ -91,13 +91,11 @@
           v-model="inputText"
           @keyup.enter="sendMessage"
           :disabled="!isConnected"
-          placeholder="Type your message... (Ctrl+T for test todos)"
+          placeholder="Type your message..."
           class="input-field"
           ref="inputField"
         >
       </div>
-      <!-- Debug button for testing -->
-      <button @click="addTestTodos" class="debug-btn" title="Add test todos">📋 Test</button>
     </div>
   </div>
 </template>
@@ -751,60 +749,79 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
   }
 }
 
-// Add test todos for debugging - remove this in production
-function addTestTodos() {
-  todos.value = [
-    { id: 'test1', content: 'Test todo item 1', status: 'pending', activeForm: 'Testing first item' },
-    { id: 'test2', content: 'Test todo item 2', status: 'in_progress', activeForm: 'Working on second item' },
-    { id: 'test3', content: 'Test todo item 3', status: 'completed', activeForm: 'Completed third item' },
-  ]
-  console.log('📋 Added test todos')
-}
 
 // SDK Client functions
 async function initializeSDKClient() {
-  try {
-    console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
-    connectionStatus.value = 'connecting'
-    
-    // Initialize SDK client
-    sdkClient = new SuperCodeSDKClient({
-      baseUrl: `http://localhost:${currentPort.value}`,
-      port: currentPort.value,
-      timeout: 10000
-    })
-    
-    console.log('📞 Testing connection to SuperCode server...')
-    // Test connection
-    const isConnected = await sdkClient.testConnection()
-    console.log(`🔗 Connection test result: ${isConnected}`)
-    
-    if (isConnected) {
-      connectionStatus.value = 'connected'
-      console.log('✅ SDK client connected successfully')
+  console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
+  connectionStatus.value = 'connecting'
+  
+  // Initialize SDK client
+  sdkClient = new SuperCodeSDKClient({
+    baseUrl: `http://localhost:${currentPort.value}`,
+    port: currentPort.value,
+    timeout: 5000
+  })
+  
+  // Implement polling mechanism with exponential backoff
+  await pollForConnection()
+}
+
+async function pollForConnection() {
+  const maxRetries = 10
+  const baseDelay = 1000 // Start with 1 second
+  const maxDelay = 10000 // Max 10 seconds between retries
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📞 Testing connection to SuperCode server (attempt ${attempt}/${maxRetries})...`)
       
-      // Subscribe to SSE events
-      console.log('📡 Subscribing to SSE events...')
-      await sdkClient.subscribeToEvents()
+      if (!sdkClient) {
+        console.error('❌ SDK client not initialized')
+        connectionStatus.value = 'error'
+        return
+      }
       
-      // Set up message handlers
-      sdkClient.onMessage(handleSSEMessage)
-      sdkClient.onError(handleSSEError)
+      const isConnected = await sdkClient.testConnection()
       
-      // Fetch current model information and token usage
-      console.log('📋 Fetching model info and token usage...')
-      await fetchModelInfo()
-      await fetchTokenUsage()
+      console.log(`🔗 Connection test result: ${isConnected}`)
       
-    } else {
-      connectionStatus.value = 'error'
-      console.error('❌ SDK client connection failed')
+      if (isConnected) {
+        connectionStatus.value = 'connected'
+        console.log('✅ SDK client connected successfully')
+        
+        // Subscribe to SSE events
+        console.log('📡 Subscribing to SSE events...')
+        await sdkClient.subscribeToEvents()
+        
+        // Set up message handlers
+        sdkClient.onMessage(handleSSEMessage)
+        sdkClient.onError(handleSSEError)
+        
+        // Fetch current model information and token usage
+        console.log('📋 Fetching model info and token usage...')
+        await fetchModelInfo()
+        await fetchTokenUsage()
+        
+        return // Success - exit polling loop
+      }
+      
+    } catch (error) {
+      console.log(`⚠️ Connection attempt ${attempt} failed:`, error.message)
     }
-  } catch (error) {
-    connectionStatus.value = 'error'
-    console.error('💥 Failed to initialize SDK client:', error)
-    addMessage('system', `Connection error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    
+    // If this wasn't the last attempt, wait before retrying
+    if (attempt < maxRetries) {
+      const delay = Math.min(baseDelay * Math.pow(1.5, attempt - 1), maxDelay)
+      console.log(`⏳ Waiting ${delay}ms before retry...`)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
   }
+  
+  // All attempts failed
+  connectionStatus.value = 'error'
+  console.error('❌ SDK client connection failed after all attempts.')
+  console.log('💡 Make sure SuperCode server is running and accessible on port', currentPort.value)
+  addMessage('system', `Connection failed: SuperCode server not responding on port ${currentPort.value}`)
 }
 
 function handleSSEMessage(message: SSEMessage) {
@@ -1110,23 +1127,26 @@ function handleSSEError(error: Error) {
   addMessage('system', `Connection error: ${error.message}`)
 }
 
-// VS Code message handling (fallback for VS Code integration)
+// VS Code message handling (minimal glue code for VSCode-specific communication)
 function handleVsCodeMessage(event: MessageEvent) {
   const message = event.data as WebviewMessage
   
   switch (message.command) {
     case 'statusUpdate': {
+      // Optional: Allow VSCode extension to override port if needed
       const statusMsg = message as StatusUpdate
-      connectionStatus.value = statusMsg.status
-      currentPort.value = statusMsg.port
+      if (statusMsg.port && statusMsg.port !== currentPort.value) {
+        console.log('VSCode provided port override:', statusMsg.port)
+        currentPort.value = statusMsg.port
+        // Reinitialize SDK client with new port if needed
+        initializeSDKClient()
+      }
       break
     }
     
-    case 'addMessage': {
-      const msgData = message as AddMessage
-      addMessage(msgData.type, msgData.content)
-      break
-    }
+    // Remove addMessage case - all messages now come through SDK
+    default:
+      console.log('VSCode message (ignored, using SDK):', message.command)
   }
 }
 
@@ -1157,15 +1177,15 @@ onMounted(async () => {
       currentPort.value = window.supercodePort
     }
     
-    // If running in VS Code, use VS Code API
+    // Always initialize SDK client for full functionality
     if (window.vscode) {
-      console.log('🔍 Detected VS Code environment, using VS Code API')
-      window.vscode.postMessage({ command: 'requestStatus' })
+      console.log('🔍 Detected VS Code environment, using SuperCode SDK with VS Code integration')
     } else {
-      // Standalone mode - initialize SDK client
-      console.log('🔍 Detected standalone mode, initializing SuperCode SDK client...')
-      await initializeSDKClient()
+      console.log('🔍 Detected standalone mode, using SuperCode SDK')
     }
+    
+    // Initialize SDK client in both modes
+    await initializeSDKClient()
     
     // Always ensure model info is set (indicate unavailable if dynamic fetch fails)
     if (!modelInfo.value) {
@@ -1189,18 +1209,6 @@ onMounted(async () => {
       inputField.value?.focus()
     })
     
-    // Add keyboard shortcut for testing todos - Ctrl+T
-    window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key === 't') {
-        e.preventDefault()
-        if (todos.value.length === 0) {
-          addTestTodos()
-        } else {
-          todos.value = []
-          console.log('📋 Cleared todos')
-        }
-      }
-    })
   }
 })
 
@@ -1696,26 +1704,6 @@ onUnmounted(() => {
   background: #444;
 }
 
-/* Debug button */
-.debug-btn {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #333;
-  border: 1px solid #4fc3f7;
-  color: #4fc3f7;
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-}
-
-.debug-btn:hover {
-  background: #4fc3f7;
-  color: #1a1a1a;
-}
 
 .input-area {
   position: relative;

@@ -5,12 +5,12 @@ let staticInstances = new Map<string, SuperCodeInstanceStatic>();
 let usedPorts = new Set<number>();
 
 /**
- * Command to open a new SuperCode webview using static files approach
+ * Commands to open SuperCode webviews using static files approach
  * This demonstrates hosting HTML, CSS, and JS as separate files (best practice!)
  */
 export function registerOpenStaticWebviewCommand(context: vscode.ExtensionContext) {
-  // Register the command
-  const command = vscode.commands.registerCommand('supercode.openStaticWebview', async () => {
+  // Register the static webview command
+  const staticCommand = vscode.commands.registerCommand('supercode.openStaticWebview', async () => {
     try {
       const instanceId = generateInstanceId();
       const port = allocatePort();
@@ -50,7 +50,56 @@ export function registerOpenStaticWebviewCommand(context: vscode.ExtensionContex
     }
   });
 
-  context.subscriptions.push(command);
+  // Register the connect to existing command
+  const connectCommand = vscode.commands.registerCommand('supercode.connectToExisting', async () => {
+    try {
+      // Prompt user for port number
+      const portString = await vscode.window.showInputBox({
+        prompt: 'Enter the port number of the existing SuperCode instance',
+        placeHolder: 'e.g., 25716',
+        validateInput: (value: string) => {
+          const port = parseInt(value);
+          if (isNaN(port) || port < 1024 || port > 65535) {
+            return 'Please enter a valid port number (1024-65535)';
+          }
+          if (usedPorts.has(port)) {
+            return 'This port is already being used by another webview instance';
+          }
+          return null;
+        }
+      });
+
+      if (!portString) {
+        return; // User cancelled
+      }
+
+      const port = parseInt(portString);
+      
+      try {
+        const instanceId = generateInstanceId();
+        
+        const instance = new SuperCodeInstanceStatic(
+          instanceId,
+          port,
+          context,
+          () => onInstanceDisposed(instanceId),
+          true // Connect to existing instance instead of spawning new process
+        );
+        
+        staticInstances.set(instanceId, instance);
+        usedPorts.add(port);
+        
+        await instance.initialize();
+        
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to connect to SuperCode instance on port ${port}: ${error}`);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to connect to SuperCode instance: ${error}`);
+    }
+  });
+
+  context.subscriptions.push(staticCommand, connectCommand);
 
   // Clean up on extension deactivation
   context.subscriptions.push({
