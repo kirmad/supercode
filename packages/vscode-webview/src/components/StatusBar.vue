@@ -1,17 +1,23 @@
 <template>
   <div class="status-bar">
-    <span class="connection-status">{{ statusConfig.dot }}</span>
-    <span class="status-text">{{ statusConfig.text }}</span>
+    <div class="status-line">
+      <span class="connection-status">{{ statusConfig.dot }}</span>
+      <span class="status-text">{{ statusConfig.text }}</span>
+    </div>
+    <div v-if="modelInfo" class="model-info">
+      {{ modelInfo.name }} ({{ modelInfo.provider }})
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ConnectionStatus, StatusConfig } from '../types'
+import type { ConnectionStatus, StatusConfig, ModelInfo } from '../types'
 
 interface Props {
   status: ConnectionStatus
   port: number
+  modelInfo?: ModelInfo
 }
 
 const props = defineProps<Props>()
@@ -35,6 +41,12 @@ const statusConfig = computed((): StatusConfig => {
   color: var(--vscode-statusBar-foreground);
   border-bottom: 1px solid var(--vscode-statusBar-border);
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-line {
+  display: flex;
   align-items: center;
   gap: 8px;
 }
@@ -45,5 +57,13 @@ const statusConfig = computed((): StatusConfig => {
 
 .status-text {
   font-size: 12px;
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+}
+
+.model-info {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+  opacity: 0.8;
 }
 </style>

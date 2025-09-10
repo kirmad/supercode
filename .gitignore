@@ -27,3 +27,8 @@ packages/tui/test-tui
 .trash/
 .serena/cache/**/*.pkl
 **/logs/*.log
+sdks/vscode/.vscode-test/*
+sdks/vscode/out/*
+packages/vscode-webview/dist/*
+packages/vscode-webview/vscode-output/*
+packages/vscode-webview/vscode-static/*

@@ -64,8 +64,17 @@ export class SuperCodeWebviewManager {
 
   /**
    * Allocates an available port for a new SuperCode instance
+   * Currently configured to use port 25716 for testing
    */
   private allocatePort(): number {
+    // Use specific port 25716 for testing with hosted SuperCode server
+    const testPort = 25716;
+    
+    if (!this.usedPorts.has(testPort)) {
+      return testPort;
+    }
+
+    // Fallback to random port if 25716 is in use
     const minPort = 16384;
     const maxPort = 65535;
     let attempts = 0;

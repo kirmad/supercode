@@ -16,7 +16,8 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.0",
+    "@kirmad/supercode-sdk": "latest"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",

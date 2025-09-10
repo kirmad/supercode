@@ -1,8 +1,21 @@
 export interface Message {
   id: string
-  type: 'user' | 'assistant' | 'error' | 'system'
+  type: 'user' | 'assistant' | 'error' | 'system' | 'tool_call' | 'tool_result'
   content: string
   timestamp: number
+  tokens?: number
+}
+
+export interface ModelInfo {
+  name: string
+  provider: string
+  version?: string
+}
+
+export interface TokenUsage {
+  used: number
+  max: number
+  percentage?: number
 }
 
 export interface VsCodeApi {

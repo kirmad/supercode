@@ -2,6 +2,7 @@ import { Log } from "../util/log"
 import { Bus } from "../bus"
 import { describeRoute, generateSpecs, openAPISpecs } from "hono-openapi"
 import { Hono } from "hono"
+import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { Session } from "../session"
 import { resolver, validator as zValidator } from "hono-openapi/zod"
@@ -52,9 +53,28 @@ export namespace Server {
 
   export const Event = {
     Connected: Bus.event("server.connected", z.object({})),
+    ModelChanged: Bus.event("tui.model.changed", z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+      providerName: z.string().optional(),
+      modelName: z.string().optional(),
+    })),
+    AgentChanged: Bus.event("tui.agent.changed", z.object({
+      agentName: z.string(),
+      displayName: z.string().optional(),
+    })),
   }
 
   const app = new Hono()
+  
+  // Enable CORS for browser integration
+  app.use('*', cors({
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:3000'],
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Accept', 'Authorization'],
+    credentials: true
+  }))
+  
   export const App = app
     .onError((err, c) => {
       log.error("failed", {
@@ -1243,6 +1263,209 @@ export namespace Server {
         }),
       ),
       async (c) => c.json(await callTui(c)),
+    )
+    .get(
+      "/tui/get-model",
+      describeRoute({
+        description: "Get currently selected model in TUI",
+        operationId: "tui.getModel",
+        responses: {
+          200: {
+            description: "Current model information",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    providerID: z.string(),
+                    modelID: z.string(),
+                    providerName: z.string().optional(),
+                    modelName: z.string().optional(),
+                  }).optional(),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        // Call TUI to get current model
+        const result = await callTui(c)
+        return c.json(result)
+      },
+    )
+    .get(
+      "/tui/get-agent",
+      describeRoute({
+        description: "Get currently selected agent in TUI",
+        operationId: "tui.getAgent",
+        responses: {
+          200: {
+            description: "Current agent information",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    agentName: z.string(),
+                    displayName: z.string().optional(),
+                  }).optional(),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        // Call TUI to get current agent
+        const result = await callTui(c)
+        return c.json(result)
+      },
+    )
+    .post(
+      "/tui/set-model",
+      describeRoute({
+        description: "Set current model in TUI (external control)",
+        operationId: "tui.setModel",
+        responses: {
+          200: {
+            description: "Model set command sent to TUI",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+        }),
+      ),
+      async (c) => {
+        // Send command to TUI to change model
+        // This will trigger TUI to update its model and call notify-model-changed
+        const result = await callTui(c)
+        return c.json(result)
+      },
+    )
+    .post(
+      "/tui/set-agent",
+      describeRoute({
+        description: "Set current agent in TUI (external control)",
+        operationId: "tui.setAgent",
+        responses: {
+          200: {
+            description: "Agent set command sent to TUI",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          agentName: z.string(),
+        }),
+      ),
+      async (c) => {
+        // Send command to TUI to change agent  
+        // This will trigger TUI to update its agent and call notify-agent-changed
+        const result = await callTui(c)
+        return c.json(result)
+      },
+    )
+    .post(
+      "/tui/notify-model-changed",
+      describeRoute({
+        description: "Internal API: TUI notifies server that model has changed",
+        operationId: "tui.notifyModelChanged",
+        responses: {
+          200: {
+            description: "Model change notification processed",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+          providerName: z.string().optional(),
+          modelName: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        
+        // Update server's understanding of current model
+        const currentSelection = Instance.state(() => ({
+          model: undefined as { providerID: string; modelID: string; providerName?: string; modelName?: string } | undefined,
+        }))()
+        
+        currentSelection.model = {
+          providerID: body.providerID,
+          modelID: body.modelID,
+          providerName: body.providerName,
+          modelName: body.modelName,
+        }
+        
+        // Emit model changed event for external listeners
+        await Bus.publish(Server.Event.ModelChanged, body)
+        
+        return c.json(true)
+      },
+    )
+    .post(
+      "/tui/notify-agent-changed",
+      describeRoute({
+        description: "Internal API: TUI notifies server that agent has changed",
+        operationId: "tui.notifyAgentChanged",
+        responses: {
+          200: {
+            description: "Agent change notification processed",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          agentName: z.string(),
+          displayName: z.string().optional(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        
+        // Update server's understanding of current agent
+        const currentSelection = Instance.state(() => ({
+          agent: undefined as { agentName: string; displayName?: string } | undefined,
+        }))()
+        
+        currentSelection.agent = {
+          agentName: body.agentName,
+          displayName: body.displayName,
+        }
+        
+        // Emit agent changed event for external listeners
+        await Bus.publish(Server.Event.AgentChanged, body)
+        
+        return c.json(true)
+      },
     )
     .post(
       "/tui/show-toast",

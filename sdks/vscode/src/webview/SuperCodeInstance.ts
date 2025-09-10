@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import { SuperCodeSDKClient, SuperCodeSDKClientConfig } from '../services/SuperCodeSDKClient';
+import { Message, ToolCall, SSEMessage } from '../types/SuperCodeTypes';
 
 export enum ConnectionStatus {
   DISCONNECTED = 'disconnected',
@@ -8,6 +10,7 @@ export enum ConnectionStatus {
   CONNECTED = 'connected',
   ERROR = 'error'
 }
+
 
 /**
  * Represents a single SuperCode instance with webview panel
@@ -17,13 +20,27 @@ export class SuperCodeInstance {
   private process: ChildProcess | undefined;
   private connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED;
   private healthCheckInterval: NodeJS.Timeout | undefined;
+  private sdkClient: SuperCodeSDKClient;
+  private messages: Message[] = [];
+  private toolCalls: Map<string, ToolCall> = new Map();
+  private currentSessionId: string | undefined;
 
   constructor(
     private instanceId: string,
     private port: number,
     private context: vscode.ExtensionContext,
     private onDispose: () => void
-  ) {}
+  ) {
+    // Initialize SDK client
+    const sdkConfig: SuperCodeSDKClientConfig = {
+      baseUrl: `http://localhost:${this.port}`,
+      port: this.port,
+      timeout: 10000
+    };
+    
+    this.sdkClient = new SuperCodeSDKClient(sdkConfig);
+    this.setupSSEHandlers();
+  }
 
   /**
    * Initializes the SuperCode instance by creating webview and spawning process
@@ -33,13 +50,18 @@ export class SuperCodeInstance {
       console.log(`[SuperCode-${this.getShortId()}] Initializing instance on port ${this.port}`);
       
       this.createWebviewPanel();
-      this.sendMessageToWebview('system', `🚀 Launching SuperCode on port ${this.port}...`);
+      this.sendLegacyMessageToWebview('system', `🚀 Connecting to SuperCode server on port ${this.port}...`);
       
-      await this.spawnSuperCodeProcess();
-      this.sendMessageToWebview('system', '✅ Process started, establishing connection...');
+      // Skip spawning process for testing - connect to existing server on port 25716
+      if (this.port === 25716) {
+        this.sendLegacyMessageToWebview('system', '✅ Connecting to hosted SuperCode server...');
+      } else {
+        await this.spawnSuperCodeProcess();
+        this.sendLegacyMessageToWebview('system', '✅ Process started, establishing connection...');
+      }
       
       await this.establishConnection();
-      this.sendMessageToWebview('system', '🎉 Connected! SuperCode is ready.');
+      this.sendLegacyMessageToWebview('system', '🎉 Connected! SuperCode is ready.');
       
       this.startHealthCheck();
       console.log(`[SuperCode-${this.getShortId()}] Initialization complete`);
@@ -79,6 +101,11 @@ export class SuperCodeInstance {
   public dispose(): void {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
+    }
+
+    if (this.sdkClient.isEventStreamConnected()) {
+      console.log(`[SuperCode-${this.getShortId()}] Closing SSE connection`);
+      this.sdkClient.unsubscribeFromEvents();
     }
 
     if (this.process && !this.process.killed) {
@@ -220,7 +247,6 @@ export class SuperCodeInstance {
       let hasResolved = false;
       let stdout = '';
       let stderr = '';
-      let serverStarted = false;
       let serverPort: number | null = null;
 
       // Handle process events
@@ -268,7 +294,6 @@ export class SuperCodeInstance {
           
           // Check for server startup indicators
           if (output.includes('server listening') || output.includes('listening on') || output.includes(`port ${this.port}`)) {
-            serverStarted = true;
             console.log(`[SuperCode-${this.getShortId()}] Server startup detected in output`);
           }
           
@@ -335,7 +360,10 @@ export class SuperCodeInstance {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         console.log(`[SuperCode-${this.getShortId()}] Connection attempt ${attempt}/${maxAttempts}`);
-        await this.checkHealth();
+        const isConnected = await this.sdkClient.testConnection();
+        if (!isConnected) {
+          throw new Error('Failed to connect to SuperCode');
+        }
         connected = true;
         console.log(`[SuperCode-${this.getShortId()}] Successfully connected on attempt ${attempt}`);
         break;
@@ -353,15 +381,175 @@ export class SuperCodeInstance {
     
     this.setConnectionStatus(ConnectionStatus.CONNECTED);
     
-    // Send initial file context if available
-    const activeFile = this.getActiveFile();
-    if (activeFile) {
-      try {
-        await this.appendPrompt(`In ${activeFile}`);
-      } catch (error) {
-        console.log(`[SuperCode-${this.getShortId()}] Failed to send initial context:`, error);
-        // Don't fail the connection for this
-      }
+    // Establish SSE connection for real-time updates
+    await this.sdkClient.subscribeToEvents();
+    
+    // Create or get current session
+    if (!this.currentSessionId) {
+      await this.createSession();
+    }
+  }
+
+  /**
+   * Sets up SSE event handlers
+   */
+  private setupSSEHandlers(): void {
+    this.sdkClient.onMessage((message: SSEMessage) => {
+      this.handleSSEMessage(message);
+    });
+    
+    this.sdkClient.onOpen(() => {
+      console.log(`[SuperCode-${this.getShortId()}] SSE connection established`);
+    });
+    
+    this.sdkClient.onError((error) => {
+      console.error(`[SuperCode-${this.getShortId()}] SSE connection error:`, error);
+    });
+  }
+
+  /**
+   * Handles incoming SSE messages
+   */
+  private handleSSEMessage(message: SSEMessage): void {
+    console.log(`[SuperCode-${this.getShortId()}] SSE message:`, message.type, message);
+
+    switch (message.type) {
+      case 'message_start':
+        this.handleMessageStart(message.data);
+        break;
+      
+      case 'message_delta':
+        this.handleMessageDelta(message.data);
+        break;
+      
+      case 'message_end':
+        this.handleMessageEnd(message.data);
+        break;
+      
+      case 'tool_call_start':
+        this.handleToolCallStart(message.data);
+        break;
+      
+      case 'tool_call_result':
+        this.handleToolCallResult(message.data);
+        break;
+      
+      case 'tool_call_metadata':
+        this.handleToolCallMetadata(message.data);
+        break;
+      
+      case 'session_created':
+        this.currentSessionId = message.data.id;
+        console.log(`[SuperCode-${this.getShortId()}] Session created:`, this.currentSessionId);
+        break;
+      
+      default:
+        console.warn(`[SuperCode-${this.getShortId()}] Unknown SSE message type:`, message.type);
+    }
+  }
+
+  /**
+   * Handles message start events
+   */
+  private handleMessageStart(data: any): void {
+    const message: Message = {
+      id: data.id,
+      role: data.role || 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      streaming: true
+    };
+
+    this.messages.push(message);
+    this.sendMessageToWebview('addMessage', { message });
+  }
+
+  /**
+   * Handles message delta events (streaming content updates)
+   */
+  private handleMessageDelta(data: any): void {
+    const messageIndex = this.messages.findIndex(m => m.id === data.id);
+    if (messageIndex !== -1) {
+      this.messages[messageIndex].content += data.content || '';
+      this.sendMessageToWebview('updateMessage', { 
+        id: data.id, 
+        content: this.messages[messageIndex].content 
+      });
+    }
+  }
+
+  /**
+   * Handles message end events
+   */
+  private handleMessageEnd(data: any): void {
+    const messageIndex = this.messages.findIndex(m => m.id === data.id);
+    if (messageIndex !== -1) {
+      this.messages[messageIndex].streaming = false;
+      this.messages[messageIndex].content = data.content || this.messages[messageIndex].content;
+      this.sendMessageToWebview('messageComplete', { 
+        id: data.id, 
+        content: this.messages[messageIndex].content 
+      });
+    }
+  }
+
+  /**
+   * Handles tool call start events
+   */
+  private handleToolCallStart(data: any): void {
+    const toolCall: ToolCall = {
+      id: data.id,
+      name: data.name,
+      parameters: data.parameters,
+      state: 'running',
+      start_time: Date.now(),
+      expanded: false
+    };
+
+    this.toolCalls.set(data.id, toolCall);
+    this.sendMessageToWebview('addToolCall', { toolCall });
+  }
+
+  /**
+   * Handles tool call result events
+   */
+  private handleToolCallResult(data: any): void {
+    const toolCall = this.toolCalls.get(data.id);
+    if (toolCall) {
+      toolCall.state = data.error ? 'error' : 'completed';
+      toolCall.result = data.result;
+      toolCall.error = data.error;
+      toolCall.end_time = Date.now();
+
+      this.toolCalls.set(data.id, toolCall);
+      this.sendMessageToWebview('updateToolCall', { toolCall });
+    }
+  }
+
+  /**
+   * Handles tool call metadata updates (streaming tool execution)
+   */
+  private handleToolCallMetadata(data: any): void {
+    const toolCall = this.toolCalls.get(data.id);
+    if (toolCall) {
+      toolCall.metadata = { ...toolCall.metadata, ...data.metadata };
+      this.toolCalls.set(data.id, toolCall);
+      this.sendMessageToWebview('updateToolCall', { toolCall });
+    }
+  }
+
+  /**
+   * Creates a new session
+   */
+  private async createSession(): Promise<void> {
+    try {
+      const session = await this.sdkClient.createSession(`VSCode Session ${new Date().toLocaleTimeString()}`);
+      const sessionData = session as any;
+      this.currentSessionId = sessionData.data?.id || sessionData.id;
+      console.log(`[SuperCode-${this.getShortId()}] Created session:`, this.currentSessionId);
+      
+    } catch (error) {
+      console.error(`[SuperCode-${this.getShortId()}] Failed to create session:`, error);
     }
   }
 
@@ -371,9 +559,11 @@ export class SuperCodeInstance {
   private startHealthCheck(): void {
     this.healthCheckInterval = setInterval(async () => {
       try {
-        await this.checkHealth();
-        if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
+        const connected = await this.sdkClient.testConnection();
+        if (connected && this.connectionStatus !== ConnectionStatus.CONNECTED) {
           this.setConnectionStatus(ConnectionStatus.CONNECTED);
+        } else if (!connected) {
+          this.setConnectionStatus(ConnectionStatus.ERROR);
         }
       } catch (error) {
         this.setConnectionStatus(ConnectionStatus.ERROR);
@@ -385,101 +575,33 @@ export class SuperCodeInstance {
    * Checks if the SuperCode instance is healthy
    */
   private async checkHealth(): Promise<void> {
-    // Try multiple endpoints to find one that works
-    const healthEndpoints = [
-      '/project/current',  // Most lightweight endpoint
-      '/config',           // Configuration endpoint  
-      '/web/',             // Web interface
-    ];
-    
-    let lastError: Error | undefined;
-    let detailedErrors: string[] = [];
-    
-    // First, check if the port is even listening
     try {
-      const basicConnection = await fetch(`http://localhost:${this.port}/`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(1000)
-      });
-      console.log(`[SuperCode-${this.getShortId()}] Basic connection test: ${basicConnection.status}`);
+      const isHealthy = await this.sdkClient.testConnection();
+      if (!isHealthy) {
+        const health = await this.sdkClient.getHealth();
+        throw new Error(`Health check failed: ${JSON.stringify(health.details)}`);
+      }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.log(`[SuperCode-${this.getShortId()}] Basic connection failed: ${errorMsg}`);
-      detailedErrors.push(`Basic connection: ${errorMsg}`);
-    }
-    
-    for (const endpoint of healthEndpoints) {
-      try {
-        console.log(`[SuperCode-${this.getShortId()}] Health check: http://localhost:${this.port}${endpoint}`);
-        
-        const response = await fetch(`http://localhost:${this.port}${endpoint}`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(3000),
-          headers: {
-            'Accept': 'application/json, text/html, */*',
-            'User-Agent': 'VS Code Extension'
-          }
-        });
-        
-        console.log(`[SuperCode-${this.getShortId()}] Health check response: ${response.status} ${response.statusText}`);
-        
-        if (response.ok) {
-          console.log(`[SuperCode-${this.getShortId()}] Health check successful with endpoint: ${endpoint}`);
-          
-          // Log some response details for debugging
-          const contentType = response.headers.get('content-type');
-          console.log(`[SuperCode-${this.getShortId()}] Response content-type: ${contentType}`);
-          
-          // Try to read a bit of the response for debugging
-          try {
-            const responseClone = response.clone();
-            const text = await responseClone.text();
-            const preview = text.length > 200 ? text.substring(0, 200) + '...' : text;
-            console.log(`[SuperCode-${this.getShortId()}] Response preview: ${preview}`);
-          } catch (readError) {
-            console.log(`[SuperCode-${this.getShortId()}] Could not read response body:`, readError);
-          }
-          
-          return; // Success!
+      const diagnosticInfo = [
+        `Port: ${this.port}`,
+        `Process PID: ${this.process?.pid || 'unknown'}`,
+        `Process killed: ${this.process?.killed || 'unknown'}`,
+        `Working directory: ${process.cwd()}`
+      ].join(' | ');
+      
+      console.error(`[SuperCode-${this.getShortId()}] Health check failed: ${diagnosticInfo}`);
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error(`Health check timeout. ${diagnosticInfo}`);
         }
-        
-        lastError = new Error(`${endpoint}: ${response.status} ${response.statusText}`);
-        detailedErrors.push(`${endpoint}: ${response.status} ${response.statusText}`);
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.log(`[SuperCode-${this.getShortId()}] Health check error for ${endpoint}: ${errorMsg}`);
-        lastError = error instanceof Error ? error : new Error(String(error));
-        detailedErrors.push(`${endpoint}: ${errorMsg}`);
+        if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+          throw new Error(`SuperCode not responding. Check external terminal. ${diagnosticInfo}`);
+        }
       }
+      
+      throw error;
     }
-    
-    // If we get here, all endpoints failed
-    const diagnosticInfo = [
-      `Port: ${this.port}`,
-      `Process PID: ${this.process?.pid || 'unknown'}`,
-      `Process killed: ${this.process?.killed || 'unknown'}`,
-      `Working directory: ${process.cwd()}`,
-      `Errors: ${detailedErrors.join('; ')}`
-    ].join(' | ');
-    
-    console.error(`[SuperCode-${this.getShortId()}] Complete diagnostic: ${diagnosticInfo}`);
-    
-    if (lastError instanceof Error) {
-      if (lastError.name === 'AbortError') {
-        throw new Error(`Health check timeout after 3 seconds. ${diagnosticInfo}`);
-      }
-      if (lastError.message.includes('ECONNREFUSED') || lastError.message.includes('fetch failed')) {
-        throw new Error(`SuperCode TUI not responding - connection refused. Check external terminal window for SuperCode status. ${diagnosticInfo}`);
-      }
-      if (lastError.message.includes('ENOTFOUND')) {
-        throw new Error(`DNS resolution failed for localhost. ${diagnosticInfo}`);
-      }
-      if (lastError.message.includes('EADDRINUSE')) {
-        throw new Error(`Port ${this.port} is already in use. ${diagnosticInfo}`);
-      }
-    }
-    
-    throw new Error(`All health check endpoints failed. ${diagnosticInfo}`);
   }
 
   /**
@@ -492,16 +614,16 @@ export class SuperCodeInstance {
 
     try {
       this.setConnectionStatus(ConnectionStatus.CONNECTING);
-      this.sendMessageToWebview('system', 'Attempting to reconnect...');
+      this.sendLegacyMessageToWebview('system', 'Attempting to reconnect...');
       
       // Try to reconnect without spawning a new process first
       await this.establishConnection();
       
-      this.sendMessageToWebview('system', 'Reconnected successfully!');
+      this.sendLegacyMessageToWebview('system', 'Reconnected successfully!');
     } catch (error) {
       console.error('Reconnection failed:', error);
       this.setConnectionStatus(ConnectionStatus.ERROR);
-      this.sendMessageToWebview('error', `Reconnection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.sendLegacyMessageToWebview('error', `Reconnection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       // Offer to restart the SuperCode process
       this.offerProcessRestart();
@@ -526,7 +648,7 @@ export class SuperCodeInstance {
   public async restart(): Promise<void> {
     try {
       this.setConnectionStatus(ConnectionStatus.CONNECTING);
-      this.sendMessageToWebview('system', 'Restarting SuperCode instance...');
+      this.sendLegacyMessageToWebview('system', 'Restarting SuperCode instance...');
       
       // Terminate existing process if it exists
       if (this.process && !this.process.killed) {
@@ -543,32 +665,25 @@ export class SuperCodeInstance {
         this.healthCheckInterval = undefined;
       }
 
+      // Close existing SSE connection
+      if (this.sdkClient.isEventStreamConnected()) {
+        this.sdkClient.unsubscribeFromEvents();
+      }
+
       // Spawn new external process and establish connection
       await this.spawnSuperCodeProcess();
       await this.establishConnection();
       this.startHealthCheck();
       
-      this.sendMessageToWebview('system', 'SuperCode instance restarted successfully!');
+      this.sendLegacyMessageToWebview('system', 'SuperCode instance restarted successfully!');
       
     } catch (error) {
       console.error('Process restart failed:', error);
       this.setConnectionStatus(ConnectionStatus.ERROR);
-      this.sendMessageToWebview('error', `Restart failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.sendLegacyMessageToWebview('error', `Restart failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Sends a prompt to the SuperCode instance
-   */
-  private async appendPrompt(text: string): Promise<void> {
-    await fetch(`http://localhost:${this.port}/tui/append-prompt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    });
-  }
 
   /**
    * Sets the connection status and updates UI
@@ -632,69 +747,73 @@ export class SuperCodeInstance {
   }
 
   /**
-   * Sends a message to the SuperCode instance via API
+   * Sends a message to the SuperCode instance via Session API
    */
   private async sendMessageToSuperCode(text: string): Promise<void> {
     if (this.connectionStatus !== ConnectionStatus.CONNECTED) {
-      this.sendMessageToWebview('error', 'Not connected to SuperCode instance');
+      this.sendLegacyMessageToWebview('error', 'Not connected to SuperCode instance');
+      return;
+    }
+
+    if (!this.currentSessionId) {
+      this.sendLegacyMessageToWebview('error', 'No active session');
       return;
     }
 
     try {
-      // Step 1: Append the prompt text
-      const appendResponse = await fetch(`http://localhost:${this.port}/tui/append-prompt`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(10000)
-      });
+      // Add user message to local storage
+      const userMessage: Message = {
+        id: this.generateMessageId(),
+        role: 'user',
+        content: text,
+        timestamp: new Date().toISOString()
+      };
+      
+      this.messages.push(userMessage);
+      this.sendMessageToWebview('addMessage', { message: userMessage });
 
-      if (!appendResponse.ok) {
-        throw new Error(`Failed to append prompt: ${appendResponse.status} ${appendResponse.statusText}`);
-      }
+      // Send prompt to SuperCode using SDK client
+      await this.sdkClient.sendMessage(this.currentSessionId, text, userMessage.id);
 
-      // Step 2: Submit the prompt to trigger processing
-      const submitResponse = await fetch(`http://localhost:${this.port}/tui/submit-prompt`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-        signal: AbortSignal.timeout(30000) // 30 second timeout for processing
-      });
-
-      if (!submitResponse.ok) {
-        throw new Error(`Failed to submit prompt: ${submitResponse.status} ${submitResponse.statusText}`);
-      }
-
-      // Send success message to webview (actual response will come through TUI)
-      this.sendMessageToWebview('system', 'Message sent to SuperCode. Processing...');
+      // Response will come through SSE events
+      console.log(`[SuperCode-${this.getShortId()}] Message sent to session:`, this.currentSessionId);
       
     } catch (error) {
       console.error('Failed to send message to SuperCode:', error);
-      this.sendMessageToWebview('error', `Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.sendLegacyMessageToWebview('error', `Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Generates a unique message ID
+   */
+  private generateMessageId(): string {
+    return `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`;
   }
 
   /**
    * Sends a message to the webview for display
    */
-  private sendMessageToWebview(type: 'assistant' | 'error' | 'system', content: string): void {
+  private sendMessageToWebview(command: string, data?: any): void {
     if (this.panel && this.panel.webview) {
       try {
         this.panel.webview.postMessage({
-          command: 'addMessage',
-          type: type,
-          content: content
+          command,
+          ...data
         });
       } catch (error) {
         console.error(`[SuperCode-${this.getShortId()}] Failed to send message to webview:`, error);
       }
     } else {
-      console.log(`[SuperCode-${this.getShortId()}] Webview not ready, message: ${type}: ${content}`);
+      console.log(`[SuperCode-${this.getShortId()}] Webview not ready, command: ${command}`, data);
     }
+  }
+
+  /**
+   * Legacy method for backward compatibility
+   */
+  private sendLegacyMessageToWebview(type: 'assistant' | 'error' | 'system', content: string): void {
+    this.sendMessageToWebview('addMessage', { type, content });
   }
 
   /**
@@ -816,6 +935,160 @@ export class SuperCodeInstance {
                 color: var(--vscode-descriptionForeground);
                 margin-top: 2rem;
             }
+
+            /* Streaming message styles */
+            .message.streaming {
+                position: relative;
+            }
+            
+            .streaming-cursor {
+                animation: blink 1s infinite;
+                color: var(--vscode-foreground);
+                margin-left: 2px;
+            }
+            
+            @keyframes blink {
+                0%, 50% { opacity: 1; }
+                51%, 100% { opacity: 0; }
+            }
+
+            /* Tool call styles */
+            .tool-call {
+                margin-bottom: 16px;
+                border: 1px solid var(--vscode-panel-border);
+                border-radius: 8px;
+                background: var(--vscode-editor-background);
+                overflow: hidden;
+            }
+
+            .tool-call--pending {
+                border-left: 4px solid #ffa500;
+            }
+
+            .tool-call--running {
+                border-left: 4px solid #007acc;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .tool-call--completed {
+                border-left: 4px solid #4caf50;
+            }
+
+            .tool-call--error {
+                border-left: 4px solid #f44336;
+                background: rgba(244, 67, 54, 0.05);
+            }
+
+            .tool-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px 16px;
+                background: var(--vscode-editor-inactiveSelectionBackground);
+                border-bottom: 1px solid var(--vscode-panel-border);
+            }
+
+            .tool-info {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .tool-icon {
+                font-size: 16px;
+            }
+
+            .tool-name {
+                font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+                font-weight: 500;
+                color: var(--vscode-foreground);
+            }
+
+            .tool-state {
+                font-size: 14px;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 500;
+            }
+
+            .tool-state.running {
+                background: rgba(0, 122, 204, 0.1);
+                color: #007acc;
+            }
+
+            .tool-state.completed {
+                background: rgba(76, 175, 80, 0.1);
+                color: #4caf50;
+            }
+
+            .tool-state.error {
+                background: rgba(244, 67, 54, 0.1);
+                color: #f44336;
+            }
+
+            .tool-actions {
+                display: flex;
+                gap: 4px;
+            }
+
+            .tool-expand {
+                background: none;
+                border: 1px solid var(--vscode-button-border);
+                color: var(--vscode-foreground);
+                padding: 4px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: background-color 0.2s;
+            }
+
+            .tool-expand:hover {
+                background: var(--vscode-button-hoverBackground);
+            }
+
+            .tool-content {
+                padding: 16px;
+            }
+
+            .tool-parameters, .tool-result, .tool-error, .tool-metadata {
+                margin-bottom: 12px;
+            }
+
+            .tool-parameters strong, .tool-result strong, .tool-error strong, .tool-metadata strong {
+                color: var(--vscode-foreground);
+                display: block;
+                margin-bottom: 4px;
+            }
+
+            .tool-parameters pre, .tool-result pre, .tool-metadata pre {
+                background: var(--vscode-textCodeBlock-background);
+                border: 1px solid var(--vscode-panel-border);
+                border-radius: 4px;
+                padding: 8px;
+                font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace);
+                font-size: 12px;
+                overflow-x: auto;
+                margin: 0;
+            }
+
+            .tool-progress {
+                color: var(--vscode-descriptionForeground);
+                font-style: italic;
+                animation: pulse 2s infinite;
+            }
+
+            .tool-error {
+                color: var(--vscode-errorForeground);
+                background: var(--vscode-inputValidation-errorBackground);
+                border: 1px solid var(--vscode-inputValidation-errorBorder);
+                border-radius: 4px;
+                padding: 8px;
+            }
+
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.7; }
+            }
         </style>
     </head>
     <body>
@@ -853,7 +1126,23 @@ export class SuperCodeInstance {
                         updateStatus(message.status, message.port);
                         break;
                     case 'addMessage':
-                        addMessage(message.type, message.content);
+                        if (message.message) {
+                            addStreamingMessage(message.message);
+                        } else {
+                            addMessage(message.type, message.content);
+                        }
+                        break;
+                    case 'updateMessage':
+                        updateStreamingMessage(message.id, message.content);
+                        break;
+                    case 'messageComplete':
+                        completeStreamingMessage(message.id, message.content);
+                        break;
+                    case 'addToolCall':
+                        addToolCall(message.toolCall);
+                        break;
+                    case 'updateToolCall':
+                        updateToolCall(message.toolCall);
                         break;
                     case 'offerRestart':
                         showRestartOffer(message.message);
@@ -975,6 +1264,173 @@ export class SuperCodeInstance {
                 messageDiv.textContent = content;
                 messages.appendChild(messageDiv);
                 messages.scrollTop = messages.scrollHeight;
+            }
+
+            // Streaming message functions
+            function addStreamingMessage(message) {
+                const messageDiv = document.createElement('div');
+                messageDiv.id = \`message-\${message.id}\`;
+                messageDiv.className = \`message \${message.role}\`;
+                
+                if (message.role === 'user') {
+                    messageDiv.textContent = message.content;
+                } else {
+                    // For assistant messages, add cursor for streaming
+                    const contentSpan = document.createElement('span');
+                    contentSpan.className = 'message-content';
+                    contentSpan.textContent = message.content;
+                    
+                    const cursor = document.createElement('span');
+                    cursor.className = 'streaming-cursor';
+                    cursor.textContent = '▎';
+                    
+                    messageDiv.appendChild(contentSpan);
+                    if (message.streaming) {
+                        messageDiv.appendChild(cursor);
+                        messageDiv.classList.add('streaming');
+                    }
+                }
+                
+                messages.appendChild(messageDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function updateStreamingMessage(messageId, content) {
+                const messageDiv = document.getElementById(\`message-\${messageId}\`);
+                if (messageDiv) {
+                    const contentSpan = messageDiv.querySelector('.message-content');
+                    if (contentSpan) {
+                        contentSpan.textContent = content;
+                    } else {
+                        messageDiv.textContent = content;
+                    }
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            }
+
+            function completeStreamingMessage(messageId, content) {
+                const messageDiv = document.getElementById(\`message-\${messageId}\`);
+                if (messageDiv) {
+                    const contentSpan = messageDiv.querySelector('.message-content');
+                    if (contentSpan) {
+                        contentSpan.textContent = content;
+                    } else {
+                        messageDiv.textContent = content;
+                    }
+                    
+                    // Remove streaming cursor and class
+                    const cursor = messageDiv.querySelector('.streaming-cursor');
+                    if (cursor) {
+                        cursor.remove();
+                    }
+                    messageDiv.classList.remove('streaming');
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            }
+
+            // Tool call functions
+            function addToolCall(toolCall) {
+                const toolDiv = document.createElement('div');
+                toolDiv.id = \`tool-\${toolCall.id}\`;
+                toolDiv.className = \`tool-call tool-call--\${toolCall.state}\`;
+                
+                toolDiv.innerHTML = \`
+                    <div class="tool-header">
+                        <div class="tool-info">
+                            <span class="tool-icon">\${getToolIcon(toolCall.name)}</span>
+                            <span class="tool-name">\${toolCall.name}</span>
+                            <span class="tool-state \${toolCall.state}">\${getStateIcon(toolCall.state)}</span>
+                        </div>
+                        <div class="tool-actions">
+                            <button class="tool-expand" onclick="toggleToolExpanded('\${toolCall.id}')">
+                                \${toolCall.expanded ? '⬆️' : '⬇️'}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="tool-content" style="display: \${toolCall.expanded ? 'block' : 'none'}">
+                        <div class="tool-parameters">
+                            <strong>Parameters:</strong>
+                            <pre>\${JSON.stringify(toolCall.parameters, null, 2)}</pre>
+                        </div>
+                        \${toolCall.state === 'running' ? '<div class="tool-progress">⏳ Running...</div>' : ''}
+                        \${toolCall.result ? \`<div class="tool-result"><strong>Result:</strong><pre>\${JSON.stringify(toolCall.result, null, 2)}</pre></div>\` : ''}
+                        \${toolCall.error ? \`<div class="tool-error"><strong>Error:</strong> \${toolCall.error}</div>\` : ''}
+                    </div>
+                \`;
+                
+                messages.appendChild(toolDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+
+            function updateToolCall(toolCall) {
+                const toolDiv = document.getElementById(\`tool-\${toolCall.id}\`);
+                if (toolDiv) {
+                    // Update state class
+                    toolDiv.className = \`tool-call tool-call--\${toolCall.state}\`;
+                    
+                    // Update state icon
+                    const stateSpan = toolDiv.querySelector('.tool-state');
+                    if (stateSpan) {
+                        stateSpan.textContent = getStateIcon(toolCall.state);
+                        stateSpan.className = \`tool-state \${toolCall.state}\`;
+                    }
+                    
+                    // Update content
+                    const contentDiv = toolDiv.querySelector('.tool-content');
+                    if (contentDiv) {
+                        contentDiv.innerHTML = \`
+                            <div class="tool-parameters">
+                                <strong>Parameters:</strong>
+                                <pre>\${JSON.stringify(toolCall.parameters, null, 2)}</pre>
+                            </div>
+                            \${toolCall.state === 'running' ? '<div class="tool-progress">⏳ Running...</div>' : ''}
+                            \${toolCall.result ? \`<div class="tool-result"><strong>Result:</strong><pre>\${JSON.stringify(toolCall.result, null, 2)}</pre></div>\` : ''}
+                            \${toolCall.error ? \`<div class="tool-error"><strong>Error:</strong> \${toolCall.error}</div>\` : ''}
+                            \${toolCall.metadata ? \`<div class="tool-metadata"><strong>Metadata:</strong><pre>\${JSON.stringify(toolCall.metadata, null, 2)}</pre></div>\` : ''}
+                        \`;
+                    }
+                    
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            }
+
+            function getToolIcon(toolName) {
+                const icons = {
+                    'read': '📖',
+                    'write': '✏️',
+                    'edit': '✂️',
+                    'bash': '💻',
+                    'grep': '🔍',
+                    'todo-read': '📋',
+                    'todo-write': '✅'
+                };
+                return icons[toolName] || '🛠️';
+            }
+
+            function getStateIcon(state) {
+                const icons = {
+                    'pending': '⏳',
+                    'running': '🔄',
+                    'completed': '✅',
+                    'error': '❌'
+                };
+                return icons[state] || '⚪';
+            }
+
+            function toggleToolExpanded(toolId) {
+                const toolDiv = document.getElementById(\`tool-\${toolId}\`);
+                if (toolDiv) {
+                    const contentDiv = toolDiv.querySelector('.tool-content');
+                    const expandButton = toolDiv.querySelector('.tool-expand');
+                    
+                    if (contentDiv.style.display === 'none') {
+                        contentDiv.style.display = 'block';
+                        expandButton.textContent = '⬆️';
+                    } else {
+                        contentDiv.style.display = 'none';
+                        expandButton.textContent = '⬇️';
+                    }
+                }
             }
 
             // Request initial status
