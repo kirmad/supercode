@@ -1,6 +1,6 @@
 {
   "name": "@opencode/cloud-scripts",
-  "version": "0.6.35",
+  "version": "0.6.36",
   "$schema": "https://json.schemastore.org/package.json",
   "private": true,
   "type": "module",

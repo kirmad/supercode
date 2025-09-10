@@ -1,6 +1,6 @@
 {
   "name": "@kirmad/supercode",
-  "version": "0.6.35",
+  "version": "0.6.36",
   "bin": {
     "supercode": "./bin/supercode"
   },
