@@ -100,7 +100,52 @@
         "win": "ctrl+alt+K",
         "linux": "ctrl+alt+K"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "SuperCode",
+      "properties": {
+        "supercode.terminal.windows.preferWezTerm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prefer WezTerm over cmd.exe on Windows when available"
+        },
+        "supercode.terminal.windows.weztermPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to wezterm-gui.exe. Leave empty for auto-detection"
+        },
+        "supercode.terminal.windows.weztermArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["start", "--cwd", "{workspaceFolder}", "--", "cmd", "/c", "{command}"],
+          "description": "Custom WezTerm arguments. Use {workspaceFolder} and {command} placeholders"
+        },
+        "supercode.terminal.windows.weztermPreferEgl": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add --config 'prefer_egl=true' flag to WezTerm for better graphics performance"
+        },
+        "supercode.terminal.macOS.terminal": {
+          "type": "string",
+          "enum": ["Terminal", "iTerm2"],
+          "default": "Terminal",
+          "description": "Preferred terminal application on macOS"
+        },
+        "supercode.terminal.linux.terminal": {
+          "type": "string",
+          "default": "auto",
+          "description": "Preferred terminal application on Linux. Use 'auto' for auto-detection"
+        },
+        "supercode.terminal.workingDirectory": {
+          "type": "string",
+          "enum": ["workspace", "current"],
+          "default": "workspace",
+          "description": "Working directory for SuperCode terminal: 'workspace' (VS Code workspace) or 'current' (extension process directory)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "bun run package",

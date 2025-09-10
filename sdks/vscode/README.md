@@ -13,6 +13,13 @@ This extension requires the supercode CLI to be installed on your system.
 - **Context Awareness**: Automatically share your current selection or tab with supercode.
 - **File Reference Shortcuts**: Use `Cmd+Option+K` (Mac) or `Alt+Ctrl+K` (Linux/Windows) to insert file references. For example, `@File#L37-42`.
 
+## Configuration
+
+Configure terminal preferences in VS Code settings:
+
+- `supercode.terminal.windows.weztermPath` - Custom WezTerm path
+- `supercode.terminal.workingDirectory` - Use workspace or current directory
+
 ## Support
 
 This is an early release. If you encounter issues or have feedback, please create an issue at https://github.com/kirmadi/supercode/issues.

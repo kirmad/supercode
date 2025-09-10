@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { StaticWebviewManager } from './StaticWebviewManager';
 import { ConnectionStatus } from './ConnectionStatus';
@@ -269,44 +268,136 @@ export class SuperCodeInstanceStatic {
 
   /**
    * Spawns the SuperCode process in an external terminal
+   * 
+   * Supports configurable terminal settings via VS Code settings:
+   * - supercode.terminal.windows.preferWezTerm: Prefer WezTerm over cmd on Windows
+   * - supercode.terminal.windows.weztermPath: Custom WezTerm path
+   * - supercode.terminal.windows.weztermArgs: Custom WezTerm arguments with placeholders
+   * - supercode.terminal.macOS.terminal: Terminal app preference (Terminal/iTerm2)  
+   * - supercode.terminal.linux.terminal: Linux terminal preference
+   * - supercode.terminal.workingDirectory: Working directory preference (workspace/current)
    */
   private async spawnSuperCodeProcess(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Get settings
+      const config = vscode.workspace.getConfiguration('supercode');
+      const workingDirSetting = config.get<string>('terminal.workingDirectory', 'workspace');
+      
+      // Determine working directory based on settings
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || process.cwd();
+      const workingDirectory = workingDirSetting === 'workspace' ? workspaceFolder : process.cwd();
+      
       console.log(`[SuperCode-Static-${this.getShortId()}] Spawning external SuperCode process on port ${this.port}`);
-      console.log(`[SuperCode-Static-${this.getShortId()}] Working directory: ${process.cwd()}`);
+      console.log(`[SuperCode-Static-${this.getShortId()}] Working directory: ${workingDirectory}`);
       console.log(`[SuperCode-Static-${this.getShortId()}] Command: supercode --port ${this.port} --hostname 127.0.0.1`);
       
       // Launch SuperCode TUI in a visible external terminal window
       const platform = process.platform;
-      const workingDir = process.cwd().replace(/'/g, "'\\''"); // Escape single quotes
+      const workingDir = workingDirectory.replace(/'/g, "'\\''"); // Escape single quotes for Unix
       const supercodeCommand = `supercode --port ${this.port} --hostname 127.0.0.1`;
       
       let terminalCommand: string[] = [];
       let terminalExecutable: string = '';
       
       if (platform === 'darwin') {
-        // macOS: Use Terminal.app with open command
+        // macOS: Use configured terminal or default to Terminal.app
+        const terminalApp = config.get<string>('terminal.macOS.terminal', 'Terminal');
         const tempScript = `/tmp/supercode-${this.port}.sh`;
         require('fs').writeFileSync(tempScript, `#!/bin/bash\ncd '${workingDir}'\nexec ${supercodeCommand}`);
         require('fs').chmodSync(tempScript, 0o755);
         
         terminalExecutable = 'open';
-        terminalCommand = ['-a', 'Terminal', tempScript];
+        terminalCommand = ['-a', terminalApp, tempScript];
       } else if (platform === 'win32') {
-        // Windows: Use cmd.exe in a new window
-        terminalExecutable = 'cmd';
-        terminalCommand = ['/c', 'start', 'cmd', '/k', `cd /d "${process.cwd()}" && ${supercodeCommand}`];
-      } else {
-        // Linux: Try common terminal emulators
-        const terminals = ['gnome-terminal', 'konsole', 'xfce4-terminal', 'x-terminal-emulator', 'xterm'];
+        // Windows: Use WezTerm with configurable settings
+        const preferWezTerm = config.get<boolean>('terminal.windows.preferWezTerm', true);
+        const customWeztermPath = config.get<string>('terminal.windows.weztermPath', '');
+        const weztermPreferEgl = config.get<boolean>('terminal.windows.weztermPreferEgl', false);
+        const weztermArgs = config.get<string[]>('terminal.windows.weztermArgs', 
+          ['start', '--cwd', '{workspaceFolder}', '--', 'cmd', '/c', '{command}']);
         
-        for (const terminal of terminals) {
+        const escapedWorkingDir = workingDirectory.replace(/"/g, '\\"');
+        let weztermPath = '';
+        
+        if (preferWezTerm) {
+          if (customWeztermPath) {
+            // Use custom path if provided
+            try {
+              require('fs').accessSync(customWeztermPath);
+              weztermPath = customWeztermPath;
+            } catch (error) {
+              console.log(`[SuperCode-Static-${this.getShortId()}] Custom WezTerm path not accessible: ${customWeztermPath}`);
+            }
+          }
+          
+          if (!weztermPath) {
+            // Auto-detect WezTerm in common locations
+            const weztermPaths = [
+              process.env.PROGRAMFILES + '\\WezTerm\\wezterm-gui.exe',
+              process.env['PROGRAMFILES(X86)'] + '\\WezTerm\\wezterm-gui.exe',
+              process.env.LOCALAPPDATA + '\\Microsoft\\WindowsApps\\wezterm-gui.exe',
+              'wezterm-gui.exe', // Try PATH
+            ].filter(Boolean); // Remove undefined values
+            
+            for (const path of weztermPaths) {
+              try {
+                require('fs').accessSync(path as string);
+                weztermPath = path as string;
+                break;
+              } catch (error) {
+                continue;
+              }
+            }
+          }
+        }
+        
+        if (weztermPath) {
+          // Use WezTerm with configurable arguments
+          terminalExecutable = weztermPath;
+          
+          // Build the command arguments
+          let cmdArgs = weztermArgs.map(arg => 
+            arg.replace('{workspaceFolder}', `"${escapedWorkingDir}"`)
+               .replace('{command}', supercodeCommand)
+          );
+          
+          // Add EGL preference flag if enabled
+          if (weztermPreferEgl) {
+            cmdArgs = ['--config', 'prefer_egl=true', ...cmdArgs];
+          }
+          
+          terminalCommand = cmdArgs;
+        } else {
+          // Fallback to cmd.exe in a new window
+          terminalExecutable = 'cmd';
+          terminalCommand = ['/c', 'start', 'cmd', '/k', `cd /d "${escapedWorkingDir}" && ${supercodeCommand}`];
+        }
+      } else {
+        // Linux: Use configured terminal or auto-detect
+        const preferredTerminal = config.get<string>('terminal.linux.terminal', 'auto');
+        
+        if (preferredTerminal !== 'auto') {
+          // Use specific terminal if configured
           try {
-            require('child_process').execSync(`which ${terminal}`, { stdio: 'ignore' });
-            terminalExecutable = terminal;
-            break;
+            require('child_process').execSync(`which ${preferredTerminal}`, { stdio: 'ignore' });
+            terminalExecutable = preferredTerminal;
           } catch (error) {
-            continue;
+            console.log(`[SuperCode-Static-${this.getShortId()}] Configured terminal not found: ${preferredTerminal}, falling back to auto-detection`);
+          }
+        }
+        
+        if (!terminalExecutable) {
+          // Auto-detect terminal emulators
+          const terminals = ['gnome-terminal', 'konsole', 'xfce4-terminal', 'x-terminal-emulator', 'xterm'];
+          
+          for (const terminal of terminals) {
+            try {
+              require('child_process').execSync(`which ${terminal}`, { stdio: 'ignore' });
+              terminalExecutable = terminal;
+              break;
+            } catch (error) {
+              continue;
+            }
           }
         }
         
