@@ -78,9 +78,9 @@ export namespace Server {
       if (origin?.startsWith('vscode-webview://')) return origin
       
       // Allow null origin for local development
-      if (origin === null || origin === undefined) return true
+      if (origin === null || origin === undefined) return origin
       
-      return false
+      return null
     },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Accept', 'Authorization'],
