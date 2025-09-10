@@ -722,10 +722,26 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.app.State.UpdateModelUsage(msg.Provider.ID, msg.Model.ID)
 		cmds = append(cmds, a.app.SaveState())
+		// Notify server of model change
+		cmds = append(cmds, api.NotifyModelChange(
+			context.Background(),
+			a.app.Client,
+			msg.Provider.ID,
+			msg.Model.ID,
+			msg.Provider.Name,
+			msg.Model.Name,
+		))
 	case app.AgentSelectedMsg:
 		updated, cmd := a.app.SwitchToAgent(msg.AgentName)
 		a.app = updated
 		cmds = append(cmds, cmd)
+		// Notify server of agent change
+		cmds = append(cmds, api.NotifyAgentChange(
+			context.Background(),
+			a.app.Client,
+			msg.AgentName,
+			strings.Title(msg.AgentName), // Use capitalized name as display name
+		))
 	case dialog.ThemeSelectedMsg:
 		a.app.State.Theme = msg.ThemeName
 		cmds = append(cmds, a.app.SaveState())
@@ -870,6 +886,87 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			response = map[string]interface{}{
 				"busy":   busy,
 				"status": status,
+			}
+		case "/tui/get-model":
+			if a.app.Provider != nil && a.app.Model != nil {
+				response = map[string]interface{}{
+					"providerID":   a.app.Provider.ID,
+					"modelID":      a.app.Model.ID,
+					"providerName": a.app.Provider.Name,
+					"modelName":    a.app.Model.Name,
+				}
+			} else {
+				response = nil
+			}
+		case "/tui/get-agent":
+			agent := a.app.Agent()
+			if agent != nil {
+				response = map[string]interface{}{
+					"agentName":   agent.Name,
+					"displayName": strings.Title(agent.Name),
+				}
+			} else {
+				response = nil
+			}
+		case "/tui/set-model":
+			var body struct {
+				ProviderID string `json:"providerID"`
+				ModelID    string `json:"modelID"`
+			}
+			json.Unmarshal((msg.Body), &body)
+			
+			// Find the provider and model
+			var selectedProvider *opencode.Provider
+			var selectedModel *opencode.Model
+			
+			for _, provider := range a.app.Providers {
+				if provider.ID == body.ProviderID {
+					selectedProvider = &provider
+					for _, model := range provider.Models {
+						if model.ID == body.ModelID {
+							selectedModel = &model
+							break
+						}
+					}
+					break
+				}
+			}
+			
+			if selectedProvider != nil && selectedModel != nil {
+				// Trigger model selection (same as if user selected it)
+				cmds = append(cmds, util.CmdHandler(app.ModelSelectedMsg{
+					Provider: *selectedProvider,
+					Model:    *selectedModel,
+				}))
+				response = true
+			} else {
+				slog.Error("Invalid provider/model combination", "providerID", body.ProviderID, "modelID", body.ModelID)
+				response = false
+			}
+		case "/tui/set-agent":
+			var body struct {
+				AgentName string `json:"agentName"`
+			}
+			json.Unmarshal((msg.Body), &body)
+			
+			// Check if agent exists
+			agentFound := false
+			for _, agent := range a.app.Agents {
+				if agent.Name == body.AgentName {
+					agentFound = true
+					break
+				}
+			}
+			
+			if agentFound {
+				// Trigger agent selection (same as if user selected it)
+				cmds = append(cmds, util.CmdHandler(app.AgentSelectedMsg{
+					AgentName: body.AgentName,
+				}))
+				response = true
+			} else {
+				slog.Error("Invalid agent name", "agentName", body.AgentName)
+				response = false
 			}
 
 		default:

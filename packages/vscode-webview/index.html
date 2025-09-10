@@ -39,50 +39,57 @@
       }
     </style>
     <script>
-      // Mock VS Code API for development
-      window.vscode = {
-        postMessage: (message) => {
-          console.log('Mock VS Code API - postMessage:', message)
-          
-          // Simulate responses for development
-          if (message.command === 'requestStatus') {
-            setTimeout(() => {
-              window.dispatchEvent(new MessageEvent('message', {
-                data: { command: 'statusUpdate', status: 'connected', port: 8080 }
-              }))
-            }, 1000)
-          }
-          
-          if (message.command === 'sendMessage') {
-            // Simulate adding the user message
-            setTimeout(() => {
-              window.dispatchEvent(new MessageEvent('message', {
-                data: { 
-                  command: 'addMessage', 
-                  type: 'system', 
-                  content: 'Message sent to SuperCode. Processing...' 
-                }
-              }))
-            }, 500)
-            
-            // Simulate an assistant response
-            setTimeout(() => {
-              window.dispatchEvent(new MessageEvent('message', {
-                data: { 
-                  command: 'addMessage', 
-                  type: 'assistant', 
-                  content: `I received your message: "${message.text}". This is a mock response for development.` 
-                }
-              }))
-            }, 2000)
-          }
-        },
-        getState: () => null,
-        setState: (state) => console.log('Mock VS Code API - setState:', state)
-      }
+      // Check if we should run in standalone mode (no VS Code mock)
+      const isStandalone = new URLSearchParams(window.location.search).get('standalone') !== null;
       
-      // Mock port
-      window.supercodePort = 8080
+      if (!isStandalone) {
+        // Mock VS Code API for VS Code development mode
+        window.vscode = {
+          postMessage: (message) => {
+            console.log('Mock VS Code API - postMessage:', message)
+            
+            // Simulate responses for development
+            if (message.command === 'requestStatus') {
+              setTimeout(() => {
+                window.dispatchEvent(new MessageEvent('message', {
+                  data: { command: 'statusUpdate', status: 'connected', port: 25716 }
+                }))
+              }, 1000)
+            }
+            
+            if (message.command === 'sendMessage') {
+              // Simulate adding the user message
+              setTimeout(() => {
+                window.dispatchEvent(new MessageEvent('message', {
+                  data: { 
+                    command: 'addMessage', 
+                    type: 'system', 
+                    content: 'Message sent to SuperCode. Processing...' 
+                  }
+                }))
+              }, 500)
+              
+              // Simulate an assistant response
+              setTimeout(() => {
+                window.dispatchEvent(new MessageEvent('message', {
+                  data: { 
+                    command: 'addMessage', 
+                    type: 'assistant', 
+                    content: `I received your message: "${message.text}". This is a mock response for development.` 
+                  }
+                }))
+              }, 2000)
+            }
+          },
+          getState: () => null,
+          setState: (state) => console.log('Mock VS Code API - setState:', state)
+        }
+        
+        // Mock port for VS Code mode
+        window.supercodePort = 25716
+      } else {
+        console.log('Running in standalone mode - connecting to SuperCode server directly')
+      }
     </script>
   </head>
   <body>

@@ -39,3 +39,43 @@ func Reply(ctx context.Context, client *opencode.Client, response interface{}) t
 		return nil
 	}
 }
+
+// NotifyModelChange notifies the server that the model has changed (internal API)
+func NotifyModelChange(ctx context.Context, client *opencode.Client, providerID, modelID, providerName, modelName string) tea.Cmd {
+	return func() tea.Msg {
+		payload := map[string]interface{}{
+			"providerID": providerID,
+			"modelID":    modelID,
+		}
+		if providerName != "" {
+			payload["providerName"] = providerName
+		}
+		if modelName != "" {
+			payload["modelName"] = modelName
+		}
+		
+		err := client.Post(ctx, "/tui/notify-model-changed", payload, nil)
+		if err != nil {
+			log.Printf("Error notifying model change: %v", err)
+		}
+		return nil
+	}
+}
+
+// NotifyAgentChange notifies the server that the agent has changed (internal API)
+func NotifyAgentChange(ctx context.Context, client *opencode.Client, agentName, displayName string) tea.Cmd {
+	return func() tea.Msg {
+		payload := map[string]interface{}{
+			"agentName": agentName,
+		}
+		if displayName != "" {
+			payload["displayName"] = displayName
+		}
+		
+		err := client.Post(ctx, "/tui/notify-agent-changed", payload, nil)
+		if err != nil {
+			log.Printf("Error notifying agent change: %v", err)
+		}
+		return nil
+	}
+}
