@@ -128,6 +128,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "eventsource": "^4.0.0"
+    "eventsource": "^4.0.0",
+    "@kirmad/supercode-sdk": "*"
   }
 }
