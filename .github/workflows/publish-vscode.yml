@@ -62,6 +62,12 @@ jobs:
           bun run build
           cd -
           
+          # Build the vscode-webview static files (required for static webview functionality)
+          cd packages/vscode-webview
+          bun install
+          bun run build:static
+          cd -
+          
           # Install VSCode extension dependencies  
           cd sdks/vscode
           bun install

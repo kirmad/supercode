@@ -27,11 +27,11 @@ export class StaticWebviewManager {
       
       // Get URIs for static resources using asWebviewUri
       const cssUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, '..', '..', 'packages', 'vscode-webview', 'vscode-static', 'webview.css')
+        vscode.Uri.joinPath(context.extensionUri, 'static', 'webview.css')
       );
       
       const scriptUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, '..', '..', 'packages', 'vscode-webview', 'vscode-static', 'webview.js')
+        vscode.Uri.joinPath(context.extensionUri, 'static', 'webview.js')
       );
       
       // Replace placeholders in HTML template
@@ -55,7 +55,7 @@ export class StaticWebviewManager {
       enableScripts: true,
       localResourceRoots: [
         // Allow access to the static files directory
-        vscode.Uri.joinPath(context.extensionUri, '..', '..', 'packages', 'vscode-webview', 'vscode-static')
+        vscode.Uri.joinPath(context.extensionUri, 'static')
       ]
     };
   }
@@ -76,11 +76,7 @@ export class StaticWebviewManager {
   private static loadHtmlTemplate(context: vscode.ExtensionContext): string | null {
     const htmlPath = join(
       context.extensionPath, 
-      '..', 
-      '..', 
-      'packages', 
-      'vscode-webview', 
-      'vscode-static', 
+      'static', 
       'index.html'
     );
     
