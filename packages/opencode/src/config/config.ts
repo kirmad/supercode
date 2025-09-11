@@ -367,6 +367,7 @@ export namespace Config {
         .describe("@deprecated Use 'share' field instead. Share newly created sessions automatically"),
       autoupdate: z.boolean().optional().describe("Automatically update to the latest version"),
       disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
+      approved_providers: z.array(z.string()).optional().describe("Only allow these providers to be loaded. When set, only the specified providers will be available. If not set, all providers (except disabled) are allowed. Default: ['github-copilot'] to limit to GitHub Copilot only."),
       model: z.string().describe("Model to use in the format of provider/model, eg anthropic/claude-2").optional(),
       small_model: z
         .string()
@@ -500,7 +501,10 @@ export namespace Config {
 
   export const global = lazy(async () => {
     let result: Info = pipe(
-      {},
+      {
+        // Set default to only approve GitHub Copilot
+        approved_providers: ["github-copilot"]
+      },
       mergeDeep(await loadFile(path.join(Global.Path.config, "config.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.json"))),
       mergeDeep(await loadFile(path.join(Global.Path.config, "opencode.jsonc"))),

@@ -40,6 +40,90 @@ SUPERCODE_INSTALL_DIR=/usr/local/bin
 XDG_BIN_DIR=$HOME/.local/bin
 ```
 
+### Configuration
+
+#### Provider Management
+
+SuperCode includes a powerful provider management system that allows you to control which AI providers are available for use. By default, **only GitHub Copilot is enabled** to provide a secure, curated experience.
+
+##### Default Configuration
+
+```json
+{
+  "approved_providers": ["github-copilot"]
+}
+```
+
+##### Configuration Options
+
+Create an `opencode.json` file in your project root or home directory to customize provider access:
+
+**Enable specific providers:**
+```json
+{
+  "approved_providers": ["github-copilot", "openai", "anthropic"]
+}
+```
+
+**Enable all providers:**
+```json
+{
+  "approved_providers": null
+}
+```
+
+**Advanced configuration (combine allow and deny lists):**
+```json
+{
+  "approved_providers": ["github-copilot", "openai", "anthropic", "google"],
+  "disabled_providers": ["google"]
+}
+```
+
+##### Available Providers
+
+SuperCode supports 40+ AI providers including:
+- `github-copilot` (default) - GitHub Copilot models
+- `openai` - GPT-4, GPT-3.5, and other OpenAI models
+- `anthropic` - Claude models
+- `google` - Gemini models
+- `amazon-bedrock` - AWS Bedrock models
+- And many more...
+
+##### Configuration Precedence
+
+1. **disabled_providers** always takes precedence (blocks providers even if approved)
+2. **approved_providers** defines the allowed list (when set)
+3. When `approved_providers` is `null`, all providers are allowed (except disabled ones)
+
+##### Examples
+
+**Security-focused setup (GitHub Copilot only):**
+```json
+{
+  "approved_providers": ["github-copilot"]
+}
+```
+
+**Multi-provider development:**
+```json
+{
+  "approved_providers": ["github-copilot", "openai", "anthropic"],
+  "model": "github-copilot/gpt-4o"
+}
+```
+
+**Enterprise setup (all providers with exclusions):**
+```json
+{
+  "approved_providers": null,
+  "disabled_providers": ["some-internal-provider"]
+}
+```
+
+To see available models: `supercode models`
+To manage authentication: `supercode auth login`
+
 ### Documentation
 
 For more info on how to configure SuperCode, see the [project documentation](https://github.com/kirmad/supercode/docs) or check the original OpenCode docs for additional reference.

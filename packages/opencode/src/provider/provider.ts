@@ -239,10 +239,20 @@ export namespace Provider {
       database[providerID] = parsed
     }
 
-    const disabled = await Config.get().then((cfg) => new Set(cfg.disabled_providers ?? []))
+    const cfg = await Config.get()
+    const disabled = new Set(cfg.disabled_providers ?? [])
+    const approved = cfg.approved_providers ? new Set(cfg.approved_providers) : null
+    
+    // Helper function to check if provider is allowed
+    const isProviderAllowed = (providerID: string) => {
+      if (disabled.has(providerID)) return false
+      if (approved && !approved.has(providerID)) return false
+      return true
+    }
+    
     // load env
     for (const [providerID, provider] of Object.entries(database)) {
-      if (disabled.has(providerID)) continue
+      if (!isProviderAllowed(providerID)) continue
       const apiKey = provider.env.map((item) => process.env[item]).at(0)
       if (!apiKey) continue
       mergeProvider(
@@ -255,7 +265,7 @@ export namespace Provider {
 
     // load apikeys
     for (const [providerID, provider] of Object.entries(await Auth.all())) {
-      if (disabled.has(providerID)) continue
+      if (!isProviderAllowed(providerID)) continue
       if (provider.type === "api") {
         mergeProvider(providerID, { apiKey: provider.key }, "api")
       }
@@ -263,7 +273,7 @@ export namespace Provider {
 
     // load custom
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {
-      if (disabled.has(providerID)) continue
+      if (!isProviderAllowed(providerID)) continue
       const result = await fn(database[providerID])
       if (result && (result.autoload || providers[providerID])) {
         mergeProvider(providerID, result.options ?? {}, "custom", result.getModel)
@@ -273,7 +283,7 @@ export namespace Provider {
     for (const plugin of await Plugin.list()) {
       if (!plugin.auth) continue
       const providerID = plugin.auth.provider
-      if (disabled.has(providerID)) continue
+      if (!isProviderAllowed(providerID)) continue
       const auth = await Auth.get(providerID)
       if (!auth) continue
       if (!plugin.auth.loader) continue

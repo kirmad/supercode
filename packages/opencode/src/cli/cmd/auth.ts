@@ -3,6 +3,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { ModelsDev } from "../../provider/models"
+import { Config } from "../../config/config"
 import { map, pipe, sortBy, values } from "remeda"
 import path from "path"
 import os from "os"
@@ -101,7 +102,22 @@ export const AuthLoginCommand = cmd({
         return
       }
       await ModelsDev.refresh().catch(() => {})
-      const providers = await ModelsDev.get()
+      const allProviders = await ModelsDev.get()
+      const config = await Config.get()
+      const disabled = new Set(config.disabled_providers ?? [])
+      const approved = config.approved_providers ? new Set(config.approved_providers) : null
+      
+      // Filter providers based on approved_providers and disabled_providers configuration
+      const isProviderAllowed = (providerID: string) => {
+        if (disabled.has(providerID)) return false
+        if (approved && !approved.has(providerID)) return false
+        return true
+      }
+      
+      const providers = Object.fromEntries(
+        Object.entries(allProviders).filter(([id]) => isProviderAllowed(id))
+      )
+      
       const priority: Record<string, number> = {
         opencode: 0,
         anthropic: 1,
