@@ -1265,10 +1265,24 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 		updated, cmd := a.app.SwitchAgent()
 		a.app = updated
 		cmds = append(cmds, cmd)
+		// Notify server of agent change
+		cmds = append(cmds, api.NotifyAgentChange(
+			context.Background(),
+			a.app.Client,
+			a.app.Agent().Name,
+			strings.Title(a.app.Agent().Name), // Use capitalized name as display name
+		))
 	case commands.AgentCycleReverseCommand:
 		updated, cmd := a.app.SwitchAgentReverse()
 		a.app = updated
 		cmds = append(cmds, cmd)
+		// Notify server of agent change
+		cmds = append(cmds, api.NotifyAgentChange(
+			context.Background(),
+			a.app.Client,
+			a.app.Agent().Name,
+			strings.Title(a.app.Agent().Name), // Use capitalized name as display name
+		))
 	case commands.EditorOpenCommand:
 		if a.app.IsBusy() {
 			// status.Warn("Agent is working, please wait...")
