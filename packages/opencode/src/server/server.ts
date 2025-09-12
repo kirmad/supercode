@@ -1586,7 +1586,7 @@ export namespace Server {
           tools: z.union([
             z.literal("*"),
             z.array(z.string()),
-          ]).optional().default("*").openapi({ description: "Tools to make available ('*' for all or array of tool IDs)" }),
+          ]).optional().default([]).openapi({ description: "Tools to make available ('*' for all or array of tool IDs)" }),
           maxTokens: z.number().optional().openapi({ description: "Maximum tokens to generate" }),
         }),
       ),
@@ -1632,7 +1632,7 @@ export namespace Server {
               // Get all available tools
               const allTools = await ToolRegistry.tools(providerID, modelID)
               tools = allTools
-                .filter(tool => tool.parameters && typeof tool.parameters === 'object' && tool.parameters.type === 'object')
+                .filter(tool => tool.parameters && typeof tool.parameters === 'object')
                 .map(tool => ({
                   type: "function" as const,
                   function: {
@@ -1645,7 +1645,7 @@ export namespace Server {
               // Get specific tools
               const allTools = await ToolRegistry.tools(providerID, modelID)
               tools = allTools
-                .filter(tool => body.tools.includes(tool.id) && tool.parameters && typeof tool.parameters === 'object' && tool.parameters.type === 'object')
+                .filter(tool => body.tools.includes(tool.id) && tool.parameters && typeof tool.parameters === 'object')
                 .map(tool => ({
                   type: "function" as const,
                   function: {
