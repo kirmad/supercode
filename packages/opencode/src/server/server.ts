@@ -28,6 +28,8 @@ import { createHttpLogsRoutes } from "./http-logs-routes"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
+import { generateText } from "ai"
+import { ToolRegistry } from "../tool/registry"
 
 const ERRORS = {
   400: {
@@ -1539,6 +1541,156 @@ export namespace Server {
         const info = c.req.valid("json")
         await Auth.set(id, info)
         return c.json(true)
+      },
+    )
+    .post(
+      "/completions/generate-text",
+      describeRoute({
+        description: "Generate text using AI with specified provider, model, prompts and tools",
+        operationId: "completions.generateText",
+        responses: {
+          200: {
+            description: "Successfully generated text response",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    text: z.string(),
+                    usage: z.object({
+                      promptTokens: z.number(),
+                      completionTokens: z.number(),
+                      totalTokens: z.number(),
+                    }).optional(),
+                    finishReason: z.enum(["stop", "length", "content-filter", "tool-calls", "error", "other", "unknown"]).optional(),
+                  }).openapi({
+                    ref: "GenerateTextResponse",
+                  }),
+                ),
+              },
+            },
+          },
+          ...ERRORS,
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          provider: z.string().optional().default("github-copilot").openapi({ description: "AI provider ID (defaults to github-copilot)" }),
+          model: z.string().optional().openapi({ description: "Model ID (defaults to small model for provider)" }),
+          messages: z.array(
+            z.object({
+              role: z.enum(["system", "user", "assistant"]),
+              content: z.string(),
+            })
+          ).openapi({ description: "Array of message objects with role and content" }),
+          tools: z.union([
+            z.literal("*"),
+            z.array(z.string()),
+          ]).optional().default("*").openapi({ description: "Tools to make available ('*' for all or array of tool IDs)" }),
+          maxTokens: z.number().optional().openapi({ description: "Maximum tokens to generate" }),
+        }),
+      ),
+      async (c) => {
+        try {
+          const body = c.req.valid("json")
+          
+          // Get or default provider
+          const providerID = body.provider || "github-copilot"
+          
+          // Get provider
+          const provider = await Provider.getProvider(providerID)
+          if (!provider) {
+            return c.json({ error: `Provider '${providerID}' not found` }, 400)
+          }
+          
+          // Get or default model
+          let modelID = body.model
+          if (!modelID) {
+            const smallModel = await Provider.getSmallModel(providerID)
+            if (smallModel) {
+              modelID = smallModel.modelID
+            } else {
+              // Fallback to first available model
+              const firstModel = Object.keys(provider.info.models)[0]
+              if (!firstModel) {
+                return c.json({ error: `No models available for provider '${providerID}'` }, 400)
+              }
+              modelID = firstModel
+            }
+          }
+          
+          // Get the model
+          const model = await Provider.getModel(providerID, modelID)
+          if (!model) {
+            return c.json({ error: `Model '${modelID}' not found for provider '${providerID}'` }, 400)
+          }
+          
+          // Get available tools
+          let tools = undefined
+          if (body.tools && (body.tools === "*" || (Array.isArray(body.tools) && body.tools.length > 0))) {
+            if (body.tools === "*") {
+              // Get all available tools
+              const allTools = await ToolRegistry.tools(providerID, modelID)
+              tools = allTools
+                .filter(tool => tool.parameters && typeof tool.parameters === 'object' && tool.parameters.type === 'object')
+                .map(tool => ({
+                  type: "function" as const,
+                  function: {
+                    name: tool.id,
+                    description: tool.description || `Tool: ${tool.id}`,
+                    parameters: tool.parameters,
+                  }
+                }))
+            } else if (Array.isArray(body.tools)) {
+              // Get specific tools
+              const allTools = await ToolRegistry.tools(providerID, modelID)
+              tools = allTools
+                .filter(tool => body.tools.includes(tool.id) && tool.parameters && typeof tool.parameters === 'object' && tool.parameters.type === 'object')
+                .map(tool => ({
+                  type: "function" as const,
+                  function: {
+                    name: tool.id,
+                    description: tool.description || `Tool: ${tool.id}`,
+                    parameters: tool.parameters,
+                  }
+                }))
+            }
+          }
+          
+          // Prepare generation options
+          const generateOptions: any = {
+            model: model.language,
+            messages: body.messages,
+          }
+          
+          if (tools && tools.length > 0) {
+            generateOptions.tools = tools
+          }
+          
+          if (body.maxTokens) {
+            generateOptions.maxTokens = body.maxTokens
+          }
+          
+          // Generate text
+          const result = await generateText(generateOptions)
+          
+          return c.json({
+            text: result.text,
+            usage: result.usage ? {
+              promptTokens: result.usage.inputTokens || 0,
+              completionTokens: result.usage.outputTokens || 0,
+              totalTokens: (result.usage.inputTokens || 0) + (result.usage.outputTokens || 0),
+            } : undefined,
+            finishReason: result.finishReason,
+          })
+          
+        } catch (error) {
+          log.error("generate-text failed", { error })
+          if (error instanceof NamedError) {
+            return c.json(error.toObject(), { status: 400 })
+          }
+          return c.json(new NamedError.Unknown({ message: String(error) }).toObject(), { status: 400 })
+        }
       },
     )
 
