@@ -908,6 +908,22 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				response = nil
 			}
+		case "/tui/active-session":
+			if a.app.Session != nil && a.app.Session.ID != "" {
+				response = map[string]interface{}{
+					"sessionID": a.app.Session.ID,
+					"sessionInfo": map[string]interface{}{
+						"id":        a.app.Session.ID,
+						"title":     a.app.Session.Title,
+						"createdAt": a.app.Session.Time.Created,
+						"updatedAt": a.app.Session.Time.Updated,
+						"parentID":  a.app.Session.ParentID,
+						"share":     a.app.Session.Share,
+					},
+				}
+			} else {
+				response = nil
+			}
 		case "/tui/set-model":
 			var body struct {
 				ProviderID string `json:"providerID"`

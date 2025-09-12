@@ -308,12 +308,17 @@ export class SuperCodeSDKClient {
    */
   async getSessionMessages(sessionId: string): Promise<unknown[]> {
     try {
-      const client = await this.ensureClient();
-      const messages = await client.session.messages({
-        path: { id: sessionId }
-      });
-      return (messages as { data?: unknown[] }).data || [];
+      const response = await fetch(`http://localhost:${this.config.port}/session/${sessionId}/message`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const messages = await response.json();
+      const result = Array.isArray(messages) ? messages : [];
+      return result;
     } catch (error) {
+      console.error('Failed to get session messages:', error);
       throw new Error(`Failed to get session messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -351,9 +356,6 @@ export class SuperCodeSDKClient {
    */
   async getCurrentModel(): Promise<{ name: string; provider: string; version?: string }> {
     try {
-      console.log('🔍 Fetching current model from /tui/get-model API...');
-      
-      // Use the new TUI API endpoint
       const response = await fetch(`http://localhost:${this.config.port}/tui/get-model`);
       
       if (!response.ok) {
@@ -361,31 +363,25 @@ export class SuperCodeSDKClient {
       }
       
       const modelData = await response.json();
-      console.log('📋 Model data from TUI API:', modelData);
       
       if (modelData && (modelData.modelName || modelData.modelID)) {
-        // The API returns: {modelID, modelName, providerID, providerName}
         const modelName = modelData.modelName || modelData.modelID || 'Unknown Model';
         const providerName = modelData.providerName || modelData.providerID || 'Unknown Provider';
         
-        const result = {
+        return {
           name: modelName,
           provider: providerName,
           version: ''
         };
-        
-        console.log('✅ Formatted model info:', result);
-        return result;
       }
       
-      console.warn('⚠️ Invalid model data structure received:', modelData);
       return {
         name: 'Model Unavailable',
         provider: '',
         version: ''
       };
     } catch (error) {
-      console.error('❌ Failed to get current model from TUI API:', error);
+      console.error('Failed to get current model:', error);
       return {
         name: 'Model Unavailable',
         provider: '',
@@ -575,6 +571,30 @@ export class SuperCodeSDKClient {
     } catch (error) {
       console.error('Failed to format token usage:', error);
       return 'Context Unavailable';
+    }
+  }
+
+  /**
+   * Get currently active session in TUI
+   */
+  async getActiveSession(): Promise<{ sessionID?: string; sessionInfo?: any } | null> {
+    try {
+      const response = await fetch(`http://localhost:${this.config.port}/tui/active-session`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const activeSessionData = await response.json();
+      
+      if (activeSessionData && activeSessionData.sessionID) {
+        return activeSessionData;
+      } else {
+        return null;
+      }
+    } catch (error) {
+      console.error('Failed to get active session:', error);
+      return null;
     }
   }
 

@@ -1334,6 +1334,33 @@ export namespace Server {
         return c.json(result)
       },
     )
+    .get(
+      "/tui/active-session",
+      describeRoute({
+        description: "Get currently active session in TUI",
+        operationId: "tui.getActiveSession",
+        responses: {
+          200: {
+            description: "Current active session information",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    sessionID: z.string().optional(),
+                    sessionInfo: Session.Info.optional(),
+                  }).optional(),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        // Call TUI to get current active session
+        const result = await callTui(c)
+        return c.json(result)
+      },
+    )
     .post(
       "/tui/set-model",
       describeRoute({

@@ -595,11 +595,7 @@ async function fetchTokenUsage() {
   }
   
   try {
-    console.log('🔍 Fetching current token usage information with TUI formatting...')
-    
-    // Get formatted token usage string directly from SDK (like TUI)
     const formattedUsage = await sdkClient.getFormattedTokenUsage()
-    console.log('📋 Formatted token usage received:', formattedUsage)
     
     formattedContextInfo.value = formattedUsage
     
@@ -611,15 +607,64 @@ async function fetchTokenUsage() {
         max: tokenData.max,
         percentage: tokenData.percentage
       }
-      console.log('✅ Token usage info updated:', tokenUsage.value)
     } else {
-      console.log('⚠️ No valid token usage data received from server')
       tokenUsage.value = { used: -1, max: -1, percentage: -1 }
     }
   } catch (error) {
     console.error('❌ Failed to fetch token usage info:', error)
     formattedContextInfo.value = 'Context Unavailable'
     tokenUsage.value = { used: -1, max: -1, percentage: -1 }
+  }
+}
+
+// Active session fetching and message loading
+async function fetchActiveSessionAndLoadMessages() {
+  if (!sdkClient) {
+    return
+  }
+  
+  try {
+    const activeSessionData = await sdkClient.getActiveSession()
+    
+    if (activeSessionData && activeSessionData.sessionID) {
+      const sessionMessages = await sdkClient.getSessionMessages(activeSessionData.sessionID)
+      const convertedMessages: ExtendedMessage[] = []
+      
+      for (const msg of sessionMessages as any[]) {
+        if (msg.info && msg.info.role && msg.parts) {
+          const textParts = msg.parts.filter((p: any) => p.type === 'text')
+          const content = textParts.map((p: any) => p.text).join('')
+          
+          if (content && content.trim()) {
+            const messageType = msg.info.role === 'user' ? 'user' : 'assistant'
+            
+            convertedMessages.push({
+              id: msg.info.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+              type: messageType,
+              content: content.trim(),
+              timestamp: msg.info.time?.created || Date.now()
+            })
+          }
+        }
+      }
+      
+      if (convertedMessages.length > 0) {
+        messages.value = convertedMessages
+        
+        nextTick(() => {
+          if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+          }
+        })
+      } else {
+        addMessage('system', 'Connected to active session but no messages found')
+      }
+    } else {
+      addMessage('system', 'No active session found in TUI')
+    }
+  } catch (error) {
+    console.error('Failed to fetch active session or load messages:', error)
+    addMessage('system', `Failed to load active session: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -631,9 +676,7 @@ async function fetchModelInfo() {
   }
   
   try {
-    console.log('🔍 Fetching current model information...')
     const modelData = await sdkClient.getCurrentModel()
-    console.log('📋 Model data received:', modelData)
     
     // Update model info based on received data
     if (modelData && modelData.name) {
@@ -642,9 +685,7 @@ async function fetchModelInfo() {
         provider: modelData.provider || '',
         version: modelData.version || ''
       }
-      console.log('✅ Model info updated:', modelInfo.value)
     } else {
-      console.log('⚠️ No valid model data received from server')
       modelInfo.value = {
         name: 'Unknown Model',
         provider: '',
@@ -684,16 +725,6 @@ function updateTodoStatus(todoId: string, completed: boolean) {
 }
 
 function parseTodoFromToolOutput(toolName: string, output: string, metadata?: any) {
-  console.log('🔍 Parsing todo from tool:', {
-    toolName: toolName,
-    toolNameLower: toolName.toLowerCase(),
-    isTodoTool: toolName.toLowerCase().includes('todo'),
-    output: output,
-    outputLength: output?.length || 0,
-    metadata: metadata,
-    metadataTodos: metadata?.todos,
-    hasMetadataTodos: !!(metadata && metadata.todos)
-  })
   
   // Check for any todo-related tools - make this more permissive
   if (toolName.toLowerCase().includes('todo') || toolName === 'TodoWrite' || toolName === 'TodoRead' || toolName === 'todowrite' || toolName === 'todoread') {
@@ -701,7 +732,6 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
     // First try to parse from metadata.todos (the correct way)
     if (metadata && metadata.todos && Array.isArray(metadata.todos)) {
       try {
-        console.log('📋 Found todos in metadata:', metadata.todos)
         const todoItems: TodoItem[] = metadata.todos.map((todo: any, index: number) => ({
           id: todo.id || `todo_${Date.now()}_${index}`,
           content: todo.content || 'Untitled task',
@@ -710,8 +740,6 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
         }))
         
         todos.value = todoItems
-        console.log('✅ Successfully updated todos from metadata:', todoItems)
-        console.log('📋 Todo interface should now be visible at top of page')
         return // Successfully parsed from metadata
       } catch (error) {
         console.error('Error parsing todos from metadata:', error)
@@ -775,9 +803,7 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
       
       if (todoItems.length > 0) {
         todos.value = todoItems
-        console.log('📋 Updated todos:', todoItems)
       } else {
-        console.log('📋 No todo items parsed from output')
       }
     } catch (error) {
       console.error('Error parsing todo output:', error)
@@ -806,7 +832,6 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
       
       if (todoItems.length > 0) {
         todos.value = todoItems
-        console.log('📋 Updated todos from generic parsing:', todoItems)
       }
     } catch (error) {
       console.error('Error in generic todo parsing:', error)
@@ -838,70 +863,54 @@ async function pollForConnection() {
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`📞 Testing connection to SuperCode server (attempt ${attempt}/${maxRetries})...`)
       
       if (!sdkClient) {
-        console.error('❌ SDK client not initialized')
         connectionStatus.value = 'error'
         return
       }
       
       const isConnected = await sdkClient.testConnection()
       
-      console.log(`🔗 Connection test result: ${isConnected}`)
       
       if (isConnected) {
         connectionStatus.value = 'connected'
-        console.log('✅ SDK client connected successfully')
         
         // Subscribe to SSE events
-        console.log('📡 Subscribing to SSE events...')
         await sdkClient.subscribeToEvents()
         
         // Set up message handlers
         sdkClient.onMessage(handleSSEMessage)
         sdkClient.onError(handleSSEError)
         
-        // Fetch current model information and token usage
-        console.log('📋 Fetching model info and token usage...')
+        // Fetch current model information, token usage, and active session
         await fetchModelInfo()
         await fetchTokenUsage()
+        await fetchActiveSessionAndLoadMessages()
         
         return // Success - exit polling loop
       }
       
     } catch (error) {
-      console.log(`⚠️ Connection attempt ${attempt} failed:`, error.message)
     }
     
     // If this wasn't the last attempt, wait before retrying
     if (attempt < maxRetries) {
       const delay = Math.min(baseDelay * Math.pow(1.5, attempt - 1), maxDelay)
-      console.log(`⏳ Waiting ${delay}ms before retry...`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
   
   // All attempts failed
   connectionStatus.value = 'error'
-  console.error('❌ SDK client connection failed after all attempts.')
-  console.log('💡 Make sure SuperCode server is running and accessible on port', currentPort.value)
   addMessage('system', `Connection failed: SuperCode server not responding on port ${currentPort.value}`)
 }
 
 function handleSSEMessage(message: SSEMessage) {
-  // Log all SSE messages to debug what events are actually sent
-  console.log('🔍 SSE Event received:', {
-    type: message.type,
-    properties: message.properties,
-    full_message: message
-  })
   
   // Handle different message types
   switch (message.type) {
     case 'message':
       if (message.content) {
-        console.log('✅ Adding message from message event:', message.content)
         addMessage('assistant', message.content)
       }
       break
@@ -973,11 +982,9 @@ function handleSSEMessage(message: SSEMessage) {
       
       if (part && partMessageId) {
         // Log all part types to debug what we're receiving
-        console.log('📋 Message part type:', part.type, 'Full part:', part)
         
         // Check if this is a tool part
         if (part.type === 'tool') {
-          console.log('🔧 Tool part detected:', part)
           
           const toolCall: ToolCall = {
             id: part.id || `tool_${Date.now()}_${Math.random().toString(36).substring(2)}`,
@@ -993,15 +1000,6 @@ function handleSSEMessage(message: SSEMessage) {
           
           // If tool is completed, parse todos from it
           if (part.state?.status === 'completed') {
-            console.log('🛠️ Tool completed:', part.tool)
-            console.log('🛠️ Tool result from part update:', {
-              tool: toolCall.tool,
-              output: toolCall.state.output,
-              outputLength: toolCall.state.output?.length || 0,
-              metadata: toolCall.state.metadata,
-              hasMetadata: !!toolCall.state.metadata,
-              rawPart: part
-            })
             
             // Parse todo output if it's a todo tool
             parseTodoFromToolOutput(toolCall.tool, toolCall.state.output || '', toolCall.state.metadata)
@@ -1120,16 +1118,6 @@ function handleSSEMessage(message: SSEMessage) {
           }
           
           addOrUpdateToolCall(updatedToolCall)
-          
-          // Debug: log all tool outputs
-          console.log('🛠️ Tool result received:', {
-            tool: updatedToolCall.tool,
-            output: updatedToolCall.state.output,
-            outputLength: updatedToolCall.state.output?.length || 0,
-            metadata: updatedToolCall.state.metadata,
-            hasMetadata: !!updatedToolCall.state.metadata,
-            rawResult: result
-          })
           
           // Parse todo output if it's a todo tool
           parseTodoFromToolOutput(updatedToolCall.tool, updatedToolCall.state.output || '', updatedToolCall.state.metadata)
@@ -1275,9 +1263,7 @@ onMounted(async () => {
     
     // Always initialize SDK client for full functionality
     if (window.vscode) {
-      console.log('🔍 Detected VS Code environment, using SuperCode SDK with VS Code integration')
     } else {
-      console.log('🔍 Detected standalone mode, using SuperCode SDK')
     }
     
     // Initialize SDK client in both modes
@@ -1285,7 +1271,6 @@ onMounted(async () => {
     
     // Always ensure model info is set (indicate unavailable if dynamic fetch fails)
     if (!modelInfo.value) {
-      console.log('ℹ️ Model info not available, indicating unavailable status')
       modelInfo.value = {
         name: 'Model Unavailable',
         provider: '',
@@ -1295,7 +1280,6 @@ onMounted(async () => {
     
     // Always ensure token usage is set (indicate unavailable if dynamic fetch fails)
     if (!tokenUsage.value) {
-      console.log('ℹ️ Token usage info not available, indicating unavailable status')
       tokenUsage.value = { used: -1, max: -1, percentage: -1 }
       formattedContextInfo.value = 'Context Unavailable'
     }
