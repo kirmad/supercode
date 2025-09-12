@@ -149,6 +149,31 @@ export class SuperCodeSDKClient {
   }
 
   /**
+   * Cancel the currently running prompt
+   */
+  async cancelPrompt(): Promise<void> {
+    try {
+      // Use direct HTTP call since the generated client method may not be properly available
+      const response = await fetch(`${this.config.baseUrl}/tui/cancel-prompt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      console.log('Cancellation request sent successfully');
+    } catch (error) {
+      console.error('Failed to cancel prompt:', error);
+      throw new Error(`Failed to cancel prompt: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Subscribe to SSE events using the official SDK
    */
   async subscribeToEvents(): Promise<void> {

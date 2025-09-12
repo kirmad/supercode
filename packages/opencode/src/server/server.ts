@@ -1255,6 +1255,24 @@ export namespace Server {
       async (c) => c.json(await callTui(c)),
     )
     .post(
+      "/tui/cancel-prompt",
+      describeRoute({
+        description: "Cancel the currently running prompt",
+        operationId: "tui.cancelPrompt",
+        responses: {
+          200: {
+            description: "Prompt cancellation signal sent successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => c.json(await callTui(c)),
+    )
+    .post(
       "/tui/execute-command",
       describeRoute({
         description: "Execute a TUI command (e.g. agent_cycle)",

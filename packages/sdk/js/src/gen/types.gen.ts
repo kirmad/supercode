@@ -699,6 +699,10 @@ export type Config = {
    */
   disabled_providers?: Array<string>
   /**
+   * Only allow these providers to be loaded. When set, only the specified providers will be available. If not set, all providers (except disabled) are allowed. Default: ['github-copilot'] to limit to GitHub Copilot only.
+   */
+  approved_providers?: Array<string>
+  /**
    * Model to use in the format of provider/model, eg anthropic/claude-2
    */
   model?: string
@@ -1323,6 +1327,16 @@ export type WellKnownAuth = {
   type: "wellknown"
   key: string
   token: string
+}
+
+export type GenerateTextResponse = {
+  text: string
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
+  finishReason?: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other" | "unknown"
 }
 
 export type ProjectListData = {
@@ -2240,6 +2254,24 @@ export type TuiClearPromptResponses = {
 
 export type TuiClearPromptResponse = TuiClearPromptResponses[keyof TuiClearPromptResponses]
 
+export type TuiCancelPromptData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/cancel-prompt"
+}
+
+export type TuiCancelPromptResponses = {
+  /**
+   * Prompt cancellation signal sent successfully
+   */
+  200: boolean
+}
+
+export type TuiCancelPromptResponse = TuiCancelPromptResponses[keyof TuiCancelPromptResponses]
+
 export type TuiExecuteCommandData = {
   body?: {
     command: string
@@ -2303,6 +2335,27 @@ export type TuiGetAgentResponses = {
 }
 
 export type TuiGetAgentResponse = TuiGetAgentResponses[keyof TuiGetAgentResponses]
+
+export type TuiGetActiveSessionData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/active-session"
+}
+
+export type TuiGetActiveSessionResponses = {
+  /**
+   * Current active session information
+   */
+  200: {
+    sessionID?: string
+    sessionInfo?: Session
+  }
+}
+
+export type TuiGetActiveSessionResponse = TuiGetActiveSessionResponses[keyof TuiGetActiveSessionResponses]
 
 export type TuiSetModelData = {
   body?: {
@@ -2883,6 +2936,57 @@ export type AuthSetResponses = {
 }
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
+
+export type CompletionsGenerateTextData = {
+  body?: {
+    /**
+     * AI provider ID (defaults to github-copilot)
+     */
+    provider?: string
+    /**
+     * Model ID (defaults to small model for provider)
+     */
+    model?: string
+    /**
+     * Array of message objects with role and content
+     */
+    messages: Array<{
+      role: "system" | "user" | "assistant"
+      content: string
+    }>
+    /**
+     * Tools to make available ('*' for all or array of tool IDs)
+     */
+    tools?: "*" | Array<string>
+    /**
+     * Maximum tokens to generate
+     */
+    maxTokens?: number
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/completions/generate-text"
+}
+
+export type CompletionsGenerateTextErrors = {
+  /**
+   * Bad request
+   */
+  400: _Error
+}
+
+export type CompletionsGenerateTextError = CompletionsGenerateTextErrors[keyof CompletionsGenerateTextErrors]
+
+export type CompletionsGenerateTextResponses = {
+  /**
+   * Successfully generated text response
+   */
+  200: GenerateTextResponse
+}
+
+export type CompletionsGenerateTextResponse = CompletionsGenerateTextResponses[keyof CompletionsGenerateTextResponses]
 
 export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})

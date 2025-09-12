@@ -984,6 +984,21 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				slog.Error("Invalid agent name", "agentName", body.AgentName)
 				response = false
 			}
+		case "/tui/cancel-prompt":
+			// Cancel the currently running prompt/session processing
+			if a.app.Session != nil && a.app.Session.ID != "" {
+				slog.Info("Cancelling current prompt processing", "sessionID", a.app.Session.ID)
+				err := a.app.Cancel(context.Background(), a.app.Session.ID)
+				if err != nil {
+					slog.Error("Failed to cancel prompt", "error", err)
+					response = false
+				} else {
+					response = true
+				}
+			} else {
+				slog.Warn("No active session to cancel")
+				response = false
+			}
 
 		default:
 			break

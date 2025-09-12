@@ -85,12 +85,16 @@ import type {
   TuiSubmitPromptResponses,
   TuiClearPromptData,
   TuiClearPromptResponses,
+  TuiCancelPromptData,
+  TuiCancelPromptResponses,
   TuiExecuteCommandData,
   TuiExecuteCommandResponses,
   TuiGetModelData,
   TuiGetModelResponses,
   TuiGetAgentData,
   TuiGetAgentResponses,
+  TuiGetActiveSessionData,
+  TuiGetActiveSessionResponses,
   TuiSetModelData,
   TuiSetModelResponses,
   TuiSetAgentData,
@@ -124,6 +128,9 @@ import type {
   AuthSetData,
   AuthSetResponses,
   AuthSetErrors,
+  CompletionsGenerateTextData,
+  CompletionsGenerateTextResponses,
+  CompletionsGenerateTextErrors,
 } from "./types.gen.js"
 import { client as _heyApiClient } from "./client.gen.js"
 
@@ -624,6 +631,16 @@ class Tui extends _HeyApiClient {
   }
 
   /**
+   * Cancel the currently running prompt
+   */
+  public cancelPrompt<ThrowOnError extends boolean = false>(options?: Options<TuiCancelPromptData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<TuiCancelPromptResponses, unknown, ThrowOnError>({
+      url: "/tui/cancel-prompt",
+      ...options,
+    })
+  }
+
+  /**
    * Execute a TUI command (e.g. agent_cycle)
    */
   public executeCommand<ThrowOnError extends boolean = false>(options?: Options<TuiExecuteCommandData, ThrowOnError>) {
@@ -653,6 +670,18 @@ class Tui extends _HeyApiClient {
   public getAgent<ThrowOnError extends boolean = false>(options?: Options<TuiGetAgentData, ThrowOnError>) {
     return (options?.client ?? this._client).get<TuiGetAgentResponses, unknown, ThrowOnError>({
       url: "/tui/get-agent",
+      ...options,
+    })
+  }
+
+  /**
+   * Get currently active session in TUI
+   */
+  public getActiveSession<ThrowOnError extends boolean = false>(
+    options?: Options<TuiGetActiveSessionData, ThrowOnError>,
+  ) {
+    return (options?.client ?? this._client).get<TuiGetActiveSessionResponses, unknown, ThrowOnError>({
+      url: "/tui/active-session",
       ...options,
     })
   }
@@ -844,6 +873,28 @@ class Auth extends _HeyApiClient {
   }
 }
 
+class Completions extends _HeyApiClient {
+  /**
+   * Generate text using AI with specified provider, model, prompts and tools
+   */
+  public generateText<ThrowOnError extends boolean = false>(
+    options?: Options<CompletionsGenerateTextData, ThrowOnError>,
+  ) {
+    return (options?.client ?? this._client).post<
+      CompletionsGenerateTextResponses,
+      CompletionsGenerateTextErrors,
+      ThrowOnError
+    >({
+      url: "/completions/generate-text",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+}
+
 export class OpencodeClient extends _HeyApiClient {
   /**
    * Respond to a permission request
@@ -878,4 +929,5 @@ export class OpencodeClient extends _HeyApiClient {
   debugLogs = new DebugLogs({ client: this._client })
   httpLogs = new HttpLogs({ client: this._client })
   auth = new Auth({ client: this._client })
+  completions = new Completions({ client: this._client })
 }

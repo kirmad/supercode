@@ -186,7 +186,7 @@
           @input="autoResizeTextarea"
           @paste="handlePaste"
           :disabled="!isConnected"
-          placeholder="Type your message... (Enter = send, Shift+Enter = new line)"
+          placeholder="Type your message... (Enter = send, Shift+Enter = new line, ESC = cancel)"
           class="input-field auto-expand-textarea"
           ref="inputField"
           rows="1"
@@ -276,6 +276,7 @@ const selectingAgent = ref<string | null>(null)
 
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
+
 
 // Todo state
 interface TodoItem {
@@ -571,6 +572,28 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+// Handle global ESC key for cancellation
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    // If model selector is open, close it
+    if (showModelSelector.value) {
+      hideModelSelector()
+      return
+    }
+    
+    // If agent selector is open, close it
+    if (showAgentSelector.value) {
+      hideAgentSelector()
+      return
+    }
+    
+    // Otherwise, try to cancel any running prompt
+    event.preventDefault()
+    event.stopPropagation()
+    cancelMessage()
+  }
+}
+
 // Handle paste events to ensure auto-resize
 function handlePaste() {
   // Allow the paste to complete, then auto-resize
@@ -597,6 +620,20 @@ async function sendMessage() {
   } catch (error) {
     console.error('Failed to send message:', error)
     addMessage('system', `Error sending message: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Cancel message processing
+async function cancelMessage() {
+  if (!sdkClient) return
+  
+  try {
+    await sdkClient.cancelPrompt()
+    addMessage('system', 'Cancellation request sent')
+  } catch (error) {
+    console.error('Failed to cancel message:', error)
+    // Don't show error to user since cancellation might fail if nothing is running
+    // addMessage('system', `Error cancelling message: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -1613,6 +1650,9 @@ onMounted(async () => {
     // Set up VS Code message listener (fallback for VS Code integration)
     window.addEventListener('message', handleVsCodeMessage)
     
+    // Set up global ESC key listener for cancellation
+    window.addEventListener('keydown', handleGlobalKeydown)
+    
     // Set port from global if available
     if (window.supercodePort) {
       currentPort.value = window.supercodePort
@@ -1657,9 +1697,10 @@ onUnmounted(() => {
     sdkClient = null
   }
   
-  // Remove VS Code listener
+  // Remove listeners
   if (typeof window !== 'undefined') {
     window.removeEventListener('message', handleVsCodeMessage)
+    window.removeEventListener('keydown', handleGlobalKeydown)
   }
 })
 </script>
@@ -2540,4 +2581,6 @@ onUnmounted(() => {
 .agent-selector-body::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
+
+
 </style>
