@@ -1273,6 +1273,24 @@ export namespace Server {
       async (c) => c.json(await callTui(c)),
     )
     .post(
+      "/tui/clear-session",
+      describeRoute({
+        description: "Clear the current TUI session",
+        operationId: "tui.clearSession",
+        responses: {
+          200: {
+            description: "Session cleared successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => c.json(await callTui(c)),
+    )
+    .post(
       "/tui/execute-command",
       describeRoute({
         description: "Execute a TUI command (e.g. agent_cycle)",

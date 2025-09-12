@@ -174,6 +174,30 @@ export class SuperCodeSDKClient {
   }
 
   /**
+   * Clear the current session (messages and TUI state)
+   */
+  async clearSession(): Promise<void> {
+    try {
+      const response = await fetch(`${this.config.baseUrl}/tui/clear-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      console.log('Session clear request sent successfully');
+    } catch (error) {
+      console.error('Failed to clear session:', error);
+      throw new Error(`Failed to clear session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Subscribe to SSE events using the official SDK
    */
   async subscribeToEvents(): Promise<void> {

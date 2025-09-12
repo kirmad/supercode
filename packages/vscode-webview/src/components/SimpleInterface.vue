@@ -612,6 +612,22 @@ async function sendMessage() {
   const message = inputText.value.trim()
   inputText.value = ''
   
+  // Handle /clear command
+  if (message === '/clear' || message === '/new') {
+    try {
+      // Clear local UI messages
+      messages.value = []
+      
+      // Clear TUI session
+      await sdkClient.clearSession()
+      addMessage('system', 'Session cleared successfully')
+    } catch (error) {
+      console.error('Failed to clear session:', error)
+      addMessage('system', `Error clearing session: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+    return
+  }
+  
   // Don't add user message locally - it will be received via SSE
   
   try {

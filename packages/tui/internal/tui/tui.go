@@ -1000,6 +1000,15 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				response = false
 			}
 
+		case "/tui/clear-session":
+			slog.Info("Clearing session via API - matching built-in /new command behavior")
+			
+			// Match the exact behavior of the built-in /new and /clear commands
+			a.app.Session = &opencode.Session{}
+			a.app.Messages = []app.Message{}
+			
+			response = true
+
 		default:
 			break
 		}
