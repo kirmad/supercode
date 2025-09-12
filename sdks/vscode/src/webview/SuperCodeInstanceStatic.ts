@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
 import { StaticWebviewManager } from './StaticWebviewManager';
 import { ConnectionStatus } from './ConnectionStatus';
+import { tuiManager } from '../utils/tuiInstanceManager';
 
 /**
  * SuperCode instance that uses static files approach (HTML + CSS + JS files)
@@ -76,6 +77,38 @@ export class SuperCodeInstanceStatic {
   }
 
   /**
+   * Reveals the webview panel if it exists
+   */
+  public reveal(): void {
+    if (this.panel) {
+      this.panel.reveal();
+    }
+  }
+
+  /**
+   * Adds a prompt to the webview input field
+   * This sends a message to the HTML to add text to the input bar
+   * @param text - The text to add
+   * @param variant - 'clearAndAdd' to clear existing text, 'appendWithSpacing' to add with line spacing
+   */
+  public addPromptToInput(text: string, variant: 'clearAndAdd' | 'appendWithSpacing' = 'clearAndAdd'): void {
+    if (this.panel && this.panel.webview) {
+      try {
+        this.panel.webview.postMessage({
+          command: 'addPrompt',
+          text: text,
+          variant: variant
+        });
+        console.log(`[SuperCode-Static-${this.getShortId()}] Sent addPrompt (${variant}) to webview: ${text}`);
+      } catch (error) {
+        console.error(`[SuperCode-Static-${this.getShortId()}] Failed to send addPrompt to webview:`, error);
+      }
+    } else {
+      console.log(`[SuperCode-Static-${this.getShortId()}] Webview not ready for addPrompt (${variant}): ${text}`);
+    }
+  }
+
+  /**
    * Disposes of all resources associated with this instance
    */
   public dispose(): void {
@@ -126,12 +159,38 @@ export class SuperCodeInstanceStatic {
     // Handle panel disposal
     this.panel.onDidDispose(
       () => {
+        // Clear focus tracking when panel is disposed
+        tuiManager.clearFocusedStaticInstance();
         this.panel = undefined;
         this.dispose();
       },
       null,
       this.context.subscriptions
     );
+
+    // Handle panel visibility changes to track focus
+    this.panel.onDidChangeViewState(
+      (e) => {
+        if (e.webviewPanel.active || e.webviewPanel.visible) {
+          // Panel is now active/visible - set it as focused
+          tuiManager.setFocusedStaticInstance(this.instanceId);
+          console.log(`[SuperCode-Static-${this.getShortId()}] Panel became active/visible - set as focused instance`);
+        } else {
+          // Panel is no longer active/visible - check if we were the focused instance
+          const currentFocused = tuiManager.getFocusedStaticInstance();
+          if (currentFocused === this) {
+            tuiManager.clearFocusedStaticInstance();
+            console.log(`[SuperCode-Static-${this.getShortId()}] Panel lost focus - cleared focused instance`);
+          }
+        }
+      },
+      null,
+      this.context.subscriptions
+    );
+
+    // Set as focused initially if this is the only/first instance
+    tuiManager.setFocusedStaticInstance(this.instanceId);
+    console.log(`[SuperCode-Static-${this.getShortId()}] Initial focus set for new panel`);
 
     this.updatePanelTitle();
   }
@@ -610,7 +669,7 @@ export class SuperCodeInstanceStatic {
 
       // Step 2: Submit the prompt to trigger processing
       const submitResponse = await fetch(`http://localhost:${this.port}/tui/submit-prompt`, {
-        method: 'POST',
+        method: 'Post',
         headers: {
           'Content-Type': 'application/json',
         },

@@ -87,14 +87,18 @@
     <div class="input-area">
       <div class="input-wrapper">
         <span class="prompt">></span>
-        <input
+        <textarea
           v-model="inputText"
-          @keyup.enter="sendMessage"
+          @keydown="handleKeydown"
+          @input="autoResizeTextarea"
+          @paste="handlePaste"
           :disabled="!isConnected"
-          placeholder="Type your message..."
-          class="input-field"
+          placeholder="Type your message... (Enter = send, Shift+Enter = new line)"
+          class="input-field auto-expand-textarea"
           ref="inputField"
-        >
+          rows="1"
+          :style="{ height: typeof textareaHeight === 'number' ? textareaHeight + 'px' : textareaHeight }"
+        ></textarea>
       </div>
     </div>
   </div>
@@ -129,7 +133,8 @@ const currentPort = ref<number>(25716) // Default to SuperCode's default port fo
 const messages = ref<ExtendedMessage[]>([])
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
-const inputField = ref<HTMLInputElement>()
+const inputField = ref<HTMLTextAreaElement>()
+const textareaHeight = ref<number | string>(20) // Starting height for single line
 
 // New state for enhanced UI
 const modelInfo = ref<ModelInfo | null>(null)
@@ -382,6 +387,66 @@ function formatToolAction(name: string): string {
   }
 }
 
+
+// Auto-resize textarea functionality
+function autoResizeTextarea() {
+  if (!inputField.value) return
+  
+  const textarea = inputField.value
+  const minHeight = 20 // Minimum single line height
+  const maxHeight = 400 // Maximum height (about 20 lines)
+  
+  // Temporarily set to auto for proper scrollHeight calculation
+  // This works with Vue's reactive system
+  textareaHeight.value = 'auto'
+  
+  // Wait for Vue to update the DOM, then calculate height
+  nextTick(() => {
+    if (!inputField.value) return
+    
+    const scrollHeight = textarea.scrollHeight
+    let newHeight = Math.max(minHeight, scrollHeight)
+    
+    // Limit to maximum height and handle overflow
+    if (newHeight > maxHeight) {
+      newHeight = maxHeight
+      textarea.style.overflowY = 'auto'
+    } else {
+      textarea.style.overflowY = 'hidden'
+    }
+    
+    // Only update if height actually changed to prevent unnecessary reactivity
+    if (textareaHeight.value !== newHeight) {
+      textareaHeight.value = newHeight
+    }
+  })
+}
+
+// Handle keyboard navigation
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter') {
+    if (event.shiftKey) {
+      // Shift+Enter = new line (default behavior)
+      // Allow default behavior for multiline input
+      nextTick(() => autoResizeTextarea())
+    } else {
+      // Plain Enter = send message
+      event.preventDefault()
+      sendMessage()
+    }
+  }
+}
+
+// Handle paste events to ensure auto-resize
+function handlePaste() {
+  // Allow the paste to complete, then auto-resize
+  nextTick(() => autoResizeTextarea())
+}
+
+// Watch for input changes to auto-resize
+watch(inputText, () => {
+  nextTick(() => autoResizeTextarea())
+})
 
 // Message handling
 async function sendMessage() {
@@ -1144,6 +1209,36 @@ function handleVsCodeMessage(event: MessageEvent) {
       break
     }
     
+    case 'addPrompt': {
+      // Add text to the input field from VSCode extension
+      const text = (message as any).text
+      const variant = (message as any).variant || 'clearAndAdd'
+      
+      if (text) {
+        if (variant === 'clearAndAdd') {
+          // Clear existing text and add new text
+          inputText.value = text
+          console.log('VSCode addPrompt (clearAndAdd): Set input text:', text)
+        } else if (variant === 'appendWithSpacing') {
+          // Add line spacing and append new text to existing content
+          const currentText = inputText.value.trim()
+          inputText.value = currentText ? `${currentText}\n\n${text}` : text
+          console.log('VSCode addPrompt (appendWithSpacing): Appended text:', text)
+        }
+        
+        // Focus the input field, move cursor to end, and auto-resize
+        nextTick(() => {
+          if (inputField.value) {
+            inputField.value.focus()
+            const finalText = inputText.value
+            inputField.value.setSelectionRange(finalText.length, finalText.length)
+            autoResizeTextarea()
+          }
+        })
+      }
+      break
+    }
+    
     // Remove addMessage case - all messages now come through SDK
     default:
       console.log('VSCode message (ignored, using SDK):', message.command)
@@ -1155,6 +1250,7 @@ watch(isConnected, (connected) => {
   if (connected) {
     nextTick(() => {
       inputField.value?.focus()
+      autoResizeTextarea()
     })
     // Retry model and token usage fetching when connection is established
     if (sdkClient && !modelInfo.value) {
@@ -1204,9 +1300,10 @@ onMounted(async () => {
       formattedContextInfo.value = 'Context Unavailable'
     }
     
-    // Focus input
+    // Focus input and initialize textarea height
     nextTick(() => {
       inputField.value?.focus()
+      autoResizeTextarea()
     })
     
   }
@@ -1426,14 +1523,16 @@ onUnmounted(() => {
 
 .input-wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px 16px;
+  gap: 8px;
 }
 
 .prompt {
   color: #4fc3f7;
-  margin-right: 8px;
   font-weight: bold;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .input-field {
@@ -1444,6 +1543,29 @@ onUnmounted(() => {
   color: #e8e6e3;
   font-family: inherit;
   font-size: inherit;
+}
+
+/* Auto-expanding textarea specific styles */
+.auto-expand-textarea {
+  min-height: 20px;
+  max-height: 400px;
+  resize: none;
+  overflow-y: hidden;
+  transition: height 0.15s ease-out;
+  line-height: 1.4;
+  padding: 0;
+  margin: 0;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.auto-expand-textarea:focus {
+  overflow-y: hidden;
+}
+
+/* When textarea exceeds max-height, show scrollbar */
+.auto-expand-textarea[style*="overflow-y: auto"] {
+  overflow-y: auto !important;
 }
 
 .input-field::placeholder {

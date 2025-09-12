@@ -65,6 +65,70 @@
         "command": "supercode.connectToExisting",
         "title": "Connect to Existing SuperCode Instance",
         "category": "SuperCode"
+      },
+      {
+        "command": "supercode.explainSelection",
+        "title": "Explain Selection",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.refactorSelection",
+        "title": "Refactor Selection",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.addCommentsToSelection",
+        "title": "Add Comments",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.debugSelection",
+        "title": "Debug Selection",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.optimizeSelection",
+        "title": "Optimize Selection",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewGeneral",
+        "title": "General Review",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewSecurity",
+        "title": "Security-Focused Review",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewDesign",
+        "title": "Design Review",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewDefensive",
+        "title": "Defensive Coding Review",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.showDynamicCommands",
+        "title": "Show Commands",
+        "category": "SuperCode"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "supercode.selection",
+        "label": "SuperCode"
+      },
+      {
+        "id": "supercode.review",
+        "label": "Review"
+      },
+      {
+        "id": "supercode.commands",
+        "label": "Commands"
       }
     ],
     "menus": {
@@ -72,6 +136,62 @@
         {
           "command": "supercode.openNewTerminal",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "submenu": "supercode.selection",
+          "when": "editorHasSelection",
+          "group": "supercode"
+        }
+      ],
+      "supercode.selection": [
+        {
+          "command": "supercode.explainSelection",
+          "group": "analyze@1"
+        },
+        {
+          "command": "supercode.debugSelection",
+          "group": "analyze@2"
+        },
+        {
+          "submenu": "supercode.review",
+          "group": "review@1"
+        },
+        {
+          "command": "supercode.showDynamicCommands",
+          "when": "editorHasSelection",
+          "group": "commands@1"
+        },
+        {
+          "command": "supercode.refactorSelection",
+          "group": "improve@1"
+        },
+        {
+          "command": "supercode.addCommentsToSelection",
+          "group": "improve@2"
+        },
+        {
+          "command": "supercode.optimizeSelection",
+          "group": "improve@3"
+        }
+      ],
+      "supercode.review": [
+        {
+          "command": "supercode.reviewGeneral",
+          "group": "review@1"
+        },
+        {
+          "command": "supercode.reviewSecurity",
+          "group": "review@2"
+        },
+        {
+          "command": "supercode.reviewDesign",
+          "group": "review@3"
+        },
+        {
+          "command": "supercode.reviewDefensive",
+          "group": "review@4"
         }
       ]
     },
@@ -143,6 +263,17 @@
           "enum": ["workspace", "current"],
           "default": "workspace",
           "description": "Working directory for SuperCode terminal: 'workspace' (VS Code workspace) or 'current' (extension process directory)"
+        },
+        "supercode.ui.method": {
+          "type": "string",
+          "enum": ["static", "terminal"],
+          "default": "static",
+          "description": "UI method for SuperCode: 'static' uses static webview + TUI (recommended), 'terminal' uses terminal-only interface"
+        },
+        "supercode.ui.reuseInstance": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, 'Open SuperCode' will connect to existing instances if available. When false, always creates a new instance."
         }
       }
     }
