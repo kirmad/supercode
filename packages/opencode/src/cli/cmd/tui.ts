@@ -15,7 +15,6 @@ import { Ide } from "../../ide"
 
 import { Flag } from "../../flag/flag"
 import { Session } from "../../session"
-import { McpInit } from "../../util/mcp-init"
 import { Instance } from "../../project/instance"
 
 declare global {
@@ -117,8 +116,6 @@ export const TuiCommand = cmd({
           return "needs_provider"
         }
 
-        // Initialize MCP servers early so they're ready when TUI opens
-        await McpInit.initialize()
 
         const server = Server.listen({
           port: args.port,
