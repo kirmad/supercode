@@ -32,3 +32,5 @@ sdks/vscode/out/*
 packages/vscode-webview/dist/*
 packages/vscode-webview/vscode-output/*
 packages/vscode-webview/vscode-static/*
+git-diff-viewer/**
+.claude/**
