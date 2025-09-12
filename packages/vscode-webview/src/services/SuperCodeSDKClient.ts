@@ -432,6 +432,34 @@ export class SuperCodeSDKClient {
   }
 
   /**
+   * Set current model in TUI
+   */
+  async setModel(providerID: string, modelID: string): Promise<boolean> {
+    try {
+      const response = await fetch(`http://localhost:${this.config.port}/tui/set-model`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          providerID,
+          modelID,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result === true || result.success === true;
+    } catch (error) {
+      console.error('Failed to set model:', error);
+      throw new Error(`Failed to set model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get current token usage information using TUI approach
    */
   async getTokenUsage(): Promise<{ used: number; max: number; percentage: number }> {

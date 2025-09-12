@@ -12,8 +12,43 @@
         <span class="status-text">
           {{ statusText }}
           <span v-if="currentPort" class="port">:{{ currentPort }}</span>
-          <span v-if="modelInfo" class="model-info-inline">{{ modelInfo.name }}</span>
+          <span 
+            v-if="modelInfo" 
+            class="model-info-inline clickable" 
+            @click="toggleModelSelector"
+            :title="'Click to change model'"
+          >{{ modelInfo.name }}</span>
         </span>
+      </div>
+    </div>
+    
+    <!-- Model Selector Dropdown -->
+    <div v-if="showModelSelector" class="model-selector-dropdown">
+      <div class="model-selector-overlay" @click="hideModelSelector"></div>
+      <div class="model-selector-content">
+        <div class="model-selector-header">
+          <span>Select Model</span>
+          <button class="close-button" @click="hideModelSelector">×</button>
+        </div>
+        <div class="model-selector-body">
+          <div v-if="loadingModels" class="loading-models">Loading models...</div>
+          <div v-else-if="availableModels.length === 0" class="no-models">No models available</div>
+          <div v-else class="model-list">
+            <div 
+              v-for="model in availableModels" 
+              :key="`${model.providerId}-${model.modelId}`"
+              class="model-item" 
+              :class="{ 
+                'selected': modelInfo && modelInfo.name === model.name,
+                'selecting': selectingModel === `${model.providerId}-${model.modelId}`
+              }"
+              @click="selectModel(model.providerId, model.modelId, model.name)"
+            >
+              <div class="model-name">{{ model.name }}</div>
+              <div class="model-provider">{{ model.providerName }}</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -139,6 +174,19 @@ const textareaHeight = ref<number | string>(20) // Starting height for single li
 // New state for enhanced UI
 const modelInfo = ref<ModelInfo | null>(null)
 const tokenUsage = ref<TokenUsage | null>(null)
+
+// Model selector state
+interface AvailableModel {
+  providerId: string
+  modelId: string
+  name: string
+  providerName: string
+}
+
+const showModelSelector = ref(false)
+const availableModels = ref<AvailableModel[]>([])
+const loadingModels = ref(false)
+const selectingModel = ref<string | null>(null)
 
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
@@ -1180,6 +1228,97 @@ function handleSSEError(error: Error) {
   addMessage('system', `Connection error: ${error.message}`)
 }
 
+// Model selector functions
+async function toggleModelSelector() {
+  if (showModelSelector.value) {
+    hideModelSelector()
+  } else {
+    await showModelSelectorDropdown()
+  }
+}
+
+function hideModelSelector() {
+  showModelSelector.value = false
+  availableModels.value = []
+  selectingModel.value = null
+}
+
+async function showModelSelectorDropdown() {
+  if (!sdkClient) {
+    console.error('No SDK client available for fetching models')
+    return
+  }
+
+  showModelSelector.value = true
+  loadingModels.value = true
+
+  try {
+    const providersData = await sdkClient.getProviders() as any
+    console.log('Providers data:', providersData)
+
+    if (providersData && providersData.providers) {
+      const models: AvailableModel[] = []
+      
+      for (const provider of providersData.providers) {
+        if (provider.models) {
+          for (const [modelId, modelData] of Object.entries(provider.models)) {
+            const model = modelData as any
+            models.push({
+              providerId: provider.id,
+              modelId: modelId,
+              name: model.name || modelId,
+              providerName: provider.name || provider.id
+            })
+          }
+        }
+      }
+
+      availableModels.value = models.sort((a, b) => a.name.localeCompare(b.name))
+    }
+  } catch (error) {
+    console.error('Failed to fetch available models:', error)
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+async function selectModel(providerId: string, modelId: string, modelName: string) {
+  if (!sdkClient) {
+    console.error('No SDK client available for setting model')
+    return
+  }
+
+  const selectionKey = `${providerId}-${modelId}`
+  selectingModel.value = selectionKey
+
+  try {
+    await sdkClient.setModel(providerId, modelId)
+    
+    // Update local model info immediately for better UX
+    modelInfo.value = {
+      name: modelName,
+      provider: providerId,
+      version: ''
+    }
+
+    // Hide the selector
+    hideModelSelector()
+
+    // Refresh model info from server to confirm
+    setTimeout(() => {
+      if (sdkClient) {
+        fetchModelInfo()
+      }
+    }, 500)
+
+  } catch (error) {
+    console.error('Failed to set model:', error)
+    // You could show an error message to the user here
+  } finally {
+    selectingModel.value = null
+  }
+}
+
 // VS Code message handling (minimal glue code for VSCode-specific communication)
 function handleVsCodeMessage(event: MessageEvent) {
   const message = event.data as WebviewMessage
@@ -1363,6 +1502,17 @@ onUnmounted(() => {
   color: #999;
   font-family: inherit;
   opacity: 0.8;
+}
+
+.model-info-inline.clickable {
+  cursor: pointer;
+  transition: color 0.2s ease;
+  border-bottom: 1px dotted transparent;
+}
+
+.model-info-inline.clickable:hover {
+  color: #4fc3f7;
+  border-bottom-color: #4fc3f7;
 }
 
 .status-dot {
@@ -1813,5 +1963,140 @@ onUnmounted(() => {
 
 .input-area {
   position: relative;
+}
+
+/* Model Selector Styles */
+.model-selector-dropdown {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+}
+
+.model-selector-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.model-selector-content {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  min-width: 320px;
+  max-width: 500px;
+  max-height: 60vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  z-index: 1001;
+}
+
+.model-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e8e6e3;
+}
+
+.close-button {
+  background: transparent;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.close-button:hover {
+  background: #333;
+  color: #e8e6e3;
+}
+
+.model-selector-body {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.loading-models, .no-models {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
+.model-list {
+  padding: 8px 0;
+}
+
+.model-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.model-item:hover {
+  background: #252525;
+}
+
+.model-item.selected {
+  background: #1f2a1f;
+  border-left-color: #4fc3f7;
+}
+
+.model-item.selecting {
+  background: #2a2a1f;
+  border-left-color: #ffff00;
+  opacity: 0.7;
+}
+
+.model-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #e8e6e3;
+  margin-bottom: 2px;
+}
+
+.model-provider {
+  font-size: 11px;
+  color: #999;
+}
+
+.model-selector-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.model-selector-body::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.model-selector-body::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.model-selector-body::-webkit-scrollbar-thumb:hover {
+  background: #444;
 }
 </style>
