@@ -18,6 +18,12 @@
             @click="toggleModelSelector"
             :title="'Click to change model'"
           >{{ modelInfo.name }}</span>
+          <span 
+            v-if="agentInfo" 
+            class="agent-info-inline clickable" 
+            @click="toggleAgentSelector"
+            :title="'Click to change agent'"
+          >| {{ agentInfo.name }}</span>
         </span>
       </div>
     </div>
@@ -46,6 +52,58 @@
             >
               <div class="model-name">{{ model.name }}</div>
               <div class="model-provider">{{ model.providerName }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Agent Selector Dropdown -->
+    <div v-if="showAgentSelector" class="agent-selector-dropdown">
+      <div class="agent-selector-overlay" @click="hideAgentSelector"></div>
+      <div class="agent-selector-content">
+        <div class="agent-selector-header">
+          <span>Select Agent</span>
+          <button class="close-button" @click="hideAgentSelector">×</button>
+        </div>
+        <div class="agent-selector-body">
+          <div v-if="loadingAgents" class="loading-agents">Loading agents...</div>
+          <div v-else-if="availableAgents.length === 0" class="no-agents">No agents available</div>
+          <div v-else class="agent-list">
+            <div 
+              v-for="agent in availableAgents" 
+              :key="agent.id"
+              class="agent-item" 
+              :class="{ 
+                'selected': agentInfo && agentInfo.name === agent.name,
+                'selecting': selectingAgent === agent.id
+              }"
+              @click="selectAgent(agent.id, agent.name)"
+            >
+              <div class="agent-header">
+                <div class="agent-name">{{ agent.name }}</div>
+                <div class="agent-badges">
+                  <span class="agent-mode-badge" :class="agent.mode">{{ agent.mode }}</span>
+                  <span v-if="agent.builtIn" class="built-in-badge">built-in</span>
+                </div>
+              </div>
+              <div class="agent-description">{{ agent.description || 'No description available' }}</div>
+              <div class="agent-permissions">
+                <div class="permission-group">
+                  <span class="permission-label">Edit:</span>
+                  <span class="permission-value" :class="agent.permission.edit">{{ agent.permission.edit }}</span>
+                </div>
+                <div class="permission-group">
+                  <span class="permission-label">Bash:</span>
+                  <span class="permission-value" :class="typeof agent.permission.bash === 'string' ? agent.permission.bash : 'custom'">
+                    {{ typeof agent.permission.bash === 'string' ? agent.permission.bash : 'custom' }}
+                  </span>
+                </div>
+                <div v-if="agent.permission.webfetch" class="permission-group">
+                  <span class="permission-label">WebFetch:</span>
+                  <span class="permission-value" :class="agent.permission.webfetch">{{ agent.permission.webfetch }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -175,6 +233,14 @@ const textareaHeight = ref<number | string>(20) // Starting height for single li
 const modelInfo = ref<ModelInfo | null>(null)
 const tokenUsage = ref<TokenUsage | null>(null)
 
+// Agent info interface and state
+interface AgentInfo {
+  name: string
+  description?: string
+}
+
+const agentInfo = ref<AgentInfo | null>(null)
+
 // Model selector state
 interface AvailableModel {
   providerId: string
@@ -187,6 +253,26 @@ const showModelSelector = ref(false)
 const availableModels = ref<AvailableModel[]>([])
 const loadingModels = ref(false)
 const selectingModel = ref<string | null>(null)
+
+// Agent selector state
+interface AvailableAgent {
+  id: string
+  name: string
+  description?: string
+  mode: string
+  builtIn: boolean
+  permission: {
+    edit: string
+    bash: Record<string, string> | string
+    webfetch?: string
+  }
+  tools: Record<string, boolean>
+}
+
+const showAgentSelector = ref(false)
+const availableAgents = ref<AvailableAgent[]>([])
+const loadingAgents = ref(false)
+const selectingAgent = ref<string | null>(null)
 
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
@@ -716,6 +802,42 @@ async function fetchActiveSessionAndLoadMessages() {
   }
 }
 
+// Agent info fetching
+async function fetchAgentInfo() {
+  if (!sdkClient) {
+    console.log('❌ No SDK client available for agent fetching')
+    return
+  }
+  
+  try {
+    console.log('🔄 Calling getCurrentAgent() from component...')
+    const agentData = await sdkClient.getCurrentAgent()
+    console.log('📊 Agent data received in component:', agentData)
+    
+    // Update agent info based on received data
+    if (agentData && agentData.name && agentData.name !== 'Agent Unavailable') {
+      agentInfo.value = {
+        name: agentData.name,
+        description: agentData.description || ''
+      }
+      console.log('✅ Agent info updated successfully:', agentInfo.value)
+    } else {
+      agentInfo.value = {
+        name: 'Unknown Agent',
+        description: ''
+      }
+      console.log('⚠️ No valid agent data, set to Unknown Agent')
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch agent info:', error)
+    // Indicate that agent info is not available
+    agentInfo.value = {
+      name: 'Agent Unavailable',
+      description: ''
+    }
+  }
+}
+
 // Model info fetching
 async function fetchModelInfo() {
   if (!sdkClient) {
@@ -930,8 +1052,9 @@ async function pollForConnection() {
         sdkClient.onMessage(handleSSEMessage)
         sdkClient.onError(handleSSEError)
         
-        // Fetch current model information, token usage, and active session
+        // Fetch current model information, agent information, token usage, and active session
         await fetchModelInfo()
+        await fetchAgentInfo()
         await fetchTokenUsage()
         await fetchActiveSessionAndLoadMessages()
         
@@ -1210,8 +1333,11 @@ function handleSSEMessage(message: SSEMessage) {
       }
       break
     case 'tui.agent.changed':
-      // Agent changed - could be used for UI updates in the future
-      console.log('🔄 Agent changed event received')
+      // Agent changed - refresh agent info
+      console.log('🔄 Agent changed event received, refreshing agent info...')
+      if (sdkClient) {
+        fetchAgentInfo()
+      }
       break
     case 'server.connected':
     case 'session.updated':
@@ -1319,6 +1445,95 @@ async function selectModel(providerId: string, modelId: string, modelName: strin
   }
 }
 
+// Agent selector functions
+async function toggleAgentSelector() {
+  if (showAgentSelector.value) {
+    hideAgentSelector()
+  } else {
+    await showAgentSelectorDropdown()
+  }
+}
+
+function hideAgentSelector() {
+  showAgentSelector.value = false
+  availableAgents.value = []
+  selectingAgent.value = null
+}
+
+async function showAgentSelectorDropdown() {
+  if (!sdkClient) {
+    console.error('No SDK client available for fetching agents')
+    return
+  }
+
+  showAgentSelector.value = true
+  loadingAgents.value = true
+
+  try {
+    const agentsData = await sdkClient.getAvailableAgents() as any[]
+    console.log('Agents data:', agentsData)
+
+    if (agentsData && Array.isArray(agentsData)) {
+      // Filter for primary and "all" mode agents only (exclude subagents)
+      const selectableAgents = agentsData.filter((agent: any) => 
+        agent.mode === 'primary' || agent.mode === 'all'
+      )
+      
+      const agents: AvailableAgent[] = selectableAgents.map((agent: any) => ({
+        id: agent.name,
+        name: agent.name,
+        description: agent.description || 'No description available',
+        mode: agent.mode,
+        builtIn: agent.builtIn || false,
+        permission: agent.permission || { edit: 'unknown', bash: 'unknown' },
+        tools: agent.tools || {}
+      }))
+
+      availableAgents.value = agents.sort((a, b) => a.name.localeCompare(b.name))
+      console.log('Filtered selectable agents:', agents.length, 'of', agentsData.length)
+    }
+  } catch (error) {
+    console.error('Failed to fetch available agents:', error)
+  } finally {
+    loadingAgents.value = false
+  }
+}
+
+async function selectAgent(agentId: string, agentName: string) {
+  if (!sdkClient) {
+    console.error('No SDK client available for setting agent')
+    return
+  }
+
+  selectingAgent.value = agentId
+
+  try {
+    await sdkClient.setAgent(agentId)
+    
+    // Update local agent info immediately for better UX
+    agentInfo.value = {
+      name: agentName,
+      description: availableAgents.value.find(a => a.id === agentId)?.description || ''
+    }
+
+    // Hide the selector
+    hideAgentSelector()
+
+    // Refresh agent info from server to confirm
+    setTimeout(() => {
+      if (sdkClient) {
+        fetchAgentInfo()
+      }
+    }, 500)
+
+  } catch (error) {
+    console.error('Failed to set agent:', error)
+    // You could show an error message to the user here
+  } finally {
+    selectingAgent.value = null
+  }
+}
+
 // VS Code message handling (minimal glue code for VSCode-specific communication)
 function handleVsCodeMessage(event: MessageEvent) {
   const message = event.data as WebviewMessage
@@ -1379,9 +1594,12 @@ watch(isConnected, (connected) => {
       inputField.value?.focus()
       autoResizeTextarea()
     })
-    // Retry model and token usage fetching when connection is established
+    // Retry model, agent, and token usage fetching when connection is established
     if (sdkClient && !modelInfo.value) {
       fetchModelInfo()
+    }
+    if (sdkClient && !agentInfo.value) {
+      fetchAgentInfo()
     }
     if (sdkClient && !tokenUsage.value) {
       fetchTokenUsage()
@@ -1511,6 +1729,25 @@ onUnmounted(() => {
 }
 
 .model-info-inline.clickable:hover {
+  color: #4fc3f7;
+  border-bottom-color: #4fc3f7;
+}
+
+.agent-info-inline {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #999;
+  font-family: inherit;
+  opacity: 0.8;
+}
+
+.agent-info-inline.clickable {
+  cursor: pointer;
+  transition: color 0.2s ease;
+  border-bottom: 1px dotted transparent;
+}
+
+.agent-info-inline.clickable:hover {
   color: #4fc3f7;
   border-bottom-color: #4fc3f7;
 }
@@ -2097,6 +2334,210 @@ onUnmounted(() => {
 }
 
 .model-selector-body::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Agent Selector Styles */
+.agent-selector-dropdown {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+}
+
+.agent-selector-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.agent-selector-content {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  min-width: 320px;
+  max-width: 500px;
+  max-height: 60vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+  z-index: 1001;
+}
+
+.agent-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  font-size: 14px;
+  font-weight: bold;
+  color: #e8e6e3;
+}
+
+.agent-selector-body {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.loading-agents, .no-agents {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
+.agent-list {
+  padding: 8px 0;
+}
+
+.agent-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.agent-item:hover {
+  background: #252525;
+}
+
+.agent-item.selected {
+  background: #1f2a1f;
+  border-left-color: #4fc3f7;
+}
+
+.agent-item.selecting {
+  background: #2a2a1f;
+  border-left-color: #ffff00;
+  opacity: 0.7;
+}
+
+/* Agent header with name and badges */
+.agent-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.agent-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #e8e6e3;
+}
+
+.agent-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-mode-badge, .built-in-badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.agent-mode-badge.primary {
+  background: #2d4a2d;
+  color: #90c590;
+}
+
+.agent-mode-badge.all {
+  background: #4a3d2d;
+  color: #c5a090;
+}
+
+.built-in-badge {
+  background: #2d2d4a;
+  color: #9090c5;
+}
+
+.agent-description {
+  font-size: 11px;
+  color: #999;
+  line-height: 1.3;
+  margin-bottom: 8px;
+  max-height: 2.6em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Agent permissions */
+.agent-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid #333;
+  font-size: 10px;
+}
+
+.permission-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.permission-label {
+  color: #888;
+  font-weight: 500;
+}
+
+.permission-value {
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.permission-value.allow {
+  background: #1a3d1a;
+  color: #60c060;
+}
+
+.permission-value.ask {
+  background: #3d3d1a;
+  color: #c0c060;
+}
+
+.permission-value.deny {
+  background: #3d1a1a;
+  color: #c06060;
+}
+
+.permission-value.custom {
+  background: #2a2a3d;
+  color: #8080c0;
+}
+
+.agent-selector-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-selector-body::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.agent-selector-body::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.agent-selector-body::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
 </style>

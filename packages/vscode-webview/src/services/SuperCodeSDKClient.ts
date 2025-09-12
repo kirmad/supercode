@@ -407,17 +407,28 @@ export class SuperCodeSDKClient {
       const agentData = await response.json();
       console.log('📋 Agent data from TUI API:', agentData);
       
-      if (agentData && agentData.name) {
-        const result = {
-          name: agentData.name,
-          description: agentData.description || ''
-        };
+      // Handle different possible response formats
+      let agentName = '';
+      let agentDescription = '';
+      
+      if (agentData) {
+        // Try different possible field names that TUI might use
+        agentName = agentData.name || agentData.agentName || agentData.displayName || '';
+        agentDescription = agentData.description || agentData.desc || '';
         
-        console.log('✅ Agent info retrieved:', result);
-        return result;
+        // If we found a valid agent name, return it
+        if (agentName && agentName.trim()) {
+          const result = {
+            name: agentName,
+            description: agentDescription
+          };
+          
+          console.log('✅ Agent info retrieved:', result);
+          return result;
+        }
       }
       
-      console.warn('⚠️ Invalid agent data structure received:', agentData);
+      console.warn('⚠️ No valid agent name found in response:', agentData);
       return {
         name: 'Agent Unavailable',
         description: ''
@@ -456,6 +467,63 @@ export class SuperCodeSDKClient {
     } catch (error) {
       console.error('Failed to set model:', error);
       throw new Error(`Failed to set model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get available agents using the proper /agent endpoint
+   */
+  async getAvailableAgents(): Promise<unknown[]> {
+    try {
+      console.log('🔍 Fetching available agents from /agent API...');
+      
+      // Use the proper agent endpoint that returns Agent.Info.array()
+      const response = await fetch(`http://localhost:${this.config.port}/agent`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const agents = await response.json();
+      console.log('📋 Agents data from /agent API:', agents);
+      
+      // The /agent endpoint directly returns an array of Agent.Info objects
+      if (Array.isArray(agents)) {
+        return agents;
+      }
+      
+      console.warn('⚠️ Unexpected agent data format:', agents);
+      return [];
+    } catch (error) {
+      console.error('❌ Failed to get available agents from /agent API:', error);
+      throw new Error(`Failed to get available agents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Set current agent in TUI
+   */
+  async setAgent(agentId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`http://localhost:${this.config.port}/tui/set-agent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agentName: agentId,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      return result === true || result.success === true;
+    } catch (error) {
+      console.error('Failed to set agent:', error);
+      throw new Error(`Failed to set agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
