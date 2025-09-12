@@ -1,6 +1,6 @@
 {
   "name": "@supercode/vscode-webview",
-  "version": "0.6.36",
+  "version": "0.6.37",
   "description": "Vite-based web interface for SuperCode VS Code extension",
   "type": "module",
   "main": "dist/index.js",
