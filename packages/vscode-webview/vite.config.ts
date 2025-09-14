@@ -1,9 +1,22 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-export default defineConfig({
-  plugins: [vue()],
-  build: {
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const isStandalone = mode === 'standalone'
+  
+  // Log mode for debugging
+  if (isStandalone) {
+    console.log('Building in standalone mode')
+  }
+
+  return {
+    plugins: [vue()],
+    server: isStandalone ? {
+      port: 3000,
+      open: true
+    } : undefined,
+    build: {
     outDir: 'dist',
     lib: {
       entry: 'src/main.ts',
@@ -29,13 +42,19 @@ export default defineConfig({
     minify: true,
     sourcemap: false
   },
-  define: {
-    // Required for Vue 3 in production
-    __VUE_OPTIONS_API__: false,
-    __VUE_PROD_DEVTOOLS__: false,
-    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
-    // Define process.env for webview compatibility
-    'process.env.NODE_ENV': JSON.stringify('production'),
-    'process.env': JSON.stringify({})
+    define: {
+      // Required for Vue 3 in production
+      __VUE_OPTIONS_API__: false,
+      __VUE_PROD_DEVTOOLS__: false,
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+      // Define process.env for webview compatibility
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      'process.env': JSON.stringify({}),
+      // Add standalone mode variables
+      ...(isStandalone ? {
+        'import.meta.env.VITE_STANDALONE': JSON.stringify(true),
+        'import.meta.env.VITE_SERVER_PORT': JSON.stringify(8881)
+      } : {})
+    }
   }
 })

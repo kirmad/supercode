@@ -30,6 +30,7 @@ import { Global } from "../global"
 import { ProjectRoute } from "./project"
 import { generateText } from "ai"
 import { ToolRegistry } from "../tool/registry"
+import { WebSocketHandler, type WSConnectionData } from "./websocket-handler"
 
 const ERRORS = {
   400: {
@@ -69,12 +70,15 @@ export namespace Server {
 
   const app = new Hono()
   
+  // Initialize WebSocket handler
+  WebSocketHandler.initialize(app)
+  
   // Enable CORS for browser integration
   app.use('*', cors({
     origin: (origin) => {
-      // Allow localhost origins for development
-      const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:3000']
-      if (allowedOrigins.includes(origin)) return origin
+      if (origin?.startsWith('http://localhost:')) return origin
+      if (origin?.startsWith('http://127.0.0.1:')) return origin
+      if (origin?.startsWith('http://0.0.0.0:')) return origin
       
       // Allow VSCode webview origins
       if (origin?.startsWith('vscode-webview://')) return origin
@@ -1606,8 +1610,76 @@ export namespace Server {
         return c.json(true)
       },
     )
+    .get(
+      "/websocket/connections",
+      describeRoute({
+        description: "Get active WebSocket connections",
+        operationId: "websocket.connections",
+        responses: {
+          200: {
+            description: "List of active WebSocket connections",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.array(
+                    z.object({
+                      id: z.string(),
+                      sessionId: z.string().optional(),
+                      directory: z.string().optional(),
+                      subscriptions: z.array(z.string()),
+                      authenticated: z.boolean(),
+                      lastActivity: z.number(),
+                    })
+                  )
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const connections = WebSocketHandler.getAllConnections()
+        return c.json(connections)
+      },
+    )
+    .get(
+      "/websocket/connection/:id",
+      describeRoute({
+        description: "Get specific WebSocket connection info",
+        operationId: "websocket.connection",
+        responses: {
+          200: {
+            description: "WebSocket connection info",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    id: z.string(),
+                    sessionId: z.string().optional(),
+                    directory: z.string().optional(),
+                    subscriptions: z.array(z.string()),
+                    authenticated: z.boolean(),
+                    lastActivity: z.number(),
+                  }).nullable()
+                ),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "param",
+        z.object({
+          id: z.string(),
+        }),
+      ),
+      async (c) => {
+        const connectionId = c.req.valid("param").id
+        const info = WebSocketHandler.getConnectionInfo(connectionId)
+        return c.json(info)
+      },
+    )
     .post(
-      "/completions/generate-text",
       describeRoute({
         description: "Generate text using AI with specified provider, model, prompts and tools",
         operationId: "completions.generateText",
@@ -1776,8 +1848,40 @@ export namespace Server {
       port: opts.port,
       hostname: opts.hostname,
       idleTimeout: 0,
-      fetch: App.fetch,
+      fetch: (req, server) => {
+        // Check if this is a WebSocket upgrade request
+        if (server.upgrade(req, {
+          data: {
+            connectionId: "", // Will be set in open handler
+            directory: new URL(req.url).searchParams.get("directory") || process.cwd(),
+            sessionId: req.headers.get("x-session-id") || undefined,
+          },
+        })) {
+          return // Return nothing if upgrade was successful
+        }
+        
+        // Otherwise handle as normal HTTP request
+        return App.fetch(req)
+      },
+      websocket: {
+        open: WebSocketHandler.handleOpen.bind(WebSocketHandler),
+        message: WebSocketHandler.handleMessage.bind(WebSocketHandler),
+        close: WebSocketHandler.handleClose.bind(WebSocketHandler),
+        // Configure WebSocket settings
+        maxPayloadLength: 16 * 1024 * 1024, // 16MB max message size
+        idleTimeout: 120, // 2 minutes idle timeout
+        backpressureLimit: 1024 * 1024, // 1MB backpressure limit
+        closeOnBackpressureLimit: false,
+        perMessageDeflate: true, // Enable compression
+      },
     })
+    
+    log.info("Server started with WebSocket support", {
+      port: opts.port,
+      hostname: opts.hostname,
+      websocket: true,
+    })
+    
     return server
   }
 }

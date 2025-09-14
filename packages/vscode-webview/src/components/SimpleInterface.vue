@@ -219,10 +219,12 @@ interface ExtendedMessage extends Message {
   toolCalls?: ToolCall[]
 }
 import { SuperCodeSDKClient, type SSEMessage } from '../services/SuperCodeSDKClient'
+import { SuperCodeWebSocketClient } from '../services/SuperCodeWebSocketClient'
+import { standaloneConfig } from '../config/standalone'
 
 // Reactive state
 const connectionStatus = ref<ConnectionStatus>('disconnected' as ConnectionStatus)
-const currentPort = ref<number>(25716) // Default to SuperCode's default port for standalone operation
+const currentPort = ref<number>(standaloneConfig.serverPort) // Use configured port based on mode
 const messages = ref<ExtendedMessage[]>([])
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
@@ -289,8 +291,8 @@ interface TodoItem {
 const todos = ref<TodoItem[]>([])
 const todoExpanded = ref(false)
 
-// SDK Client instance
-let sdkClient: SuperCodeSDKClient | null = null
+// SDK Client instance - can be either HTTP-based or WebSocket-based
+let sdkClient: SuperCodeSDKClient | SuperCodeWebSocketClient | null = null
 
 // Computed properties
 const isConnected = computed(() => connectionStatus.value === 'connected')
@@ -1068,12 +1070,24 @@ async function initializeSDKClient() {
   console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
   connectionStatus.value = 'connecting'
   
-  // Initialize SDK client
-  sdkClient = new SuperCodeSDKClient({
-    baseUrl: `http://localhost:${currentPort.value}`,
-    port: currentPort.value,
-    timeout: 5000
-  })
+  // Initialize SDK client - use WebSocket if enabled in config
+  if (standaloneConfig.useWebSocket) {
+    console.log('🔌 Using WebSocket client for communication')
+    sdkClient = new SuperCodeWebSocketClient({
+      baseUrl: `http://localhost:${currentPort.value}`,
+      port: currentPort.value,
+      timeout: 5000,
+      sessionId: undefined,
+      directory: undefined
+    })
+  } else {
+    console.log('📡 Using HTTP client for communication')
+    sdkClient = new SuperCodeSDKClient({
+      baseUrl: `http://localhost:${currentPort.value}`,
+      port: currentPort.value,
+      timeout: 5000
+    })
+  }
   
   // Implement polling mechanism with exponential backoff
   await pollForConnection()
@@ -1710,6 +1724,10 @@ onUnmounted(() => {
   // Cleanup SDK client
   if (sdkClient) {
     sdkClient.unsubscribeFromEvents()
+    // If it's a WebSocket client, disconnect properly
+    if (sdkClient instanceof SuperCodeWebSocketClient) {
+      sdkClient.disconnect()
+    }
     sdkClient = null
   }
   
