@@ -1,4 +1,4 @@
-import { join, basename, dirname } from "path"
+import { join, basename } from "path"
 import { readdir, readFile, stat } from "fs/promises"
 import { existsSync } from "fs"
 import matter from "gray-matter"
@@ -51,7 +51,7 @@ async function parseCommandFile(filePath: string): Promise<CustomCommand | null>
     }
     
     // Extract description from frontmatter or content
-    let description = frontMatter.purpose || frontMatter.description
+    let description = frontMatter.purpose || frontMatter['description']
     if (!description) {
       // Try to extract from markdown content (first paragraph)
       const firstParagraph = parsed.content.split('\n\n')[0]?.trim()
