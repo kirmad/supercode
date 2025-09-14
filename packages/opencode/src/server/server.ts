@@ -30,7 +30,7 @@ import { Global } from "../global"
 import { ProjectRoute } from "./project"
 import { generateText } from "ai"
 import { ToolRegistry } from "../tool/registry"
-import { WebSocketHandler, type WSConnectionData } from "./websocket-handler"
+import { WebSocketHandler } from "./websocket-handler"
 
 const ERRORS = {
   400: {

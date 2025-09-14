@@ -460,7 +460,7 @@ export class WebSocketHandler {
    * Get all connections info
    */
   static getAllConnections() {
-    return Array.from(this.connections.entries()).map(([id, context]) => ({
+    return Array.from(this.connections.entries()).map(([_id, context]) => ({
       id: context.id,
       sessionId: context.sessionId,
       directory: context.directory,
