@@ -186,7 +186,7 @@
           @input="autoResizeTextarea"
           @paste="handlePaste"
           :disabled="!isConnected"
-          placeholder="Type your message... (Enter = send, Shift+Enter = new line, ESC = cancel)"
+          placeholder="Type your message... (Enter = send, Shift+Enter = new line, ↑↓ = history, ESC = cancel)"
           class="input-field auto-expand-textarea"
           ref="inputField"
           rows="1"
@@ -279,6 +279,10 @@ const selectingAgent = ref<string | null>(null)
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
 
+// Message history navigation state
+const historyIndex = ref(-1) // -1 = not navigating, 0 = latest message, etc.
+const draftMessage = ref('')
+
 
 // Todo state
 interface TodoItem {
@@ -314,6 +318,14 @@ const contextInfo = computed(() => formattedContextInfo.value)
 const inProgressTodos = computed(() => todos.value.filter(todo => todo.status === 'in_progress'))
 const completedTodos = computed(() => todos.value.filter(todo => todo.status === 'completed'))
 const pendingTodos = computed(() => todos.value.filter(todo => todo.status === 'pending'))
+
+// Message history computed property
+const userMessageHistory = computed(() => 
+  messages.value
+    .filter(msg => msg.type === 'user')
+    .map(msg => msg.content)
+    .reverse() // Most recent first for navigation
+)
 
 // Format message content with proper markdown and syntax highlighting
 function formatMessageContent(content: string): string {
@@ -559,6 +571,62 @@ function autoResizeTextarea() {
   })
 }
 
+// Message history navigation helper functions
+function isAtFirstLine(): boolean {
+  if (!inputField.value) return true
+  
+  const textarea = inputField.value
+  const selectionStart = textarea.selectionStart
+  const textBeforeSelection = textarea.value.substring(0, selectionStart)
+  return !textBeforeSelection.includes('\n')
+}
+
+function isAtLastLine(): boolean {
+  if (!inputField.value) return true
+  
+  const textarea = inputField.value
+  const selectionStart = textarea.selectionStart
+  const textAfterSelection = textarea.value.substring(selectionStart)
+  return !textAfterSelection.includes('\n')
+}
+
+function navigateHistory(direction: 'up' | 'down') {
+  const history = userMessageHistory.value
+  if (history.length === 0) return
+  
+  // First time navigating - store current draft
+  if (historyIndex.value === -1) {
+    draftMessage.value = inputText.value
+  }
+  
+  if (direction === 'up') {
+    // Move up in history (to older messages)
+    if (historyIndex.value < history.length - 1) {
+      historyIndex.value++
+      inputText.value = history[historyIndex.value]
+    }
+  } else {
+    // Move down in history (to newer messages)
+    if (historyIndex.value > 0) {
+      historyIndex.value--
+      inputText.value = history[historyIndex.value]
+    } else if (historyIndex.value === 0) {
+      // Return to draft
+      historyIndex.value = -1
+      inputText.value = draftMessage.value
+    }
+  }
+  
+  // Auto-resize textarea and position cursor
+  nextTick(() => {
+    autoResizeTextarea()
+    if (inputField.value) {
+      const length = inputText.value.length
+      inputField.value.setSelectionRange(length, length)
+    }
+  })
+}
+
 // Handle keyboard navigation
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter') {
@@ -569,8 +637,19 @@ function handleKeydown(event: KeyboardEvent) {
     } else {
       // Plain Enter = send message
       event.preventDefault()
+      // Reset history navigation state
+      historyIndex.value = -1
+      draftMessage.value = ''
       sendMessage()
     }
+  } else if (event.key === 'ArrowUp' && isAtFirstLine()) {
+    // Navigate to previous message when on first line
+    event.preventDefault()
+    navigateHistory('up')
+  } else if (event.key === 'ArrowDown' && isAtLastLine()) {
+    // Navigate to next message when on last line
+    event.preventDefault()
+    navigateHistory('down')
   }
 }
 
