@@ -858,6 +858,148 @@ export namespace Server {
       },
     )
     .get(
+      "/custom-commands",
+      describeRoute({
+        description: "List all custom commands",
+        operationId: "customCommand.list",
+        parameters: [
+          {
+            name: "sessionId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Optional session ID to determine project context",
+          },
+        ],
+        responses: {
+          200: {
+            description: "List of custom commands",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      namespace: { type: "string" },
+                      fullName: { type: "string" },
+                      usage: { type: "string" },
+                      arguments: { 
+                        type: "array",
+                        items: { type: "string" }
+                      },
+                    },
+                    required: ["name", "fullName"],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const { loadCustomCommands } = await import("../custom-commands/index.ts")
+        const sessionId = c.req.query("sessionId")
+        
+        try {
+          // Get project path from session if available, otherwise use current working directory
+          let projectPath: string | undefined
+          if (sessionId) {
+            // Try to get project path from session context
+            // This is a simplified approach - in a real implementation you might 
+            // want to track the working directory per session
+            projectPath = process.cwd()
+          } else {
+            // Fallback to current working directory for direct API access
+            projectPath = process.cwd()
+          }
+          
+          const commands = await loadCustomCommands(projectPath)
+          return c.json(commands)
+        } catch (error) {
+          console.error("Failed to load custom commands:", error)
+          return c.json([])
+        }
+      },
+    )
+    .get(
+      "/custom-commands/complete",
+      describeRoute({
+        description: "Get custom command completions for auto-completion",
+        operationId: "customCommand.complete",
+        parameters: [
+          {
+            name: "prefix",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Command prefix to filter by",
+          },
+          {
+            name: "sessionId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Optional session ID to determine project context",
+          },
+        ],
+        responses: {
+          200: {
+            description: "Filtered list of custom commands for completion",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      namespace: { type: "string" },
+                      fullName: { type: "string" },
+                      usage: { type: "string" },
+                      arguments: { 
+                        type: "array",
+                        items: { type: "string" }
+                      },
+                    },
+                    required: ["name", "fullName"],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const { loadCustomCommands, filterCommands } = await import("../custom-commands/index.ts")
+        const prefix = c.req.query("prefix") || ""
+        const sessionId = c.req.query("sessionId")
+        
+        try {
+          // Get project path from session if available, otherwise use current working directory
+          let projectPath: string | undefined
+          if (sessionId) {
+            projectPath = process.cwd()
+          } else {
+            // Fallback to current working directory for direct API access
+            projectPath = process.cwd()
+          }
+          
+          const commands = await loadCustomCommands(projectPath)
+          const filtered = filterCommands(commands, prefix)
+          
+          // Limit to 10 results for performance
+          return c.json(filtered.slice(0, 10))
+        } catch (error) {
+          console.error("Failed to get command completions:", error)
+          return c.json([])
+        }
+      },
+    )
+    .get(
       "/config/providers",
       describeRoute({
         description: "List all providers",

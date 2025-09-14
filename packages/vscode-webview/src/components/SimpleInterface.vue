@@ -179,11 +179,27 @@
     <!-- Input area -->
     <div class="input-area">
       <div class="input-wrapper">
+        <!-- Command completion dropdown -->
+        <div v-if="showCommandCompletion" class="command-completion-dropdown">
+          <div class="command-completion-list">
+            <div
+              v-for="(command, index) in commandCompletions"
+              :key="command.fullName"
+              class="command-completion-item"
+              :class="{ 'selected': index === selectedCompletionIndex }"
+              @click="selectCommand(command)"
+            >
+              <div class="command-name">{{ command.fullName }}</div>
+              <div v-if="command.description" class="command-description">{{ command.description }}</div>
+            </div>
+          </div>
+        </div>
+        
         <span class="prompt">></span>
         <textarea
           v-model="inputText"
           @keydown="handleKeydown"
-          @input="autoResizeTextarea"
+          @input="handleInputChange"
           @paste="handlePaste"
           :disabled="!isConnected"
           placeholder="Type your message... (Enter = send, Shift+Enter = new line, ↑↓ = history, ESC = cancel)"
@@ -271,10 +287,26 @@ interface AvailableAgent {
   tools: Record<string, boolean>
 }
 
+// Custom command interface for auto-completion
+interface CustomCommand {
+  name: string
+  description?: string
+  namespace?: string
+  fullName: string
+  usage?: string
+  arguments?: string[]
+}
+
 const showAgentSelector = ref(false)
 const availableAgents = ref<AvailableAgent[]>([])
 const loadingAgents = ref(false)
 const selectingAgent = ref<string | null>(null)
+
+// Custom command auto-completion state
+const showCommandCompletion = ref(false)
+const commandCompletions = ref<CustomCommand[]>([])
+const selectedCompletionIndex = ref(0)
+const completionPrefix = ref('')
 
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
@@ -629,6 +661,29 @@ function navigateHistory(direction: 'up' | 'down') {
 
 // Handle keyboard navigation
 function handleKeydown(event: KeyboardEvent) {
+  // Handle command completion navigation
+  if (showCommandCompletion.value) {
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectedCompletionIndex.value = Math.max(0, selectedCompletionIndex.value - 1)
+      return
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectedCompletionIndex.value = Math.min(commandCompletions.value.length - 1, selectedCompletionIndex.value + 1)
+      return
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      if (commandCompletions.value[selectedCompletionIndex.value]) {
+        selectCommand(commandCompletions.value[selectedCompletionIndex.value])
+      }
+      return
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      hideCommandCompletion()
+      return
+    }
+  }
+
   if (event.key === 'Enter') {
     if (event.shiftKey) {
       // Shift+Enter = new line (default behavior)
@@ -642,11 +697,11 @@ function handleKeydown(event: KeyboardEvent) {
       draftMessage.value = ''
       sendMessage()
     }
-  } else if (event.key === 'ArrowUp' && isAtFirstLine()) {
+  } else if (event.key === 'ArrowUp' && isAtFirstLine() && !showCommandCompletion.value) {
     // Navigate to previous message when on first line
     event.preventDefault()
     navigateHistory('up')
-  } else if (event.key === 'ArrowDown' && isAtLastLine()) {
+  } else if (event.key === 'ArrowDown' && isAtLastLine() && !showCommandCompletion.value) {
     // Navigate to next message when on last line
     event.preventDefault()
     navigateHistory('down')
@@ -656,6 +711,12 @@ function handleKeydown(event: KeyboardEvent) {
 // Handle global ESC key for cancellation
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
+    // If command completion is open, close it
+    if (showCommandCompletion.value) {
+      hideCommandCompletion()
+      return
+    }
+    
     // If model selector is open, close it
     if (showModelSelector.value) {
       hideModelSelector()
@@ -679,6 +740,15 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 function handlePaste() {
   // Allow the paste to complete, then auto-resize
   nextTick(() => autoResizeTextarea())
+}
+
+// Handle input changes for auto-completion and auto-resize
+function handleInputChange() {
+  // Auto-resize textarea
+  autoResizeTextarea()
+  
+  // Check for command completion trigger
+  checkForCommandCompletion()
 }
 
 // Watch for input changes to auto-resize
@@ -732,6 +802,91 @@ async function cancelMessage() {
     // Don't show error to user since cancellation might fail if nothing is running
     // addMessage('system', `Error cancelling message: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
+}
+
+// Command completion functions
+function checkForCommandCompletion() {
+  const text = inputText.value
+  const cursorPos = inputField.value?.selectionStart || 0
+  
+  // Check if we're at the beginning of a line and typing a slash command
+  const textBeforeCursor = text.substring(0, cursorPos)
+  const lastLine = textBeforeCursor.split('\n').pop() || ''
+  
+  // Only check for completions if we're at the beginning of a line with a slash
+  // and no spaces (which would mean we're past the command name)
+  if (lastLine.startsWith('/') && !lastLine.includes(' ')) {
+    // Check if it's a valid command pattern (only word chars, hyphens, colons after slash)
+    if (lastLine.match(/^\/[\w:-]*$/)) {
+      const prefix = lastLine.substring(1) // Remove the '/' character
+      completionPrefix.value = prefix
+      fetchCommandCompletions(prefix)
+    } else {
+      hideCommandCompletion()
+    }
+  } else {
+    hideCommandCompletion()
+  }
+}
+
+async function fetchCommandCompletions(prefix: string) {
+  if (!sdkClient) {
+    return
+  }
+  
+  try {
+    const completions = await sdkClient.getCustomCommandCompletions(prefix) as CustomCommand[]
+    commandCompletions.value = completions
+    selectedCompletionIndex.value = 0
+    
+    if (completions.length > 0) {
+      showCommandCompletion.value = true
+    } else {
+      hideCommandCompletion()
+    }
+  } catch (error) {
+    console.error('Failed to fetch command completions:', error)
+    hideCommandCompletion()
+  }
+}
+
+function selectCommand(command: CustomCommand) {
+  const text = inputText.value
+  const cursorPos = inputField.value?.selectionStart || 0
+  const textBeforeCursor = text.substring(0, cursorPos)
+  const textAfterCursor = text.substring(cursorPos)
+  
+  // Find the start of the current line
+  const lines = textBeforeCursor.split('\n')
+  const currentLine = lines[lines.length - 1]
+  const beforeCurrentLine = lines.slice(0, -1).join('\n')
+  
+  // Replace the slash command part with the selected command
+  const prefixMatch = currentLine.match(/^\/[\w:]*/)
+  if (prefixMatch) {
+    const newLine = currentLine.replace(/^\/[\w:]*/, '/' + command.fullName + ' ')
+    const newText = (beforeCurrentLine ? beforeCurrentLine + '\n' : '') + newLine + textAfterCursor
+    inputText.value = newText
+    
+    // Position cursor after the command name and space
+    nextTick(() => {
+      if (inputField.value) {
+        const newCursorPos = (beforeCurrentLine ? beforeCurrentLine.length + 1 : 0) + newLine.length
+        inputField.value.setSelectionRange(newCursorPos, newCursorPos)
+        inputField.value.focus()
+      }
+      autoResizeTextarea()
+    })
+  }
+  
+  hideCommandCompletion()
+}
+
+function hideCommandCompletion() {
+  showCommandCompletion.value = false
+  commandCompletions.value = []
+  selectedCompletionIndex.value = 0
+  completionPrefix.value = ''
 }
 
 function addMessage(type: Message['type'], content: string) {
@@ -2051,6 +2206,7 @@ onUnmounted(() => {
   align-items: flex-start;
   padding: 12px 16px;
   gap: 8px;
+  position: relative;
 }
 
 .prompt {
@@ -2692,6 +2848,77 @@ onUnmounted(() => {
 }
 
 .agent-selector-body::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Command Completion Styles */
+.command-completion-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  border: 1px solid #333;
+  border-bottom: none;
+  background: #1a1a1a;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.command-completion-list {
+  padding: 0;
+}
+
+.command-completion-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.command-completion-item:last-child {
+  border-bottom: none;
+}
+
+.command-completion-item:hover,
+.command-completion-item.selected {
+  background: #252525;
+}
+
+.command-completion-item.selected {
+  border-left: 3px solid #4fc3f7;
+}
+
+.command-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #e8e6e3;
+  font-family: inherit;
+  margin-bottom: 2px;
+}
+
+.command-description {
+  font-size: 11px;
+  color: #999;
+  font-family: inherit;
+  line-height: 1.3;
+}
+
+.command-completion-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.command-completion-dropdown::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
 

@@ -679,6 +679,44 @@ export class SuperCodeWebSocketClient {
   }
 
   /**
+   * Get all custom commands
+   */
+  async getCustomCommands(sessionId?: string): Promise<unknown[]> {
+    try {
+      await this.ensureConnected();
+      let path = '/custom-commands';
+      if (sessionId) {
+        path += `?sessionId=${encodeURIComponent(sessionId)}`;
+      }
+      
+      const commands = await this.wsClient.request('GET', path);
+      return Array.isArray(commands) ? commands : [];
+    } catch (error) {
+      console.error('Failed to get custom commands via WebSocket:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get custom command completions for auto-complete
+   */
+  async getCustomCommandCompletions(prefix: string, sessionId?: string): Promise<unknown[]> {
+    try {
+      await this.ensureConnected();
+      let path = `/custom-commands/complete?prefix=${encodeURIComponent(prefix)}`;
+      if (sessionId) {
+        path += `&sessionId=${encodeURIComponent(sessionId)}`;
+      }
+      
+      const commands = await this.wsClient.request('GET', path);
+      return Array.isArray(commands) ? commands : [];
+    } catch (error) {
+      console.error('Failed to get custom command completions via WebSocket:', error);
+      return [];
+    }
+  }
+
+  /**
    * Disconnect WebSocket
    */
   async disconnect(): Promise<void> {

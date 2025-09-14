@@ -755,4 +755,53 @@ export class SuperCodeSDKClient {
       eventStream: this.isEventStreamConnected()
     };
   }
+
+  /**
+   * Get all custom commands
+   */
+  async getCustomCommands(sessionId?: string): Promise<unknown[]> {
+    try {
+      const url = new URL(`http://localhost:${this.config.port}/custom-commands`);
+      if (sessionId) {
+        url.searchParams.append('sessionId', sessionId);
+      }
+
+      const response = await fetch(url.toString());
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const commands = await response.json();
+      return Array.isArray(commands) ? commands : [];
+    } catch (error) {
+      console.error('Failed to get custom commands:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get custom command completions for auto-complete
+   */
+  async getCustomCommandCompletions(prefix: string, sessionId?: string): Promise<unknown[]> {
+    try {
+      const url = new URL(`http://localhost:${this.config.port}/custom-commands/complete`);
+      url.searchParams.append('prefix', prefix);
+      if (sessionId) {
+        url.searchParams.append('sessionId', sessionId);
+      }
+
+      const response = await fetch(url.toString());
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const commands = await response.json();
+      return Array.isArray(commands) ? commands : [];
+    } catch (error) {
+      console.error('Failed to get custom command completions:', error);
+      return [];
+    }
+  }
 }
