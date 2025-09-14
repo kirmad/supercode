@@ -3,8 +3,10 @@ import path from "path"
 import { execSync } from "child_process"
 import { Instance } from "../project/instance"
 import { Global } from "../global"
+import { Filesystem } from "../util/filesystem"
 
 export namespace CustomCommands {
+
   export interface ParsedCommand {
     isCustomCommand: boolean
     namespace?: string
@@ -233,22 +235,28 @@ export namespace CustomCommands {
     return paths[0]
   }
 
-  function getCommandPaths(namespace: string, command: string): string[] {
+  async function getCommandPaths(namespace: string, command: string): Promise<string[]> {
     const paths: string[] = []
     
     try {
-      // Project-specific path (higher priority)
-      const projectCommandsDir = path.join(Instance.worktree, ".opencode", "commands")
-      paths.push(path.join(projectCommandsDir, namespace, `${command}.md`))
-      
-      // Global path
-      const globalCommandsDir = path.join(Global.Path.config, "commands")
-      paths.push(path.join(globalCommandsDir, namespace, `${command}.md`))
+      // Project-specific paths (using same approach as .opencode/command)
+      // This will search up from Instance.directory to Instance.worktree
+      const projectPaths = await Filesystem.findUp(
+        path.join(".opencode", "commands", namespace, `${command}.md`),
+        Instance.directory,
+        Instance.worktree
+      )
+      // Add all found project paths (they're already in priority order)
+      paths.push(...projectPaths)
     } catch (error) {
-      // Fallback for testing or when app context is not available
-      const commandsDir = path.join(process.cwd(), ".opencode", "commands")
-      paths.push(path.join(commandsDir, namespace, `${command}.md`))
+      // Fallback to current working directory when Instance is not available
+      const projectCommandsDir = path.join(process.cwd(), ".opencode", "commands")
+      paths.push(path.join(projectCommandsDir, namespace, `${command}.md`))
     }
+    
+    // Global path
+    const globalCommandsDir = path.join(Global.Path.config, "commands")
+    paths.push(path.join(globalCommandsDir, namespace, `${command}.md`))
     
     return paths
   }
@@ -268,22 +276,27 @@ export namespace CustomCommands {
     return paths[0]
   }
 
-  function getRootCommandPaths(command: string): string[] {
+  async function getRootCommandPaths(command: string): Promise<string[]> {
     const paths: string[] = []
     
     try {
-      // Project-specific path (higher priority)
-      const projectCommandsDir = path.join(Instance.worktree, ".opencode", "commands")
-      paths.push(path.join(projectCommandsDir, `${command}.md`))
-      
-      // Global path
-      const globalCommandsDir = path.join(Global.Path.config, "commands")
-      paths.push(path.join(globalCommandsDir, `${command}.md`))
+      // Project-specific paths (using same approach as .opencode/command)
+      const projectPaths = await Filesystem.findUp(
+        path.join(".opencode", "commands", `${command}.md`),
+        Instance.directory,
+        Instance.worktree
+      )
+      // Add all found project paths (they're already in priority order)
+      paths.push(...projectPaths)
     } catch (error) {
-      // Fallback for testing or when app context is not available
-      const commandsDir = path.join(process.cwd(), ".opencode", "commands")
-      paths.push(path.join(commandsDir, `${command}.md`))
+      // Fallback to current working directory when Instance is not available
+      const projectCommandsDir = path.join(process.cwd(), ".opencode", "commands")
+      paths.push(path.join(projectCommandsDir, `${command}.md`))
     }
+    
+    // Global path
+    const globalCommandsDir = path.join(Global.Path.config, "commands")
+    paths.push(path.join(globalCommandsDir, `${command}.md`))
     
     return paths
   }
