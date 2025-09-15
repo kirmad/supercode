@@ -113,6 +113,21 @@ export function activate(context: vscode.ExtensionContext) {
     await showDynamicCommandsPicker();
   });
 
+  // Register context menu commands for files
+  let sendFileToChat = vscode.commands.registerCommand("supercode.sendFileToChat", async (uri: vscode.Uri, uris: vscode.Uri[]) => {
+    // Support both single and multi-selection
+    const selectedUris = uris && uris.length > 0 ? uris : [uri];
+    await handleSendFilesToChat(selectedUris);
+  });
+
+  let sendSelectionToChat = vscode.commands.registerCommand("supercode.sendSelectionToChat", async () => {
+    await handleSendSelectionToChat();
+  });
+
+  let sendCurrentFileToChat = vscode.commands.registerCommand("supercode.sendCurrentFileToChat", async () => {
+    await handleSendCurrentFileToChat();
+  });
+
   context.subscriptions.push(
     openTerminalDisposable, 
     openNewTerminalDisposable, 
@@ -126,7 +141,10 @@ export function activate(context: vscode.ExtensionContext) {
     reviewSecurityDisposable,
     reviewDesignDisposable,
     reviewDefensiveDisposable,
-    showDynamicCommandsDisposable
+    showDynamicCommandsDisposable,
+    sendFileToChat,
+    sendSelectionToChat,
+    sendCurrentFileToChat
   );
 
   async function handleSelectionCommand(action: string) {
@@ -209,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Send the prompt to SuperCode
     try {
-      await appendPrompt(port, prompt);
+      await appendPrompt(port, prompt, 'appendWithSpacing');
       
       // Show the interface (terminal or webview)
       if (tuiInstance.terminal) {
@@ -483,6 +501,239 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   /**
+   * Handle sending files or folders to chat from file explorer context menu
+   */
+  async function handleSendFilesToChat(uris: vscode.Uri[]) {
+    if (!uris || uris.length === 0) {
+      vscode.window.showErrorMessage("No files selected");
+      return;
+    }
+
+    // Check if all files are part of a workspace
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uris[0]);
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("Files are not part of a workspace");
+      return;
+    }
+
+    // Process each URI and determine if it's a file or folder
+    const fileRefs: string[] = [];
+    for (const uri of uris) {
+      const stat = await vscode.workspace.fs.stat(uri);
+      const relativePath = vscode.workspace.asRelativePath(uri);
+      
+      if (stat.type === vscode.FileType.Directory) {
+        // For directories, add with a trailing slash to indicate it's a folder
+        fileRefs.push(`@${relativePath}/`);
+      } else {
+        // For files, add normally
+        fileRefs.push(`@${relativePath}`);
+      }
+    }
+    
+    // Create the prompt with file references
+    let prompt: string;
+    if (fileRefs.length === 1) {
+      const ref = fileRefs[0];
+      if (ref.endsWith('/')) {
+        prompt = `Please review the folder ${ref}`;
+      } else {
+        prompt = `Please review the file ${ref}`;
+      }
+    } else {
+      // Multiple items selected
+      const folders = fileRefs.filter(ref => ref.endsWith('/'));
+      const files = fileRefs.filter(ref => !ref.endsWith('/'));
+      
+      let itemDescription = '';
+      if (folders.length > 0 && files.length > 0) {
+        itemDescription = `${files.length} file(s) and ${folders.length} folder(s)`;
+      } else if (folders.length > 0) {
+        itemDescription = `${folders.length} folder(s)`;
+      } else {
+        itemDescription = `${files.length} file(s)`;
+      }
+      
+      prompt = `Please review these ${itemDescription}:\n${fileRefs.join('\n')}`;
+    }
+
+    // Prefer last active instance for context menu commands
+    const config = vscode.workspace.getConfiguration('supercode');
+    const uiMethod = config.get<'static' | 'terminal'>('ui.method', 'static');
+    
+    let tuiInstance = tuiManager.getLastActiveInstance();
+    
+    if (!tuiInstance) {
+      // No existing instance, create a new one
+      if (uiMethod === 'static') {
+        tuiInstance = await openStaticWebview();
+      } else {
+        tuiInstance = await openTerminal();
+      }
+    } else {
+      // Show existing instance
+      if (tuiInstance.method === 'static' && tuiInstance.webview) {
+        tuiInstance.webview.reveal();
+      } else if (tuiInstance.method === 'terminal' && tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    }
+
+    const { port } = tuiInstance;
+
+    // Send the prompt to SuperCode
+    try {
+      await appendPrompt(port, prompt, 'appendWithSpacing');
+      
+      // Show the interface (terminal or webview)
+      if (tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send file to SuperCode: ${error}`);
+    }
+  }
+
+  /**
+   * Handle sending selection to chat from editor context menu
+   */
+  async function handleSendSelectionToChat() {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+      vscode.window.showErrorMessage("No active editor found");
+      return;
+    }
+
+    const selection = activeEditor.selection;
+    if (selection.isEmpty) {
+      vscode.window.showErrorMessage("No text selected");
+      return;
+    }
+
+    const selectedText = activeEditor.document.getText(selection);
+    const document = activeEditor.document;
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("File is not part of a workspace");
+      return;
+    }
+
+    // Get the relative path from workspace root
+    const relativePath = vscode.workspace.asRelativePath(document.uri);
+    const startLine = selection.start.line + 1;
+    const endLine = selection.end.line + 1;
+    
+    let fileRef: string;
+    if (startLine === endLine) {
+      fileRef = `@${relativePath}#L${startLine}`;
+    } else {
+      fileRef = `@${relativePath}#L${startLine}-${endLine}`;
+    }
+
+    // Create the prompt
+    const prompt = `\n\n\`\`\`\n${selectedText}\n\`\`\`\n\nFrom ${fileRef}`;
+
+    // Prefer last active instance for context menu commands
+    const config = vscode.workspace.getConfiguration('supercode');
+    const uiMethod = config.get<'static' | 'terminal'>('ui.method', 'static');
+    
+    let tuiInstance = tuiManager.getLastActiveInstance();
+    
+    if (!tuiInstance) {
+      // No existing instance, create a new one
+      if (uiMethod === 'static') {
+        tuiInstance = await openStaticWebview();
+      } else {
+        tuiInstance = await openTerminal();
+      }
+    } else {
+      // Show existing instance
+      if (tuiInstance.method === 'static' && tuiInstance.webview) {
+        tuiInstance.webview.reveal();
+      } else if (tuiInstance.method === 'terminal' && tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    }
+
+    const { port } = tuiInstance;
+
+    // Send the prompt to SuperCode
+    try {
+      await appendPrompt(port, prompt, 'appendWithSpacing');
+      
+      // Show the interface (terminal or webview)
+      if (tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send selection to SuperCode: ${error}`);
+    }
+  }
+
+  /**
+   * Handle sending current file to chat from editor context menu
+   */
+  async function handleSendCurrentFileToChat() {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+      vscode.window.showErrorMessage("No active editor found");
+      return;
+    }
+
+    const document = activeEditor.document;
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("File is not part of a workspace");
+      return;
+    }
+
+    // Get the relative path from workspace root
+    const relativePath = vscode.workspace.asRelativePath(document.uri);
+    const fileRef = `@${relativePath}`;
+    
+    // Create the prompt with file reference
+    const prompt = ` ${fileRef}`;
+
+    // Prefer last active instance for context menu commands
+    const config = vscode.workspace.getConfiguration('supercode');
+    const uiMethod = config.get<'static' | 'terminal'>('ui.method', 'static');
+    
+    let tuiInstance = tuiManager.getLastActiveInstance();
+    
+    if (!tuiInstance) {
+      // No existing instance, create a new one
+      if (uiMethod === 'static') {
+        tuiInstance = await openStaticWebview();
+      } else {
+        tuiInstance = await openTerminal();
+      }
+    } else {
+      // Show existing instance
+      if (tuiInstance.method === 'static' && tuiInstance.webview) {
+        tuiInstance.webview.reveal();
+      } else if (tuiInstance.method === 'terminal' && tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    }
+
+    const { port } = tuiInstance;
+
+    // Send the prompt to SuperCode
+    try {
+      await appendPrompt(port, prompt, 'appendWithSpacing');
+      
+      // Show the interface (terminal or webview)
+      if (tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send file to SuperCode: ${error}`);
+    }
+  }
+
+  /**
    * Handle dynamic selection commands
    */
   async function handleDynamicSelectionCommand(commandName: string) {
@@ -549,7 +800,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Send the prompt to SuperCode
     try {
-      await appendPrompt(port, prompt);
+      await appendPrompt(port, prompt, 'appendWithSpacing');
       
       // Show the interface (terminal or webview)
       if (tuiInstance.terminal) {

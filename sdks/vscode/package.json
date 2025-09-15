@@ -57,6 +57,21 @@
         "title": "Add Filepath to Terminal"
       },
       {
+        "command": "supercode.sendFileToChat",
+        "title": "Send to SuperCode Chat",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.sendSelectionToChat",
+        "title": "Send Selection to Chat",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.sendCurrentFileToChat",
+        "title": "Send Current File to Chat",
+        "category": "SuperCode"
+      },
+      {
         "command": "supercode.openStaticWebview",
         "title": "Open SuperCode Static Interface",
         "category": "SuperCode"
@@ -142,6 +157,23 @@
         {
           "submenu": "supercode.selection",
           "when": "editorHasSelection",
+          "group": "supercode"
+        },
+        {
+          "command": "supercode.sendSelectionToChat",
+          "when": "editorHasSelection",
+          "group": "supercode@1"
+        },
+        {
+          "command": "supercode.sendCurrentFileToChat",
+          "when": "!editorHasSelection",
+          "group": "supercode@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "supercode.sendFileToChat",
+          "when": "resourceScheme == file || explorerResourceIsFolder",
           "group": "supercode"
         }
       ],

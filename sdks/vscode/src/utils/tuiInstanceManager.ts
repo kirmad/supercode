@@ -18,6 +18,7 @@ class TuiInstanceManager {
   private instances = new Map<string, TuiInstance>();
   private persistentPorts = new Map<number, PortInfo>(); // Track TUI ports with timestamps
   private focusedStaticInstanceId: string | null = null; // Track which static instance is focused
+  private lastActiveInstanceId: string | null = null; // Track the last active instance for context menu commands
 
   /**
    * Register a new terminal-based TUI instance
@@ -52,6 +53,7 @@ class TuiInstanceManager {
     const instance = this.instances.get(instanceId);
     if (instance) {
       instance.isConnected = true;
+      this.lastActiveInstanceId = instanceId; // Track as last active
     }
   }
 
@@ -211,6 +213,7 @@ class TuiInstanceManager {
    */
   setFocusedStaticInstance(instanceId: string): void {
     this.focusedStaticInstanceId = instanceId;
+    this.lastActiveInstanceId = instanceId; // Also track as last active
   }
 
   /**
@@ -236,6 +239,47 @@ class TuiInstanceManager {
    */
   clearFocusedStaticInstance(): void {
     this.focusedStaticInstanceId = null;
+  }
+
+  /**
+   * Get the last active instance (for context menu commands)
+   * This prefers to reuse the last active window instead of creating new ones
+   */
+  getLastActiveInstance(): TuiInstance | null {
+    // First try to get the last active instance if it still exists
+    if (this.lastActiveInstanceId) {
+      const instance = this.instances.get(this.lastActiveInstanceId);
+      if (instance) {
+        // Verify the instance is still valid
+        let isValid = false;
+        
+        if (instance.method === 'terminal' && instance.terminal) {
+          isValid = vscode.window.terminals.find(t => t.name === instance.terminal!.name) !== undefined;
+        } else if (instance.method === 'static' && instance.webview) {
+          isValid = instance.webview.getConnectionStatus() !== undefined;
+        }
+        
+        if (isValid && instance.isConnected) {
+          return instance;
+        } else {
+          // Clean up invalid instance
+          this.instances.delete(this.lastActiveInstanceId);
+          this.lastActiveInstanceId = null;
+        }
+      }
+    }
+    
+    // Fall back to any connected instance
+    return this.getConnectedInstance();
+  }
+
+  /**
+   * Update the last active instance when user interacts with it
+   */
+  updateLastActive(instanceId: string): void {
+    if (this.instances.has(instanceId)) {
+      this.lastActiveInstanceId = instanceId;
+    }
   }
 }
 
