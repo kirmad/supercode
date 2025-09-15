@@ -28,7 +28,13 @@ export const TuiRoute = new Hono()
     return c.json(req)
   })
   .post("/response", async (c) => {
-    const body = await c.req.json()
+    let body = {}
+    try {
+      body = await c.req.json()
+    } catch (e) {
+      // If parsing fails or body is null/empty, treat as empty object
+      body = {}
+    }
     response.push(body)
     return c.json(true)
   })
