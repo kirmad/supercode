@@ -453,10 +453,10 @@ export class SuperCodeInstanceStatic {
           // Use WezTerm with configurable arguments
           terminalExecutable = weztermPath;
           
-          // Build the command arguments
-          let cmdArgs = weztermArgs.map(arg => 
+          // Build the command arguments - ensure we pushd to the directory first
+          let cmdArgs = weztermArgs.map(arg =>
             arg.replace('{workspaceFolder}', `"${escapedWorkingDir}"`)
-               .replace('{command}', supercodeCommand)
+               .replace('{command}', `pushd "${escapedWorkingDir}" && ${supercodeCommand}`)
           );
           
           // Add EGL preference flag if enabled
