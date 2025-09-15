@@ -128,6 +128,59 @@ export function activate(context: vscode.ExtensionContext) {
     await handleSendCurrentFileToChat();
   });
 
+  // Register file context menu commands
+  let explainFileDisposable = vscode.commands.registerCommand("supercode.explainFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("explain", selectedUris);
+  });
+
+  let refactorFileDisposable = vscode.commands.registerCommand("supercode.refactorFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("refactor", selectedUris);
+  });
+
+  let addCommentsToFileDisposable = vscode.commands.registerCommand("supercode.addCommentsToFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("addComments", selectedUris);
+  });
+
+  let debugFileDisposable = vscode.commands.registerCommand("supercode.debugFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("debug", selectedUris);
+  });
+
+  let optimizeFileDisposable = vscode.commands.registerCommand("supercode.optimizeFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("optimize", selectedUris);
+  });
+
+  // Register file review commands
+  let reviewFileGeneralDisposable = vscode.commands.registerCommand("supercode.reviewFileGeneral", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("reviewGeneral", selectedUris);
+  });
+
+  let reviewFileSecurityDisposable = vscode.commands.registerCommand("supercode.reviewFileSecurity", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("reviewSecurity", selectedUris);
+  });
+
+  let reviewFileDesignDisposable = vscode.commands.registerCommand("supercode.reviewFileDesign", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("reviewDesign", selectedUris);
+  });
+
+  let reviewFileDefensiveDisposable = vscode.commands.registerCommand("supercode.reviewFileDefensive", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await handleFileCommand("reviewDefensive", selectedUris);
+  });
+
+  // Register dynamic commands for files
+  let showDynamicCommandsForFileDisposable = vscode.commands.registerCommand("supercode.showDynamicCommandsForFile", async (uri?: vscode.Uri, uris?: vscode.Uri[]) => {
+    const selectedUris = getFileUrisFromContext(uri, uris);
+    await showDynamicCommandsPickerForFiles(selectedUris);
+  });
+
   context.subscriptions.push(
     openTerminalDisposable, 
     openNewTerminalDisposable, 
@@ -144,7 +197,17 @@ export function activate(context: vscode.ExtensionContext) {
     showDynamicCommandsDisposable,
     sendFileToChat,
     sendSelectionToChat,
-    sendCurrentFileToChat
+    sendCurrentFileToChat,
+    explainFileDisposable,
+    refactorFileDisposable,
+    addCommentsToFileDisposable,
+    debugFileDisposable,
+    optimizeFileDisposable,
+    reviewFileGeneralDisposable,
+    reviewFileSecurityDisposable,
+    reviewFileDesignDisposable,
+    reviewFileDefensiveDisposable,
+    showDynamicCommandsForFileDisposable
   );
 
   async function handleSelectionCommand(action: string) {
@@ -730,6 +793,249 @@ export function activate(context: vscode.ExtensionContext) {
       }
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to send file to SuperCode: ${error}`);
+    }
+  }
+
+  /**
+   * Get file URIs from context - handles both file explorer and editor contexts
+   */
+  function getFileUrisFromContext(uri?: vscode.Uri, uris?: vscode.Uri[]): vscode.Uri[] {
+    // If we have multiple selections from file explorer
+    if (uris && uris.length > 0) {
+      return uris;
+    }
+    
+    // If we have a single selection from file explorer
+    if (uri) {
+      return [uri];
+    }
+    
+    // Otherwise, get the current active editor's file
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor) {
+      return [activeEditor.document.uri];
+    }
+    
+    return [];
+  }
+
+  /**
+   * Handle file commands (explain, refactor, debug, etc.)
+   */
+  async function handleFileCommand(action: string, uris: vscode.Uri[]) {
+    if (!uris || uris.length === 0) {
+      vscode.window.showErrorMessage("No files selected");
+      return;
+    }
+
+    // Check if all files are part of a workspace
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uris[0]);
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("Files are not part of a workspace");
+      return;
+    }
+
+    // Process each URI
+    const fileRefs: string[] = [];
+    for (const uri of uris) {
+      const stat = await vscode.workspace.fs.stat(uri);
+      const relativePath = vscode.workspace.asRelativePath(uri);
+      
+      if (stat.type === vscode.FileType.File) {
+        fileRefs.push(`@${relativePath}`);
+      }
+    }
+
+    if (fileRefs.length === 0) {
+      vscode.window.showErrorMessage("No files selected (folders are not supported for this action)");
+      return;
+    }
+
+    // Generate the appropriate prompt based on the action
+    const prompts = {
+      explain: fileRefs.length === 1 
+        ? `Please explain the code in ${fileRefs[0]}`
+        : `Please explain the code in these files:\n${fileRefs.join('\n')}`,
+      refactor: fileRefs.length === 1
+        ? `Please refactor ${fileRefs[0]} to improve readability and maintainability`
+        : `Please refactor these files to improve readability and maintainability:\n${fileRefs.join('\n')}`,
+      addComments: fileRefs.length === 1
+        ? `Please add helpful comments to ${fileRefs[0]}`
+        : `Please add helpful comments to these files:\n${fileRefs.join('\n')}`,
+      debug: fileRefs.length === 1
+        ? `Please help me debug ${fileRefs[0]}. Look for potential issues, bugs, or improvements`
+        : `Please help me debug these files. Look for potential issues, bugs, or improvements:\n${fileRefs.join('\n')}`,
+      optimize: fileRefs.length === 1
+        ? `Please optimize ${fileRefs[0]} for better performance`
+        : `Please optimize these files for better performance:\n${fileRefs.join('\n')}`,
+      reviewGeneral: fileRefs.length === 1
+        ? `Please conduct a comprehensive code review of ${fileRefs[0]}, focusing on overall code quality, readability, maintainability, and best practices`
+        : `Please conduct a comprehensive code review of these files, focusing on overall code quality, readability, maintainability, and best practices:\n${fileRefs.join('\n')}`,
+      reviewSecurity: fileRefs.length === 1
+        ? `Please conduct a security-focused code review of ${fileRefs[0]}. Look for potential vulnerabilities, security anti-patterns, input validation issues, and suggest security improvements`
+        : `Please conduct a security-focused code review of these files. Look for potential vulnerabilities, security anti-patterns, input validation issues, and suggest security improvements:\n${fileRefs.join('\n')}`,
+      reviewDesign: fileRefs.length === 1
+        ? `Please review ${fileRefs[0]} from a design perspective. Analyze the architecture, design patterns, separation of concerns, modularity, and suggest improvements for better software design`
+        : `Please review these files from a design perspective. Analyze the architecture, design patterns, separation of concerns, modularity, and suggest improvements for better software design:\n${fileRefs.join('\n')}`,
+      reviewDefensive: fileRefs.length === 1
+        ? `Please review ${fileRefs[0]} with a focus on defensive coding practices. Look for error handling, input validation, boundary conditions, null safety, and suggest improvements for more robust code`
+        : `Please review these files with a focus on defensive coding practices. Look for error handling, input validation, boundary conditions, null safety, and suggest improvements for more robust code:\n${fileRefs.join('\n')}`
+    };
+
+    const prompt = prompts[action as keyof typeof prompts];
+    if (!prompt) {
+      vscode.window.showErrorMessage(`Unknown action: ${action}`);
+      return;
+    }
+
+    // For file commands, we want to reuse existing instances without closing them
+    const config = vscode.workspace.getConfiguration('supercode');
+    const uiMethod = config.get<'static' | 'terminal'>('ui.method', 'static');
+    
+    // Check for existing instances first (don't close them for file commands)
+    let tuiInstance = tuiManager.getConnectedInstance();
+    
+    if (!tuiInstance) {
+      // No existing instance, create one
+      if (uiMethod === 'static') {
+        tuiInstance = await openStaticWebview();
+      } else {
+        tuiInstance = await openTerminal();
+      }
+    } else {
+      // Show existing instance
+      if (tuiInstance.method === 'static' && tuiInstance.webview) {
+        tuiInstance.webview.reveal();
+      } else if (tuiInstance.method === 'terminal' && tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    }
+
+    const { port } = tuiInstance;
+
+    // Send the prompt to SuperCode
+    try {
+      await appendPrompt(port, prompt, 'appendWithSpacing');
+      
+      // Show the interface (terminal or webview)
+      if (tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+      // For static webviews, they're already visible after creation
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send command to SuperCode: ${error}`);
+    }
+  }
+
+  /**
+   * Show dynamic commands picker for files
+   */
+  async function showDynamicCommandsPickerForFiles(uris: vscode.Uri[]) {
+    if (!uris || uris.length === 0) {
+      vscode.window.showErrorMessage("No files selected");
+      return;
+    }
+
+    // Filter to only include files (not folders)
+    const fileUris: vscode.Uri[] = [];
+    for (const uri of uris) {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type === vscode.FileType.File) {
+        fileUris.push(uri);
+      }
+    }
+
+    if (fileUris.length === 0) {
+      vscode.window.showErrorMessage("No files selected (folders are not supported for dynamic commands)");
+      return;
+    }
+
+    // Refresh commands to get latest list
+    await refreshDynamicCommands(context);
+
+    if (dynamicCommands.length === 0) {
+      vscode.window.showInformationMessage("No commands found. Add .md files to .opencode/commands/ directory.");
+      return;
+    }
+
+    // Create quick pick items
+    const quickPickItems = dynamicCommands.map(command => ({
+      label: command.title,
+      description: command.name,
+      detail: command.description || `Run /${command.name} command`,
+      command: command
+    }));
+
+    const selected = await vscode.window.showQuickPick(quickPickItems, {
+      placeHolder: "Select a command to run on the selected file(s)",
+      matchOnDescription: true,
+      matchOnDetail: true
+    });
+
+    if (selected) {
+      await handleDynamicFileCommand(selected.command.name, fileUris);
+    }
+  }
+
+  /**
+   * Handle dynamic file commands
+   */
+  async function handleDynamicFileCommand(commandName: string, uris: vscode.Uri[]) {
+    // Check if all files are part of a workspace
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uris[0]);
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("Files are not part of a workspace");
+      return;
+    }
+
+    // Process each URI
+    const fileRefs: string[] = [];
+    for (const uri of uris) {
+      const relativePath = vscode.workspace.asRelativePath(uri);
+      fileRefs.push(`@${relativePath}`);
+    }
+
+    // Create the command prompt
+    const prompt = fileRefs.length === 1
+      ? `/${commandName} ${fileRefs[0]}`
+      : `/${commandName}\n${fileRefs.join('\n')}`;
+
+    // For file commands, we want to reuse existing instances without closing them
+    const config = vscode.workspace.getConfiguration('supercode');
+    const uiMethod = config.get<'static' | 'terminal'>('ui.method', 'static');
+    
+    // Check for existing instances first (don't close them for file commands)
+    let tuiInstance = tuiManager.getConnectedInstance();
+    
+    if (!tuiInstance) {
+      // No existing instance, create one
+      if (uiMethod === 'static') {
+        tuiInstance = await openStaticWebview();
+      } else {
+        tuiInstance = await openTerminal();
+      }
+    } else {
+      // Show existing instance
+      if (tuiInstance.method === 'static' && tuiInstance.webview) {
+        tuiInstance.webview.reveal();
+      } else if (tuiInstance.method === 'terminal' && tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+    }
+
+    const { port } = tuiInstance;
+
+    // Send the prompt to SuperCode
+    try {
+      await appendPrompt(port, prompt, 'appendWithSpacing');
+      
+      // Show the interface (terminal or webview)
+      if (tuiInstance.terminal) {
+        tuiInstance.terminal.show();
+      }
+      // For static webviews, they're already visible after creation
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to send command to SuperCode: ${error}`);
     }
   }
 

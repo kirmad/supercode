@@ -58,17 +58,17 @@
       },
       {
         "command": "supercode.sendFileToChat",
-        "title": "Send to SuperCode Chat",
+        "title": "SuperCode: Send to Chat",
         "category": "SuperCode"
       },
       {
         "command": "supercode.sendSelectionToChat",
-        "title": "Send Selection to Chat",
+        "title": "SuperCode: Send Selection to Chat",
         "category": "SuperCode"
       },
       {
         "command": "supercode.sendCurrentFileToChat",
-        "title": "Send Current File to Chat",
+        "title": "SuperCode: Send File to Chat",
         "category": "SuperCode"
       },
       {
@@ -128,7 +128,57 @@
       },
       {
         "command": "supercode.showDynamicCommands",
-        "title": "Show Commands",
+        "title": "SuperCode: Run custom prompt",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.explainFile",
+        "title": "Explain File",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.refactorFile",
+        "title": "Refactor File",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.addCommentsToFile",
+        "title": "Add Comments to File",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.debugFile",
+        "title": "Debug File",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.optimizeFile",
+        "title": "Optimize File",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewFileGeneral",
+        "title": "General Review (File)",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewFileSecurity",
+        "title": "Security Review (File)",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewFileDesign",
+        "title": "Design Review (File)",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.reviewFileDefensive",
+        "title": "Defensive Coding Review (File)",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.showDynamicCommandsForFile",
+        "title": "SuperCode: Run custom prompt",
         "category": "SuperCode"
       }
     ],
@@ -144,6 +194,14 @@
       {
         "id": "supercode.commands",
         "label": "Commands"
+      },
+      {
+        "id": "supercode.file",
+        "label": "SuperCode"
+      },
+      {
+        "id": "supercode.fileReview",
+        "label": "Review"
       }
     ],
     "menus": {
@@ -160,6 +218,11 @@
           "group": "supercode"
         },
         {
+          "submenu": "supercode.file",
+          "when": "!editorHasSelection",
+          "group": "supercode"
+        },
+        {
           "command": "supercode.sendSelectionToChat",
           "when": "editorHasSelection",
           "group": "supercode@1"
@@ -167,14 +230,78 @@
         {
           "command": "supercode.sendCurrentFileToChat",
           "when": "!editorHasSelection",
+          "group": "supercode@1"
+        },
+        {
+          "command": "supercode.showDynamicCommands",
+          "when": "editorHasSelection",
+          "group": "supercode@2"
+        },
+        {
+          "command": "supercode.showDynamicCommandsForFile",
+          "when": "!editorHasSelection",
           "group": "supercode@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "supercode.sendFileToChat",
+          "submenu": "supercode.file",
           "when": "resourceScheme == file || explorerResourceIsFolder",
           "group": "supercode"
+        },
+        {
+          "command": "supercode.sendFileToChat",
+          "when": "resourceScheme == file || explorerResourceIsFolder",
+          "group": "supercode@1"
+        },
+        {
+          "command": "supercode.showDynamicCommandsForFile",
+          "when": "resourceScheme == file",
+          "group": "supercode@2"
+        }
+      ],
+      "supercode.file": [
+        {
+          "command": "supercode.explainFile",
+          "group": "analyze@1"
+        },
+        {
+          "command": "supercode.debugFile",
+          "group": "analyze@2"
+        },
+        {
+          "submenu": "supercode.fileReview",
+          "group": "review@1"
+        },
+        {
+          "command": "supercode.refactorFile",
+          "group": "improve@1"
+        },
+        {
+          "command": "supercode.addCommentsToFile",
+          "group": "improve@2"
+        },
+        {
+          "command": "supercode.optimizeFile",
+          "group": "improve@3"
+        }
+      ],
+      "supercode.fileReview": [
+        {
+          "command": "supercode.reviewFileGeneral",
+          "group": "review@1"
+        },
+        {
+          "command": "supercode.reviewFileSecurity",
+          "group": "review@2"
+        },
+        {
+          "command": "supercode.reviewFileDesign",
+          "group": "review@3"
+        },
+        {
+          "command": "supercode.reviewFileDefensive",
+          "group": "review@4"
         }
       ],
       "supercode.selection": [
@@ -189,11 +316,6 @@
         {
           "submenu": "supercode.review",
           "group": "review@1"
-        },
-        {
-          "command": "supercode.showDynamicCommands",
-          "when": "editorHasSelection",
-          "group": "commands@1"
         },
         {
           "command": "supercode.refactorSelection",
