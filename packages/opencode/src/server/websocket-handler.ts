@@ -117,7 +117,7 @@ export class WebSocketHandler {
   }
 
   /**
-   * Handle WebSocket connection open
+   * Handle WebSocket connection open with initialization delay
    */
   static async handleOpen(ws: ServerWebSocket<WSConnectionData>) {
     const connectionId = nanoid()
@@ -136,16 +136,22 @@ export class WebSocketHandler {
     this.connections.set(connectionId, context)
     this.log.info("WebSocket connection opened", { connectionId })
 
-    // Send welcome message
-    this.sendMessage(ws, {
-      type: "event",
-      event: "connected",
-      data: { connectionId },
-      timestamp: Date.now(),
-    })
+    // Add a small delay to ensure the connection is stable before sending initial message
+    setTimeout(() => {
+      // Verify connection is still active
+      if (this.connections.has(connectionId)) {
+        // Send welcome message
+        this.sendMessage(ws, {
+          type: "event",
+          event: "connected",
+          data: { connectionId },
+          timestamp: Date.now(),
+        })
 
-    // Subscribe to all bus events for this connection
-    this.subscribeToEvents(connectionId)
+        // Subscribe to all bus events for this connection
+        this.subscribeToEvents(connectionId)
+      }
+    }, 100)
   }
 
   /**

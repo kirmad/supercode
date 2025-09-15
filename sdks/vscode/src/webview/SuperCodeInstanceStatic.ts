@@ -27,25 +27,46 @@ export class SuperCodeInstanceStatic {
 
   /**
    * Initializes the SuperCode instance with static file webview content
+   * Now waits for connection before opening UI to avoid race conditions
    */
   public async initialize(): Promise<void> {
     try {
       console.log(`[SuperCode-Static-${this.getShortId()}] Initializing instance on port ${this.port}`);
       
-      this.createWebviewPanel();
-      
+      // First establish the connection BEFORE creating the webview
       if (this.connectToExisting) {
-        this.sendMessageToWebview('system', `🔗 Connecting to existing SuperCode instance on port ${this.port}...`);
+        console.log(`[SuperCode-Static-${this.getShortId()}] Connecting to existing SuperCode instance on port ${this.port}...`);
         
-        await this.establishConnection();
+        // Show progress notification while connecting
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: `Connecting to SuperCode on port ${this.port}...`,
+          cancellable: false
+        }, async () => {
+          await this.establishConnectionWithoutPanel();
+        });
+        
+        // Now that we're connected, create the webview panel
+        this.createWebviewPanel();
         this.sendMessageToWebview('system', '🎉 Connected to existing SuperCode instance!');
       } else {
-        this.sendMessageToWebview('system', `🚀 Launching SuperCode with static files on port ${this.port}...`);
+        console.log(`[SuperCode-Static-${this.getShortId()}] Launching SuperCode on port ${this.port}...`);
         
-        await this.spawnSuperCodeProcess();
-        this.sendMessageToWebview('system', '✅ Process started, establishing connection...');
+        // Show progress notification while spawning and connecting
+        await vscode.window.withProgress({
+          location: vscode.ProgressLocation.Notification,
+          title: `Starting SuperCode on port ${this.port}...`,
+          cancellable: false
+        }, async (progress) => {
+          progress.report({ message: 'Spawning process...' });
+          await this.spawnSuperCodeProcess();
+          
+          progress.report({ message: 'Establishing connection...' });
+          await this.establishConnectionWithoutPanel();
+        });
         
-        await this.establishConnection();
+        // Now that we're connected, create the webview panel
+        this.createWebviewPanel();
         this.sendMessageToWebview('system', '🎉 Connected! SuperCode is ready.');
       }
       
@@ -54,11 +75,25 @@ export class SuperCodeInstanceStatic {
       
     } catch (error) {
       console.error(`[SuperCode-Static-${this.getShortId()}] Initialization failed:`, error);
-      this.setConnectionStatus(ConnectionStatus.ERROR);
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const action = this.connectToExisting ? 'connect to' : 'start';
-      this.sendMessageToWebview('error', `Failed to ${action} SuperCode: ${errorMessage}`);
+      
+      // Show error message to user
+      const result = await vscode.window.showErrorMessage(
+        `Failed to ${action} SuperCode: ${errorMessage}`,
+        'Retry',
+        'Cancel'
+      );
+      
+      if (result === 'Retry') {
+        // Retry initialization
+        await this.initialize();
+      } else {
+        // Clean up and dispose
+        this.dispose();
+        throw error;
+      }
     }
   }
 
@@ -192,7 +227,9 @@ export class SuperCodeInstanceStatic {
     tuiManager.setFocusedStaticInstance(this.instanceId);
     console.log(`[SuperCode-Static-${this.getShortId()}] Initial focus set for new panel`);
 
+    // Update panel with current connection status (should be CONNECTED since we connect first now)
     this.updatePanelTitle();
+    this.sendStatusUpdate();
   }
 
   /**
@@ -208,7 +245,9 @@ export class SuperCodeInstanceStatic {
    * Updates the panel title with connection status
    */
   private updatePanelTitle(): void {
-    if (!this.panel) return;
+    if (!this.panel) {
+      return;
+    }
 
     const statusEmoji = {
       [ConnectionStatus.DISCONNECTED]: '⚪',
@@ -563,6 +602,52 @@ export class SuperCodeInstanceStatic {
   }
 
   /**
+   * Establishes connection to the SuperCode instance without requiring panel
+   * Used during initialization before the webview is created
+   */
+  private async establishConnectionWithoutPanel(): Promise<void> {
+    // Store initial connection status
+    this.connectionStatus = ConnectionStatus.CONNECTING;
+
+    const maxAttempts = 30;
+    const retryDelay = 1000;
+    
+    let connected = false;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(`[SuperCode-Static-${this.getShortId()}] Connection attempt ${attempt}/${maxAttempts}`);
+        await this.checkHealth();
+        connected = true;
+        console.log(`[SuperCode-Static-${this.getShortId()}] Successfully connected on attempt ${attempt}`);
+        break;
+      } catch (error) {
+        console.log(`[SuperCode-Static-${this.getShortId()}] Connection attempt ${attempt}/${maxAttempts} failed:`, error instanceof Error ? error.message : error);
+        if (attempt < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
+    
+    if (!connected) {
+      throw new Error(`Failed to connect to SuperCode TUI after ${maxAttempts} attempts. Check the external terminal window.`);
+    }
+    
+    // Set connection status without updating panel (since it doesn't exist yet)
+    this.connectionStatus = ConnectionStatus.CONNECTED;
+    
+    // Send initial file context if available
+    const activeFile = this.getActiveFile();
+    if (activeFile) {
+      try {
+        await this.appendPrompt(`In ${activeFile}`);
+      } catch (error) {
+        console.log(`[SuperCode-Static-${this.getShortId()}] Failed to send initial context:`, error);
+        // Don't fail the connection for this
+      }
+    }
+  }
+
+  /**
    * Checks if SuperCode is healthy and responding
    */
   private async checkHealth(): Promise<void> {
@@ -695,12 +780,15 @@ export class SuperCodeInstanceStatic {
    */
   private getActiveFile(): string | undefined {
     const activeEditor = vscode.window.activeTextEditor;
-    if (!activeEditor) return;
+    if (!activeEditor) {
+      return;
+    }
 
     const document = activeEditor.document;
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-    if (!workspaceFolder) return;
-
+    if (!workspaceFolder) {
+      return;
+    }
     const relativePath = vscode.workspace.asRelativePath(document.uri);
     let filepathWithAt = `@${relativePath}`;
 

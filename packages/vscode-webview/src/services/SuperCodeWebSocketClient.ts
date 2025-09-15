@@ -32,12 +32,13 @@ export class SuperCodeWebSocketClient {
   };
   private eventUnsubscribers: (() => void)[] = [];
   private connected = false;
+  private connectingPromise: Promise<void> | null = null;
 
   constructor(config: SuperCodeWebSocketClientConfig) {
     this.config = config;
     
-    // Create WebSocket client with proper URL
-    const wsUrl = `ws://localhost:${config.port}/ws`;
+    // Create WebSocket client with proper URL (server expects connections at root, not /ws)
+    const wsUrl = `ws://localhost:${config.port}`;
     this.wsClient = new WebSocketClient({
       url: wsUrl,
       sessionId: config.sessionId,
@@ -50,20 +51,50 @@ export class SuperCodeWebSocketClient {
   }
 
   /**
-   * Initialize WebSocket connection
+   * Initialize WebSocket connection with race condition protection
    */
   private async ensureConnected(): Promise<void> {
-    if (!this.connected) {
-      await this.wsClient.connect();
-      this.connected = true;
-      
-      // Notify open handlers
-      this.handlers.open.forEach(handler => handler());
+    // If already connected, return immediately
+    if (this.connected && this.wsClient.isConnected) {
+      return;
     }
+
+    // If a connection is in progress, wait for it
+    if (this.connectingPromise) {
+      return this.connectingPromise;
+    }
+
+    // Start a new connection
+    this.connectingPromise = (async () => {
+      try {
+        // Double-check in case another thread connected while we were waiting
+        if (!this.connected || !this.wsClient.isConnected) {
+          await this.wsClient.connect();
+          
+          // Wait a bit for the connection to stabilize
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          this.connected = true;
+          
+          // Notify open handlers
+          this.handlers.open.forEach(handler => {
+            try {
+              handler();
+            } catch (error) {
+              console.error('Error in open handler:', error);
+            }
+          });
+        }
+      } finally {
+        this.connectingPromise = null;
+      }
+    })();
+
+    return this.connectingPromise;
   }
 
   /**
-   * Test connection to SuperCode server
+   * Test connection to SuperCode server with retry logic
    */
   async testConnection(): Promise<boolean> {
     try {
@@ -74,6 +105,30 @@ export class SuperCodeWebSocketClient {
       console.error('Connection test failed:', error);
       return false;
     }
+  }
+
+  /**
+   * Wait for connection to be established
+   * Used by UI to ensure server is ready before proceeding
+   */
+  async waitForConnection(maxRetries: number = 10, retryDelay: number = 1000): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        if (await this.testConnection()) {
+          console.log(`✅ Connection established after ${i + 1} attempts`);
+          return true;
+        }
+      } catch (error) {
+        console.log(`Connection attempt ${i + 1}/${maxRetries} failed:`, error);
+      }
+      
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
+    
+    console.error(`Failed to establish connection after ${maxRetries} attempts`);
+    return false;
   }
 
   /**
@@ -180,6 +235,14 @@ export class SuperCodeWebSocketClient {
     try {
       await this.ensureConnected();
       console.log('🔌 Starting WebSocket event subscription...');
+      
+      // Wait a bit more to ensure the connection is fully ready
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Verify connection is still active
+      if (!this.wsClient.isConnected) {
+        throw new Error('WebSocket connection lost during event subscription');
+      }
       
       // IMPORTANT: We use a special internal listener that doesn't send subscribe messages
       // This keeps the server's subscriptions.size === 0, allowing us to receive ALL Bus events
@@ -736,11 +799,33 @@ export class SuperCodeWebSocketClient {
   }
 
   /**
-   * Disconnect WebSocket
+   * Disconnect WebSocket with proper cleanup
    */
   async disconnect(): Promise<void> {
-    this.unsubscribeFromEvents();
-    await this.wsClient.disconnect();
-    this.connected = false;
+    try {
+      // Clear all event subscriptions first
+      this.unsubscribeFromEvents();
+      
+      // Clear connection promise to prevent race conditions
+      this.connectingPromise = null;
+      
+      // Disconnect the WebSocket client
+      if (this.wsClient) {
+        await this.wsClient.disconnect();
+      }
+      
+      // Reset connection state
+      this.connected = false;
+      
+      // Clear all handlers
+      this.handlers.message.clear();
+      this.handlers.error.clear();
+      this.handlers.open.clear();
+    } catch (error) {
+      console.error('Error during disconnect:', error);
+      // Force reset state even if disconnect fails
+      this.connected = false;
+      this.connectingPromise = null;
+    }
   }
 }

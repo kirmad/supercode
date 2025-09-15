@@ -55,9 +55,15 @@ export class WebSocketClient {
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to WebSocket server with improved error handling and retry logic
    */
   async connect(): Promise<void> {
+    // If already connected and socket is open, return immediately
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
+    }
+
+    // If a connection is already in progress, return that promise
     if (this.connectionPromise) {
       return this.connectionPromise;
     }
@@ -66,64 +72,94 @@ export class WebSocketClient {
       this.connectionResolver = resolve;
       this.connectionRejector = reject;
 
-      try {
-        // Build connection URL with parameters
-        const url = new URL(this.options.url);
-        if (this.options.directory) {
-          url.searchParams.set('directory', this.options.directory);
-        }
-        if (this.options.sessionId) {
-          url.searchParams.set('sessionId', this.options.sessionId);
-        }
-
-        console.log('🔌 Connecting to WebSocket:', url.toString());
-
-        // Create WebSocket connection
-        this.ws = new WebSocket(url.toString());
-
-        this.ws.onopen = () => {
-          console.log('✅ WebSocket connected');
-          this.reconnectAttempts = 0;
-          this.setupHeartbeat();
-          if (this.connectionResolver) {
-            this.connectionResolver();
-            this.connectionResolver = null;
-            this.connectionRejector = null;
+      const attemptConnection = () => {
+        try {
+          // Build connection URL with parameters
+          const url = new URL(this.options.url);
+          if (this.options.directory) {
+            url.searchParams.set('directory', this.options.directory);
           }
-        };
+          if (this.options.sessionId) {
+            url.searchParams.set('sessionId', this.options.sessionId);
+          }
 
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
-        };
+          console.log('🔌 Connecting to WebSocket:', url.toString());
 
-        this.ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
+          // Create WebSocket connection
+          this.ws = new WebSocket(url.toString());
+
+          // Set a connection timeout
+          const connectionTimeout = setTimeout(() => {
+            if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+              console.warn('⏱️ WebSocket connection timeout, closing...');
+              this.ws.close();
+              if (this.connectionRejector) {
+                this.connectionRejector(new Error('Connection timeout'));
+                this.connectionResolver = null;
+                this.connectionRejector = null;
+                this.connectionPromise = null;
+              }
+            }
+          }, 10000); // 10 second timeout
+
+          this.ws.onopen = () => {
+            clearTimeout(connectionTimeout);
+            console.log('✅ WebSocket connected');
+            this.reconnectAttempts = 0;
+            
+            // Add a small delay to ensure server is ready
+            setTimeout(() => {
+              this.setupHeartbeat();
+              if (this.connectionResolver) {
+                this.connectionResolver();
+                this.connectionResolver = null;
+                this.connectionRejector = null;
+              }
+            }, 50);
+          };
+
+          this.ws.onmessage = (event) => {
+            this.handleMessage(event.data);
+          };
+
+          this.ws.onerror = (error) => {
+            clearTimeout(connectionTimeout);
+            console.error('❌ WebSocket error:', error);
+            
+            // Only reject if we haven't connected yet
+            if (this.ws?.readyState === WebSocket.CONNECTING) {
+              if (this.connectionRejector) {
+                this.connectionRejector(new Error('WebSocket connection failed'));
+                this.connectionResolver = null;
+                this.connectionRejector = null;
+                this.connectionPromise = null;
+              }
+            }
+          };
+
+          this.ws.onclose = (event) => {
+            clearTimeout(connectionTimeout);
+            console.log('🔌 WebSocket closed', { code: event.code, reason: event.reason });
+            this.cleanup();
+            this.connectionPromise = null;
+            
+            // Only attempt reconnect if we were previously connected successfully
+            if (this.options.autoReconnect && !this.isClosing && this.reconnectAttempts > 0) {
+              this.attemptReconnect();
+            }
+          };
+        } catch (error) {
+          console.error('❌ Failed to create WebSocket:', error);
           if (this.connectionRejector) {
-            this.connectionRejector(new Error('WebSocket connection failed'));
+            this.connectionRejector(error as Error);
             this.connectionResolver = null;
             this.connectionRejector = null;
             this.connectionPromise = null;
           }
-        };
-
-        this.ws.onclose = (event) => {
-          console.log('🔌 WebSocket closed', { code: event.code, reason: event.reason });
-          this.cleanup();
-          this.connectionPromise = null;
-          
-          if (this.options.autoReconnect && !this.isClosing) {
-            this.attemptReconnect();
-          }
-        };
-      } catch (error) {
-        console.error('❌ Failed to create WebSocket:', error);
-        if (this.connectionRejector) {
-          this.connectionRejector(error as Error);
-          this.connectionResolver = null;
-          this.connectionRejector = null;
-          this.connectionPromise = null;
         }
-      }
+      };
+
+      attemptConnection();
     });
 
     return this.connectionPromise;

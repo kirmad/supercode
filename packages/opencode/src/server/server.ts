@@ -70,9 +70,6 @@ export namespace Server {
 
   const app = new Hono()
   
-  // Initialize WebSocket handler
-  WebSocketHandler.initialize(app)
-  
   // Enable CORS for browser integration
   app.use('*', cors({
     origin: (origin) => {
@@ -2055,6 +2052,9 @@ export namespace Server {
   }
 
   export function listen(opts: { port: number; hostname: string }) {
+    // Initialize WebSocket handler with the app before starting server
+    WebSocketHandler.initialize(App)
+    
     const server = Bun.serve({
       port: opts.port,
       hostname: opts.hostname,
