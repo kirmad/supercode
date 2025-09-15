@@ -2,7 +2,7 @@
   "name": "supercode",
   "displayName": "Supercode",
   "description": "Supercode - AI coding agent for VS Code",
-  "version": "0.6.40",
+  "version": "0.6.41",
   "publisher": "KiranMadipally",
   "repository": {
     "type": "git",
