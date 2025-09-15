@@ -717,6 +717,25 @@ export class SuperCodeWebSocketClient {
   }
 
   /**
+   * Get flag suggestions for command auto-completion
+   */
+  async getFlagSuggestions(input: string, prefix: string, sessionId?: string): Promise<unknown[]> {
+    try {
+      await this.ensureConnected();
+      let path = `/flag-suggestions?input=${encodeURIComponent(input)}&prefix=${encodeURIComponent(prefix)}`;
+      if (sessionId) {
+        path += `&sessionId=${encodeURIComponent(sessionId)}`;
+      }
+      
+      const suggestions = await this.wsClient.request('GET', path);
+      return Array.isArray(suggestions) ? suggestions : [];
+    } catch (error) {
+      console.error('Failed to get flag suggestions via WebSocket:', error);
+      return [];
+    }
+  }
+
+  /**
    * Disconnect WebSocket
    */
   async disconnect(): Promise<void> {

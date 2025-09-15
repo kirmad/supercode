@@ -195,6 +195,26 @@
           </div>
         </div>
         
+        <!-- Flag suggestions dropdown -->
+        <div v-if="showFlagSuggestions" class="flag-suggestions-dropdown">
+          <div class="flag-suggestions-list">
+            <div
+              v-for="(suggestion, index) in flagSuggestions"
+              :key="suggestion.flag"
+              class="flag-suggestion-item"
+              :class="{ 'selected': index === selectedFlagIndex }"
+              @click="selectFlag(suggestion)"
+            >
+              <div class="flag-header">
+                <span class="flag-name">{{ suggestion.flag }}</span>
+                <span v-if="suggestion.namespace" class="flag-namespace">[{{ suggestion.namespace }}]</span>
+                <span v-if="suggestion.category" class="flag-category">{{ suggestion.category }}</span>
+              </div>
+              <div class="flag-description">{{ suggestion.description }}</div>
+            </div>
+          </div>
+        </div>
+        
         <span class="prompt">></span>
         <textarea
           v-model="inputText"
@@ -297,6 +317,15 @@ interface CustomCommand {
   arguments?: string[]
 }
 
+// Flag suggestion interface for auto-completion
+interface FlagSuggestion {
+  flag: string
+  description: string
+  namespace?: string
+  category?: string
+  metadata?: any
+}
+
 const showAgentSelector = ref(false)
 const availableAgents = ref<AvailableAgent[]>([])
 const loadingAgents = ref(false)
@@ -307,6 +336,12 @@ const showCommandCompletion = ref(false)
 const commandCompletions = ref<CustomCommand[]>([])
 const selectedCompletionIndex = ref(0)
 const completionPrefix = ref('')
+
+// Flag suggestion auto-completion state
+const showFlagSuggestions = ref(false)
+const flagSuggestions = ref<FlagSuggestion[]>([])
+const selectedFlagIndex = ref(0)
+const flagPrefix = ref('')
 
 // Track message roles for proper type assignment
 const messageRoles = ref<Map<string, string>>(new Map())
@@ -661,6 +696,29 @@ function navigateHistory(direction: 'up' | 'down') {
 
 // Handle keyboard navigation
 function handleKeydown(event: KeyboardEvent) {
+  // Handle flag suggestion navigation
+  if (showFlagSuggestions.value) {
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectedFlagIndex.value = Math.max(0, selectedFlagIndex.value - 1)
+      return
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectedFlagIndex.value = Math.min(flagSuggestions.value.length - 1, selectedFlagIndex.value + 1)
+      return
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault()
+      if (flagSuggestions.value[selectedFlagIndex.value]) {
+        selectFlag(flagSuggestions.value[selectedFlagIndex.value])
+      }
+      return
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      hideFlagSuggestions()
+      return
+    }
+  }
+  
   // Handle command completion navigation
   if (showCommandCompletion.value) {
     if (event.key === 'ArrowUp') {
@@ -697,12 +755,12 @@ function handleKeydown(event: KeyboardEvent) {
       draftMessage.value = ''
       sendMessage()
     }
-  } else if (event.key === 'ArrowUp' && isAtFirstLine() && !showCommandCompletion.value) {
-    // Navigate to previous message when on first line
+  } else if (event.key === 'ArrowUp' && isAtFirstLine() && !showCommandCompletion.value && !showFlagSuggestions.value) {
+    // Navigate to previous message when on first line (only if no dropdowns are open)
     event.preventDefault()
     navigateHistory('up')
-  } else if (event.key === 'ArrowDown' && isAtLastLine() && !showCommandCompletion.value) {
-    // Navigate to next message when on last line
+  } else if (event.key === 'ArrowDown' && isAtLastLine() && !showCommandCompletion.value && !showFlagSuggestions.value) {
+    // Navigate to next message when on last line (only if no dropdowns are open)
     event.preventDefault()
     navigateHistory('down')
   }
@@ -714,6 +772,12 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     // If command completion is open, close it
     if (showCommandCompletion.value) {
       hideCommandCompletion()
+      return
+    }
+    
+    // If flag suggestions are open, close them
+    if (showFlagSuggestions.value) {
+      hideFlagSuggestions()
       return
     }
     
@@ -813,7 +877,23 @@ function checkForCommandCompletion() {
   const textBeforeCursor = text.substring(0, cursorPos)
   const lastLine = textBeforeCursor.split('\n').pop() || ''
   
-  // Only check for completions if we're at the beginning of a line with a slash
+  // Check for flag suggestions first (takes precedence over command completion)
+  // Look for patterns like any word followed by space and "--" (two dashes)
+  // This includes: start of line, after space, or after a command
+  // Examples: "--verbose", "command --verbose", "word --flag", etc.
+  const flagMatch = lastLine.match(/(^|.*\s)(--[\w-]*)$/)
+  if (flagMatch) {
+    const prefix = flagMatch[2] // The flag prefix (e.g., "--", "--ver", "--verbose")
+    // Only trigger if we have at least "--" typed (two dashes minimum)
+    if (prefix.match(/^--[\w-]*$/)) {
+      flagPrefix.value = prefix
+      fetchFlagSuggestions(lastLine, prefix)
+      hideCommandCompletion() // Hide command completions when showing flag suggestions
+      return
+    }
+  }
+  
+  // Only check for command completions if we're at the beginning of a line with a slash
   // and no spaces (which would mean we're past the command name)
   if (lastLine.startsWith('/') && !lastLine.includes(' ')) {
     // Check if it's a valid command pattern (only word chars, hyphens, colons after slash)
@@ -821,11 +901,16 @@ function checkForCommandCompletion() {
       const prefix = lastLine.substring(1) // Remove the '/' character
       completionPrefix.value = prefix
       fetchCommandCompletions(prefix)
+      hideFlagSuggestions() // Hide flag suggestions when showing command completions
     } else {
       hideCommandCompletion()
+      hideFlagSuggestions()
     }
   } else {
     hideCommandCompletion()
+    if (!flagMatch) {
+      hideFlagSuggestions()
+    }
   }
 }
 
@@ -887,6 +972,70 @@ function hideCommandCompletion() {
   commandCompletions.value = []
   selectedCompletionIndex.value = 0
   completionPrefix.value = ''
+}
+
+// Flag suggestion functions
+async function fetchFlagSuggestions(input: string, prefix: string) {
+  if (!sdkClient) {
+    return
+  }
+  
+  try {
+    const suggestions = await sdkClient.getFlagSuggestions(input, prefix) as FlagSuggestion[]
+    flagSuggestions.value = suggestions
+    selectedFlagIndex.value = 0
+    
+    if (suggestions.length > 0) {
+      showFlagSuggestions.value = true
+    } else {
+      hideFlagSuggestions()
+    }
+  } catch (error) {
+    console.error('Failed to fetch flag suggestions:', error)
+    hideFlagSuggestions()
+  }
+}
+
+function selectFlag(suggestion: FlagSuggestion) {
+  const text = inputText.value
+  const cursorPos = inputField.value?.selectionStart || 0
+  const textBeforeCursor = text.substring(0, cursorPos)
+  const textAfterCursor = text.substring(cursorPos)
+  
+  // Find the start of the current line
+  const lines = textBeforeCursor.split('\n')
+  const currentLine = lines[lines.length - 1]
+  const beforeCurrentLine = lines.slice(0, -1).join('\n')
+  
+  // Replace the flag prefix with the selected flag
+  // Match pattern: either start of line or any text before the flag (two dashes required)
+  const flagMatch = currentLine.match(/(^|.*\s)(--[\w-]*)$/)
+  if (flagMatch) {
+    const beforeFlag = flagMatch[1] // Everything before the flag (could be empty, command, or other text)
+    // Always add a space after the flag for potential arguments
+    let newLine = beforeFlag + suggestion.flag + ' '
+    
+    // Reconstruct the full text
+    const newTextBeforeCursor = beforeCurrentLine ? beforeCurrentLine + '\n' + newLine : newLine
+    inputText.value = newTextBeforeCursor + textAfterCursor
+    
+    // Set cursor position after the flag
+    nextTick(() => {
+      if (inputField.value) {
+        inputField.value.selectionStart = inputField.value.selectionEnd = newTextBeforeCursor.length
+        inputField.value.focus()
+      }
+    })
+  }
+  
+  hideFlagSuggestions()
+}
+
+function hideFlagSuggestions() {
+  showFlagSuggestions.value = false
+  flagSuggestions.value = []
+  selectedFlagIndex.value = 0
+  flagPrefix.value = ''
 }
 
 function addMessage(type: Message['type'], content: string) {
@@ -2919,6 +3068,100 @@ onUnmounted(() => {
 }
 
 .command-completion-dropdown::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Flag Suggestions Styles */
+.flag-suggestions-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  border: 1px solid #333;
+  border-bottom: none;
+  background: #1a1a1a;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.flag-suggestions-list {
+  padding: 0;
+}
+
+.flag-suggestion-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.flag-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.flag-suggestion-item:hover,
+.flag-suggestion-item.selected {
+  background: #252525;
+}
+
+.flag-suggestion-item.selected {
+  border-left: 3px solid #7c4dff;
+}
+
+.flag-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.flag-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: #bb86fc;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.flag-namespace {
+  font-size: 11px;
+  color: #9575cd;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.flag-category {
+  font-size: 10px;
+  color: #666;
+  background: #2a2a2a;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.flag-description {
+  font-size: 12px;
+  color: #999;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.flag-suggestions-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.flag-suggestions-dropdown::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.flag-suggestions-dropdown::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.flag-suggestions-dropdown::-webkit-scrollbar-thumb:hover {
   background: #444;
 }
 

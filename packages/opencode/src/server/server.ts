@@ -1000,6 +1000,75 @@ export namespace Server {
       },
     )
     .get(
+      "/flag-suggestions",
+      describeRoute({
+        description: "Get flag suggestions for command auto-completion",
+        operationId: "flagSuggestions.get",
+        parameters: [
+          {
+            name: "input",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Current input text to determine command context",
+          },
+          {
+            name: "prefix",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Flag prefix to filter suggestions (e.g., '--ve' for '--verbose')",
+          },
+          {
+            name: "sessionId",
+            in: "query",
+            required: false,
+            schema: { type: "string" },
+            description: "Optional session ID for context",
+          },
+        ],
+        responses: {
+          200: {
+            description: "List of flag suggestions",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      flag: { type: "string", description: "The flag itself (e.g., '--verbose')" },
+                      shortFlag: { type: "string", description: "Short version if available (e.g., '-v')" },
+                      description: { type: "string", description: "Description of what the flag does" },
+                      valueType: { type: "string", description: "Type of value expected" },
+                      category: { type: "string", description: "Category for grouping" },
+                      example: { type: "string", description: "Example usage" },
+                    },
+                    required: ["flag", "description"],
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const { getFlagSuggestions } = await import("../flag-suggestions/index.ts")
+        const input = c.req.query("input") || ""
+        const prefix = c.req.query("prefix") || ""
+        
+        try {
+          const suggestions = await getFlagSuggestions(input, prefix)
+          
+          // Limit to 15 results for performance
+          return c.json(suggestions.slice(0, 15))
+        } catch (error) {
+          console.error("Failed to get flag suggestions:", error)
+          return c.json([])
+        }
+      },
+    )
+    .get(
       "/config/providers",
       describeRoute({
         description: "List all providers",
