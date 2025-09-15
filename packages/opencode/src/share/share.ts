@@ -65,9 +65,8 @@ export namespace Share {
     })
   }
 
-  export const URL =
-    process.env["OPENCODE_API"] ??
-    (Installation.isSnapshot() || Installation.isDev() ? "https://api.dev.opencode.ai" : "https://api.opencode.ai")
+  // DISABLED: Connections to opencode.ai servers have been disabled
+  export const URL = process.env["OPENCODE_API"] ?? "http://localhost:9999/disabled"
 
   export async function create(sessionID: string) {
     return fetch(`${URL}/share_create`, {

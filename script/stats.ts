@@ -1,31 +1,36 @@
 #!/usr/bin/env bun
 
 async function sendToPostHog(event: string, properties: Record<string, any>) {
-  const key = process.env["POSTHOG_KEY"]
+  // DISABLED: Analytics and telemetry to external services has been disabled
+  console.log("PostHog analytics disabled - not sending event:", event)
+  return
 
-  if (!key) {
-    console.warn("POSTHOG_API_KEY not set, skipping PostHog event")
-    return
-  }
-
-  const response = await fetch("https://us.i.posthog.com/i/v0/e/", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      distinct_id: "download",
-      api_key: key,
-      event,
-      properties: {
-        ...properties,
-      },
-    }),
-  }).catch(() => null)
-
-  if (response && !response.ok) {
-    console.warn(`PostHog API error: ${response.status}`)
-  }
+  // Original code:
+  // const key = process.env["POSTHOG_KEY"]
+  //
+  // if (!key) {
+  //   console.warn("POSTHOG_API_KEY not set, skipping PostHog event")
+  //   return
+  // }
+  //
+  // const response = await fetch("https://us.i.posthog.com/i/v0/e/", {
+  //   method: "POST",
+  //   headers: {
+  //     "Content-Type": "application/json",
+  //   },
+  //   body: JSON.stringify({
+  //     distinct_id: "download",
+  //     api_key: key,
+  //     event,
+  //     properties: {
+  //       ...properties,
+  //     },
+  //   }),
+  // }).catch(() => null)
+  //
+  // if (response && !response.ok) {
+  //   console.warn(`PostHog API error: ${response.status}`)
+  // }
 }
 
 interface Asset {
