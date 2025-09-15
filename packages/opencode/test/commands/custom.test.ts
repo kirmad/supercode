@@ -45,7 +45,7 @@ describe("CustomCommands.executeCommand", () => {
 
     await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/test world")
-      expect(result).toBe("Hello world!")
+      expect(result?.content).toBe("Hello world!")
     })
   })
 
@@ -107,7 +107,7 @@ describe("CustomCommands.executeCommand", () => {
 
     await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/multiple-test")
-      expect(result).toBe("First: first\nSecond: second\nThird: third")
+      expect(result?.content).toBe("First: first\nSecond: second\nThird: third")
     })
   })
 })

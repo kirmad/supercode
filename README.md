@@ -124,6 +124,34 @@ SuperCode supports 40+ AI providers including:
 To see available models: `supercode models`
 To manage authentication: `supercode auth login`
 
+### Tool Filtering
+
+SuperCode provides fine-grained control over tool access through flags, commands, and agent configurations. This allows you to restrict or expand tool availability based on security requirements or specific workflows.
+
+#### Quick Examples
+
+**Safe Mode Flag** (`.opencode/flags/safe-mode.md`):
+```yaml
+---
+description: Restrict to read-only operations
+deny-tools: write, edit, bash
+allowed-tools: read, grep, glob
+---
+```
+Usage: `--safe-mode analyze this code`
+
+**Security Command** (`.opencode/commands/security.md`):
+```yaml
+---
+description: Security audit mode
+allowed-tools: read, grep, glob
+deny-tools: write, edit, bash
+---
+```
+Usage: `/security check for vulnerabilities`
+
+See [Tool Filtering Documentation](docs/TOOL-FILTERING.md) for complete details.
+
 ### Documentation
 
 For more info on how to configure SuperCode, see the [project documentation](https://github.com/kirmad/supercode/docs) or check the original OpenCode docs for additional reference.

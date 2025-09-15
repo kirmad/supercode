@@ -233,6 +233,8 @@ export namespace Config {
     description: z.string().optional(),
     agent: z.string().optional(),
     model: z.string().optional(),
+    allowedTools: z.array(z.string()).optional(),
+    denyTools: z.array(z.string()).optional(),
   })
   export type Command = z.infer<typeof Command>
 
@@ -243,6 +245,8 @@ export namespace Config {
       top_p: z.number().optional(),
       prompt: z.string().optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
+      allowedTools: z.array(z.string()).optional(),
+      denyTools: z.array(z.string()).optional(),
       disable: z.boolean().optional(),
       description: z.string().optional().describe("Description of when to use the agent"),
       mode: z.union([z.literal("subagent"), z.literal("primary"), z.literal("all")]).optional(),

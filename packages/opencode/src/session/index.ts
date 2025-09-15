@@ -41,14 +41,15 @@ import { MessageV2 } from "./message-v2"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
 import { TodoReadTool } from "../tool/todo"
-import { mergeDeep, pipe, splitWhen } from "remeda"
+import { mergeDeep, splitWhen } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { Plugin } from "../plugin"
 import { Project } from "../project/project"
 import { Instance } from "../project/instance"
 import { Agent } from "../agent/agent"
 import { Permission } from "../permission"
-import { Wildcard } from "../util/wildcard"
+import { ToolFilter } from "../tool/filter"
+import { Command } from "../command"
 import { ulid } from "ulid"
 import { defer } from "../util/defer"
 import { CustomCommands } from "../commands/custom"
@@ -58,7 +59,6 @@ import { CompactionManager } from "./compaction"
 import { HttpFileLogger } from "./http-file-logger"
 import { HttpInterceptor } from "./http-interceptor"
 import { AiSdkLoggingMiddleware } from "./ai-sdk-logging-middleware"
-import { Command } from "../command"
 import { $ } from "bun"
 
 export namespace Session {
@@ -430,6 +430,14 @@ export namespace Session {
     agent: z.string().optional(),
     system: z.string().optional(),
     tools: z.record(z.boolean()).optional(),
+    commandTools: z.object({
+      allowedTools: z.array(z.string()).optional(),
+      denyTools: z.array(z.string()).optional(),
+    }).optional(),
+    flagTools: z.object({
+      allowedTools: z.array(z.string()).optional(),
+      denyTools: z.array(z.string()).optional(),
+    }).optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -516,20 +524,36 @@ export namespace Session {
       },
     }
 
-    // Process flags first
+    // Process flags first and extract tool configuration
+    let flagToolConfig: { allowedTools?: string[], denyTools?: string[] } | undefined
     if (input.parts.length === 1 && input.parts[0].type === "text") {
       const textPart = input.parts[0]
+      // Extract tool configuration from flags before processing
+      flagToolConfig = await Flags.extractFlagToolConfig(textPart.text)
       textPart.text = await Flags.processFlagReferences(textPart.text)
+    }
+    
+    // If flag tools were found, add them to input
+    if (flagToolConfig && (flagToolConfig.allowedTools || flagToolConfig.denyTools)) {
+      input.flagTools = flagToolConfig
     }
 
     // Check for custom commands
     if (input.parts.length === 1 && input.parts[0].type === "text") {
       const textPart = input.parts[0]
-      const commandContent = await CustomCommands.executeCommand(textPart.text)
+      const commandResult = await CustomCommands.executeCommand(textPart.text)
       
-      if (commandContent) {
+      if (commandResult) {
         // Replace input with command content
-        textPart.text = commandContent
+        textPart.text = commandResult.content
+        
+        // Add command tool configuration to input
+        if (commandResult.allowedTools || commandResult.denyTools) {
+          input.commandTools = {
+            allowedTools: commandResult.allowedTools,
+            denyTools: commandResult.denyTools,
+          }
+        }
       }
     }
     const userParts = await Promise.all(
@@ -891,13 +915,30 @@ export namespace Session {
 
     const processor = createProcessor(assistantMsg, model.info)
 
-    const enabledTools = pipe(
-      agent.tools,
-      mergeDeep(await ToolRegistry.enabled(model.providerID, model.modelID, agent)),
-      mergeDeep(input.tools ?? {}),
-    )
+    // Build tool configuration with proper precedence
+    const toolConfig: ToolFilter.ToolConfig = {
+      agent: {
+        tools: agent.tools,
+        allowedTools: agent.allowedTools,
+        denyTools: agent.denyTools,
+      },
+      command: input.commandTools,
+      flags: input.flagTools,
+      input: input.tools,
+    }
+    
+    // Merge tools from registry with agent permissions
+    const registryTools = await ToolRegistry.enabled(model.providerID, model.modelID, agent)
+    if (Object.keys(registryTools).length > 0) {
+      toolConfig.agent = toolConfig.agent || {}
+      toolConfig.agent.tools = mergeDeep(toolConfig.agent.tools || {}, registryTools)
+    }
+    
+    // Resolve tool configuration without merging
+    const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
+    
     for (const item of await ToolRegistry.tools(model.providerID, model.modelID)) {
-      if (Wildcard.all(item.id, enabledTools) === false) continue
+      if (!ToolFilter.isToolEnabled(item.id, toolResolution)) continue
       tools[item.id] = tool({
         id: item.id as any,
         description: item.description,
@@ -959,7 +1000,7 @@ export namespace Session {
     }
 
     for (const [key, item] of Object.entries(await MCP.tools())) {
-      if (Wildcard.all(key, enabledTools) === false) continue
+      if (!ToolFilter.isToolEnabled(key, toolResolution)) continue
       const execute = item.execute
       if (!execute) continue
       item.execute = async (args, opts) => {
@@ -1517,6 +1558,10 @@ export namespace Session {
         return undefined
       })(),
       agent,
+      commandTools: {
+        allowedTools: command.allowedTools,
+        denyTools: command.denyTools,
+      },
       parts,
     })
   }

@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
+import matter from "gray-matter"
 import { Instance } from "../project/instance"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
@@ -18,6 +19,8 @@ export namespace CustomCommands {
   export interface CommandMetadata {
     description?: string
     "argument-hint"?: string
+    "allowed-tools"?: string | string[]
+    "deny-tools"?: string | string[]
     [key: string]: any
   }
 
@@ -30,38 +33,13 @@ export namespace CustomCommands {
   const ROOT_COMMAND_REGEX = /^\/([a-zA-Z0-9_-]+)(\s+.*)?$/
 
   function parseFrontMatter(content: string): { metadata: CommandMetadata; content: string } {
-    const frontMatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/
-    const match = content.match(frontMatterRegex)
+    const parsed = matter(content)
     
-    if (!match) {
-      return { metadata: {}, content }
-    }
+    // Use the parsed data directly - gray-matter handles all the YAML parsing
+    // Commands use hyphenated keys (allowed-tools, deny-tools) in the metadata interface
+    const metadata: CommandMetadata = parsed.data as CommandMetadata
 
-    const [, yamlContent, markdownContent] = match
-    const metadata: CommandMetadata = {}
-
-    // Simple YAML parser for basic key-value pairs
-    const lines = yamlContent.split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      
-      const colonIndex = trimmed.indexOf(':')
-      if (colonIndex === -1) continue
-      
-      const key = trimmed.substring(0, colonIndex).trim()
-      let value = trimmed.substring(colonIndex + 1).trim()
-      
-      // Remove quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) || 
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1)
-      }
-      
-      metadata[key] = value
-    }
-
-    return { metadata, content: markdownContent }
+    return { metadata, content: parsed.content }
   }
 
   export async function getCommandInfo(input: string): Promise<CommandInfo | null> {
@@ -116,7 +94,13 @@ export namespace CustomCommands {
     return { isCustomCommand: false }
   }
 
-  export async function executeCommand(input: string): Promise<string | null> {
+  export interface CommandExecutionResult {
+    content: string
+    allowedTools?: string[]
+    denyTools?: string[]
+  }
+
+  export async function executeCommand(input: string): Promise<CommandExecutionResult | null> {
     const parsed = await parseCommand(input)
     
     if (!parsed.isCustomCommand || !parsed.filePath) {
@@ -127,7 +111,7 @@ export namespace CustomCommands {
       const content = await fs.readFile(parsed.filePath, "utf-8")
       
       // Parse front matter and get the actual content without front matter
-      const { content: markdownContent } = parseFrontMatter(content)
+      const { metadata, content: markdownContent } = parseFrontMatter(content)
       
       // First replace arguments
       let processedContent = markdownContent.replace(/\$ARGUMENTS/g, parsed.args || "")
@@ -138,7 +122,26 @@ export namespace CustomCommands {
       // Finally process shell commands
       processedContent = await processShellCommands(processedContent)
       
-      return processedContent
+      // Extract tool configuration from metadata
+      const result: CommandExecutionResult = {
+        content: processedContent
+      }
+      
+      // Process allowed-tools
+      if (metadata["allowed-tools"]) {
+        result.allowedTools = Array.isArray(metadata["allowed-tools"])
+          ? metadata["allowed-tools"]
+          : String(metadata["allowed-tools"]).split(/[,\s]+/).filter(Boolean)
+      }
+      
+      // Process deny-tools
+      if (metadata["deny-tools"]) {
+        result.denyTools = Array.isArray(metadata["deny-tools"])
+          ? metadata["deny-tools"]
+          : String(metadata["deny-tools"]).split(/[,\s]+/).filter(Boolean)
+      }
+      
+      return result
     } catch (error) {
       const commandRef = parsed.namespace ? `${parsed.namespace}:${parsed.command}` : parsed.command
       throw new Error(`Command not found: ${commandRef}`)

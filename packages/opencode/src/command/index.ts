@@ -10,6 +10,8 @@ export namespace Command {
       agent: z.string().optional(),
       model: z.string().optional(),
       template: z.string(),
+      allowedTools: z.array(z.string()).optional(),
+      denyTools: z.array(z.string()).optional(),
     })
     .openapi({
       ref: "Command",
@@ -28,6 +30,8 @@ export namespace Command {
         model: command.model,
         description: command.description,
         template: command.template,
+        allowedTools: command.allowedTools,
+        denyTools: command.denyTools,
       }
     }
 

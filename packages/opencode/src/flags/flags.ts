@@ -1,6 +1,7 @@
 import { promises as fs } from "fs"
 import path from "path"
 import { execSync } from "child_process"
+import matter from "gray-matter"
 import { Instance } from "../project/instance"
 import { Global } from "../global"
 
@@ -17,6 +18,8 @@ export namespace Flags {
     description?: string
     signature?: string
     placement?: "replace" | "before" | "after"
+    allowedTools?: string[]
+    denyTools?: string[]
     [key: string]: any
   }
 
@@ -35,38 +38,23 @@ export namespace Flags {
   const ROOT_FLAG_REGEX = /--([a-zA-Z0-9_-]+)/g
 
   function parseFrontMatter(content: string): { metadata: FlagMetadata; content: string } {
-    const frontMatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/
-    const match = content.match(frontMatterRegex)
+    const parsed = matter(content)
     
-    if (!match) {
-      return { metadata: { placement: "replace" }, content }
-    }
-
-    const [, yamlContent, markdownContent] = match
+    // Convert hyphenated keys to camelCase for consistency
     const metadata: FlagMetadata = { placement: "replace" }
-
-    // Simple YAML parser for basic key-value pairs
-    const lines = yamlContent.split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#')) continue
-      
-      const colonIndex = trimmed.indexOf(':')
-      if (colonIndex === -1) continue
-      
-      const key = trimmed.substring(0, colonIndex).trim()
-      let value = trimmed.substring(colonIndex + 1).trim()
-      
-      // Remove quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) || 
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1)
-      }
-      
-      metadata[key] = value
+    
+    for (const [key, value] of Object.entries(parsed.data)) {
+      // Convert hyphenated keys to camelCase (e.g., allowed-tools -> allowedTools)
+      const camelKey = key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+      metadata[camelKey] = value
+    }
+    
+    // Ensure placement has a default
+    if (!metadata.placement) {
+      metadata.placement = "replace"
     }
 
-    return { metadata, content: markdownContent }
+    return { metadata, content: parsed.content }
   }
 
   export async function getFlagInfo(namespace: string | undefined, flag: string): Promise<FlagInfo | null> {
@@ -163,6 +151,44 @@ export namespace Flags {
     references.sort((a, b) => a.startIndex - b.startIndex)
     
     return references
+  }
+
+  export async function extractFlagToolConfig(input: string): Promise<{ allowedTools?: string[], denyTools?: string[] }> {
+    const references = await parseFlagReferences(input)
+    const result: { allowedTools?: string[], denyTools?: string[] } = {}
+    
+    for (const reference of references) {
+      const { flag } = reference
+      try {
+        const flagInfo = await getFlagInfo(flag.namespace, flag.flag!)
+        
+        if (flagInfo) {
+          // Merge allowed tools
+          if (flagInfo.metadata.allowedTools) {
+            const tools = Array.isArray(flagInfo.metadata.allowedTools)
+              ? flagInfo.metadata.allowedTools
+              : String(flagInfo.metadata.allowedTools).split(/[,\s]+/).filter(Boolean)
+            
+            result.allowedTools = result.allowedTools || []
+            result.allowedTools.push(...tools)
+          }
+          
+          // Merge deny tools
+          if (flagInfo.metadata.denyTools) {
+            const tools = Array.isArray(flagInfo.metadata.denyTools)
+              ? flagInfo.metadata.denyTools
+              : String(flagInfo.metadata.denyTools).split(/[,\s]+/).filter(Boolean)
+            
+            result.denyTools = result.denyTools || []
+            result.denyTools.push(...tools)
+          }
+        }
+      } catch (error) {
+        // Silently skip on error
+      }
+    }
+    
+    return result
   }
 
   export async function processFlagReferences(input: string): Promise<string> {

@@ -29,6 +29,8 @@ export namespace Agent {
         .optional(),
       prompt: z.string().optional(),
       tools: z.record(z.boolean()),
+      allowedTools: z.array(z.string()).optional(),
+      denyTools: z.array(z.string()).optional(),
       options: z.record(z.string(), z.any()),
     })
     .openapi({
@@ -104,9 +106,11 @@ export namespace Agent {
           permission: agentPermission,
           options: {},
           tools: {},
+          allowedTools: undefined,
+          denyTools: undefined,
           builtIn: false,
         }
-      const { name, model, prompt, tools, description, temperature, top_p, mode, permission, ...extra } = value
+      const { name, model, prompt, tools, allowedTools, denyTools, description, temperature, top_p, mode, permission, ...extra } = value
       item.options = {
         ...item.options,
         ...extra,
@@ -122,6 +126,8 @@ export namespace Agent {
         ...defaultTools,
         ...item.tools,
       }
+      if (allowedTools) item.allowedTools = allowedTools
+      if (denyTools) item.denyTools = denyTools
       if (description) item.description = description
       if (temperature != undefined) item.temperature = temperature
       if (top_p != undefined) item.topP = top_p
