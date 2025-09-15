@@ -456,7 +456,7 @@ export class SuperCodeInstanceStatic {
           // Build the command arguments - ensure we pushd to the directory first
           let cmdArgs = weztermArgs.map(arg =>
             arg.replace('{workspaceFolder}', `"${escapedWorkingDir}"`)
-               .replace('{command}', `pushd "${escapedWorkingDir}" && ${supercodeCommand}`)
+               .replace('{command}', `pushd ${escapedWorkingDir} && ${supercodeCommand}`)
           );
           
           // Add EGL preference flag if enabled
