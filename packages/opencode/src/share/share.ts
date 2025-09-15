@@ -1,5 +1,4 @@
 import { Bus } from "../bus"
-import { Installation } from "../installation"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Log } from "../util/log"
