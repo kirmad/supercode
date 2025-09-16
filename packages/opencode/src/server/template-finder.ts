@@ -1,5 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
+import { execSync } from "child_process"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "template-finder" })
@@ -94,9 +95,57 @@ export namespace TemplateFinder {
         searchDir = parentDir
       }
 
-      // Method 4: Windows-specific global locations
+      // Method 4: Detect npm global prefix programmatically
+      try {
+        // Get npm global prefix using npm config
+        const npmPrefix = execSync('npm config get prefix', {
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'ignore'] // Ignore stderr to avoid cluttering logs
+        }).trim()
+
+        if (npmPrefix) {
+          log.debug("detected npm global prefix", { npmPrefix })
+
+          // The global node_modules is typically at:
+          // Unix: <prefix>/lib/node_modules
+          // Windows: <prefix>/node_modules
+          const npmGlobalModules = process.platform === "win32"
+            ? path.join(npmPrefix, "node_modules")
+            : path.join(npmPrefix, "lib", "node_modules")
+
+          for (const pkg of platformPackages) {
+            possiblePaths.push(
+              path.join(npmGlobalModules, "@kirmad", pkg, assetType),
+              path.join(npmGlobalModules, "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+            )
+          }
+
+          // Also check for custom .npm-global directory in user home
+          const homeDir = process.env["HOME"] || process.env["USERPROFILE"]
+          if (homeDir) {
+            const customNpmGlobal = path.join(homeDir, ".npm-global")
+            log.debug("checking custom .npm-global location", { customNpmGlobal })
+
+            for (const pkg of platformPackages) {
+              possiblePaths.push(
+                path.join(customNpmGlobal, "lib", "node_modules", "@kirmad", pkg, assetType),
+                path.join(customNpmGlobal, "lib", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+                // Windows might not use 'lib' subdirectory
+                path.join(customNpmGlobal, "node_modules", "@kirmad", pkg, assetType),
+                path.join(customNpmGlobal, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+              )
+            }
+          }
+        }
+      } catch (error) {
+        log.debug("could not detect npm global prefix", {
+          error: error instanceof Error ? error.message : "Unknown error"
+        })
+      }
+
+      // Method 5: Windows-specific known locations (fallback)
       if (process.platform === "win32") {
-        // Try APPDATA location
+        // Try APPDATA location (Windows default)
         const appData = process.env["APPDATA"]
         if (appData) {
           log.debug("searching Windows APPDATA location", { appData })
@@ -120,8 +169,28 @@ export namespace TemplateFinder {
           }
         }
       }
+
+      // Method 6: Unix/Linux/macOS specific locations
+      if (process.platform !== "win32") {
+        // Common global paths on Unix-like systems
+        const unixGlobalPaths = [
+          "/usr/local",
+          "/usr",
+          "/opt/homebrew", // macOS with Apple Silicon
+          "/opt/local"     // MacPorts
+        ]
+
+        for (const prefix of unixGlobalPaths) {
+          for (const pkg of platformPackages) {
+            possiblePaths.push(
+              path.join(prefix, "lib", "node_modules", "@kirmad", pkg, assetType),
+              path.join(prefix, "lib", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+            )
+          }
+        }
+      }
       
-      // Method 5: Use import.meta.url (works for development)
+      // Method 7: Use import.meta.url (works for development)
       try {
         const scriptPath = new URL(import.meta.url).pathname
         const scriptDir = path.dirname(scriptPath)
