@@ -17,176 +17,165 @@ export namespace TemplateFinder {
     // For compiled binaries, we need special handling
     try {
       const possiblePaths: string[] = []
-      
-      // Method 1: Detect compiled Bun binary by checking argv[0] and virtual filesystem
-      const isCompiledBun = process.argv[0] === 'bun' || 
-                           (import.meta.url && import.meta.url.includes('$bunfs'))
-      
-      if (isCompiledBun) {
-        // For compiled Bun binaries, try to find templates relative to where the binary likely is
-        // The binary is usually installed in node_modules/@kirmad/supercode-platform/bin/
-        // We need to look for the templates folder at node_modules/@kirmad/supercode-platform/templates/
 
-        const platformPackages = [
-          "supercode-darwin-arm64",
-          "supercode-linux-x64",
-          "supercode-linux-arm64",
-          "supercode-windows-x64",
-          "supercode-darwin-x64",
-          "supercode-darwin-x64-baseline",
-          "supercode-linux-x64-baseline"
-        ]
+      // Platform packages that might contain our assets
+      const platformPackages = [
+        "supercode-darwin-arm64",
+        "supercode-linux-x64",
+        "supercode-linux-arm64",
+        "supercode-windows-x64",
+        "supercode-darwin-x64",
+        "supercode-darwin-x64-baseline",
+        "supercode-linux-x64-baseline"
+      ]
 
-        // First try to use the actual binary location if available
-        if (process.argv[0]) {
-          const binaryPath = process.argv[0]
-          const binaryDir = path.dirname(binaryPath)
+      // Method 1: Use process.execPath (most reliable for actual executable location)
+      // This gives us the path to the actual executable (e.g., C:\CustomPath\supercode.exe)
+      if (process.execPath) {
+        const execPath = process.execPath
+        const execDir = path.dirname(execPath)
 
-          // Search relative to the binary location
-          for (const pkg of platformPackages) {
-            // Direct installation relative to binary
-            possiblePaths.push(
-              path.join(binaryDir, "node_modules", "@kirmad", pkg, assetType),
-              path.join(binaryDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
-              // One level up from binary (common for global installs)
-              path.join(binaryDir, "..", "node_modules", "@kirmad", pkg, assetType),
-              path.join(binaryDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
-              // Two levels up (for bin directories)
-              path.join(binaryDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
-              path.join(binaryDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
-            )
-          }
-        }
+        log.debug("using process.execPath for binary location", { execPath, execDir })
 
-        // Also search from current working directory as fallback
-        const cwd = process.cwd()
-
-        // Search in current directory and up to 3 parent directories
-        let searchDir = cwd
-        for (let i = 0; i < 4; i++) {
-          for (const pkg of platformPackages) {
-            possiblePaths.push(path.join(searchDir, "node_modules", "@kirmad", pkg, assetType))
-          }
-          const parentDir = path.dirname(searchDir)
-          if (parentDir === searchDir) break // Reached root
-          searchDir = parentDir
-        }
-        
-        // Also try some common global locations and Windows-specific paths
-        possiblePaths.push(
-          path.join(cwd, "..", "..", assetType), // From global bin directory
-          path.join(cwd, "..", assetType),       // Alternative global structure
-        )
-        
-        // Windows-specific: try to find templates relative to the wrapper script location
-        // On Windows, global packages are often in %APPDATA%\npm\node_modules
-        if (process.platform === "win32") {
-          const appData = process.env["APPDATA"]
-          if (appData) {
-            for (const pkg of platformPackages) {
-              // Direct installation in global node_modules
-              possiblePaths.push(path.join(appData, "npm", "node_modules", "@kirmad", pkg, assetType))
-              
-              // Nested installation inside main package (common pattern)
-              possiblePaths.push(path.join(appData, "npm", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType))
-            }
-          }
-          
-          // Also try relative to where npm global binaries are installed
-          const npmGlobalBin = path.dirname(process.execPath)
-          for (const pkg of platformPackages) {
-            possiblePaths.push(
-              path.join(npmGlobalBin, "..", "node_modules", "@kirmad", pkg, assetType),
-              path.join(npmGlobalBin, "node_modules", "@kirmad", pkg, assetType),
-              // Nested pattern
-              path.join(npmGlobalBin, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
-              path.join(npmGlobalBin, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
-            )
-          }
-        }
-        
-        log.debug("detected compiled Bun binary, trying npm package paths", { cwd, isCompiledBun, platform: process.platform, arch: process.arch })
-      } else {
-        // Method 2: Use actual binary path (for normal compiled binaries)
-        if (process.argv[0]) {
-          const binaryPath = process.argv[0]
-          const binaryDir = path.dirname(binaryPath)
-
-          // Common patterns for platform packages:
-          // Binary: /some/path/node_modules/@kirmad/supercode-platform/bin/supercode
-          // Assets:  /some/path/node_modules/@kirmad/supercode-platform/assetType/
+        for (const pkg of platformPackages) {
+          // Search patterns relative to the executable
           possiblePaths.push(
-            path.join(binaryDir, "..", assetType), // bin/supercode -> ../assetType
-            path.join(binaryDir, "..", "..", assetType), // Alternative depth
+            // Direct in same directory
+            path.join(execDir, assetType),
+            // Direct node_modules relative to binary
+            path.join(execDir, "node_modules", "@kirmad", pkg, assetType),
+            path.join(execDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+            // One level up (common for bin directories)
+            path.join(execDir, "..", assetType),
+            path.join(execDir, "..", "node_modules", "@kirmad", pkg, assetType),
+            path.join(execDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+            // Two levels up (for nested bin directories)
+            path.join(execDir, "..", "..", assetType),
+            path.join(execDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
+            path.join(execDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
           )
+        }
+      }
 
-          // Windows: Handle non-standard npm installations
-          // The binary might be at: C:\CustomPath\supercode.exe
-          // Templates at: C:\CustomPath\node_modules\@kirmad\supercode\node_modules\@kirmad\supercode-windows-x64\templates\
-          if (process.platform === "win32") {
-            const platformPackages = [
-              "supercode-windows-x64",
-              "supercode-darwin-arm64",
-              "supercode-linux-x64",
-              "supercode-linux-arm64",
-              "supercode-darwin-x64",
-              "supercode-darwin-x64-baseline",
-              "supercode-linux-x64-baseline"
-            ]
+      // Method 2: Use process.argv[0] as fallback (might be the runtime or wrapper)
+      if (process.argv[0] && process.argv[0] !== process.execPath) {
+        const argvPath = process.argv[0]
+        const argvDir = path.dirname(argvPath)
 
-            for (const pkg of platformPackages) {
-              // Direct installation relative to binary
-              possiblePaths.push(
-                path.join(binaryDir, "node_modules", "@kirmad", pkg, assetType),
-                path.join(binaryDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
-                // One level up from binary (common for global installs)
-                path.join(binaryDir, "..", "node_modules", "@kirmad", pkg, assetType),
-                path.join(binaryDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
-                // Two levels up (for bin directories)
-                path.join(binaryDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
-                path.join(binaryDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
-              )
-            }
+        log.debug("using process.argv[0] as additional search location", { argvPath, argvDir })
+
+        for (const pkg of platformPackages) {
+          possiblePaths.push(
+            path.join(argvDir, "node_modules", "@kirmad", pkg, assetType),
+            path.join(argvDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+            path.join(argvDir, "..", "node_modules", "@kirmad", pkg, assetType),
+            path.join(argvDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+            path.join(argvDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
+            path.join(argvDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+          )
+        }
+      }
+
+      // Method 3: Search from current working directory
+      const cwd = process.cwd()
+      log.debug("searching from current working directory", { cwd })
+
+      // Search in current directory and up to 3 parent directories
+      let searchDir = cwd
+      for (let i = 0; i < 4; i++) {
+        for (const pkg of platformPackages) {
+          possiblePaths.push(
+            path.join(searchDir, "node_modules", "@kirmad", pkg, assetType),
+            path.join(searchDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+          )
+        }
+        const parentDir = path.dirname(searchDir)
+        if (parentDir === searchDir) break // Reached root
+        searchDir = parentDir
+      }
+
+      // Method 4: Windows-specific global locations
+      if (process.platform === "win32") {
+        // Try APPDATA location
+        const appData = process.env["APPDATA"]
+        if (appData) {
+          log.debug("searching Windows APPDATA location", { appData })
+          for (const pkg of platformPackages) {
+            possiblePaths.push(
+              path.join(appData, "npm", "node_modules", "@kirmad", pkg, assetType),
+              path.join(appData, "npm", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+            )
           }
+        }
 
-          log.debug("trying binary-based paths", { binaryPath, binaryDir })
+        // Try PROGRAMFILES locations
+        const programFiles = process.env["PROGRAMFILES"]
+        if (programFiles) {
+          log.debug("searching Windows PROGRAMFILES location", { programFiles })
+          for (const pkg of platformPackages) {
+            possiblePaths.push(
+              path.join(programFiles, "nodejs", "node_modules", "@kirmad", pkg, assetType),
+              path.join(programFiles, "nodejs", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+            )
+          }
         }
       }
       
-      // Method 3: Use import.meta.url (works for development)
+      // Method 5: Use import.meta.url (works for development)
       try {
         const scriptPath = new URL(import.meta.url).pathname
         const scriptDir = path.dirname(scriptPath)
-        
+
         // Skip if it's a virtual Bun filesystem path
         if (!scriptPath.includes('$bunfs')) {
+          log.debug("searching based on script location", { scriptPath, scriptDir })
           possiblePaths.push(
             path.join(scriptDir, assetType),           // Same directory as template-finder.ts
             path.join(scriptDir, "..", "server", assetType), // Development path from src/
             path.join(scriptDir, "..", "..", assetType), // Alternative
           )
-          log.debug("trying script-based paths", { scriptPath, scriptDir })
         }
-      } catch {
-        // import.meta.url might not work in all environments
+      } catch (error) {
+        log.debug("import.meta.url not available", { error: error instanceof Error ? error.message : error })
       }
-      
-      log.debug("searching for assets in paths", { assetType, possiblePaths })
+
+      // Log all paths we're about to search (with better formatting)
+      log.debug("searching for assets", {
+        assetType,
+        totalPaths: possiblePaths.length,
+        execPath: process.execPath,
+        argv0: process.argv[0],
+        cwd: process.cwd(),
+        platform: process.platform,
+        arch: process.arch
+      })
       
       // Store all valid paths with their modification times to find the most recent
       const validPaths: Array<{ path: string; mtime: Date }> = []
-      
-      for (const assetPath of possiblePaths) {
+
+      // Remove duplicates and resolve paths
+      const uniquePaths = [...new Set(possiblePaths.map(p => path.resolve(p)))]
+
+      log.debug("checking unique paths", {
+        uniquePathCount: uniquePaths.length,
+        first10Paths: uniquePaths.slice(0, 10)
+      })
+
+      for (const assetPath of uniquePaths) {
         try {
-          const resolvedPath = path.resolve(assetPath)
-          const stats = await fs.stat(resolvedPath)
+          const stats = await fs.stat(assetPath)
           if (stats.isDirectory()) {
-            validPaths.push({ path: resolvedPath, mtime: stats.mtime })
-            log.debug("found asset folder", { assetType, path: resolvedPath, mtime: stats.mtime })
+            validPaths.push({ path: assetPath, mtime: stats.mtime })
+            log.info("✅ FOUND asset folder", { assetType, path: assetPath, mtime: stats.mtime })
           }
         } catch (error) {
-          log.debug("path not found", { assetPath, error: error instanceof Error ? error.message : error })
-          continue
+          // Only log verbose debug for first few failures to avoid spam
+          if (uniquePaths.indexOf(assetPath) < 5) {
+            log.debug("path not found", {
+              assetPath,
+              error: error instanceof Error ? error.message : "Unknown error"
+            })
+          }
         }
       }
       
