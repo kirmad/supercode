@@ -26,19 +26,41 @@ export namespace TemplateFinder {
         // For compiled Bun binaries, try to find templates relative to where the binary likely is
         // The binary is usually installed in node_modules/@kirmad/supercode-platform/bin/
         // We need to look for the templates folder at node_modules/@kirmad/supercode-platform/templates/
-        
-        // Strategy: Look in common npm installation locations
-        const cwd = process.cwd()
+
         const platformPackages = [
           "supercode-darwin-arm64",
-          "supercode-linux-x64", 
+          "supercode-linux-x64",
           "supercode-linux-arm64",
           "supercode-windows-x64",
           "supercode-darwin-x64",
           "supercode-darwin-x64-baseline",
           "supercode-linux-x64-baseline"
         ]
-        
+
+        // First try to use the actual binary location if available
+        if (process.argv[0]) {
+          const binaryPath = process.argv[0]
+          const binaryDir = path.dirname(binaryPath)
+
+          // Search relative to the binary location
+          for (const pkg of platformPackages) {
+            // Direct installation relative to binary
+            possiblePaths.push(
+              path.join(binaryDir, "node_modules", "@kirmad", pkg, assetType),
+              path.join(binaryDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+              // One level up from binary (common for global installs)
+              path.join(binaryDir, "..", "node_modules", "@kirmad", pkg, assetType),
+              path.join(binaryDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+              // Two levels up (for bin directories)
+              path.join(binaryDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
+              path.join(binaryDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+            )
+          }
+        }
+
+        // Also search from current working directory as fallback
+        const cwd = process.cwd()
+
         // Search in current directory and up to 3 parent directories
         let searchDir = cwd
         for (let i = 0; i < 4; i++) {
@@ -89,7 +111,7 @@ export namespace TemplateFinder {
         if (process.argv[0]) {
           const binaryPath = process.argv[0]
           const binaryDir = path.dirname(binaryPath)
-          
+
           // Common patterns for platform packages:
           // Binary: /some/path/node_modules/@kirmad/supercode-platform/bin/supercode
           // Assets:  /some/path/node_modules/@kirmad/supercode-platform/assetType/
@@ -97,7 +119,36 @@ export namespace TemplateFinder {
             path.join(binaryDir, "..", assetType), // bin/supercode -> ../assetType
             path.join(binaryDir, "..", "..", assetType), // Alternative depth
           )
-          
+
+          // Windows: Handle non-standard npm installations
+          // The binary might be at: C:\CustomPath\supercode.exe
+          // Templates at: C:\CustomPath\node_modules\@kirmad\supercode\node_modules\@kirmad\supercode-windows-x64\templates\
+          if (process.platform === "win32") {
+            const platformPackages = [
+              "supercode-windows-x64",
+              "supercode-darwin-arm64",
+              "supercode-linux-x64",
+              "supercode-linux-arm64",
+              "supercode-darwin-x64",
+              "supercode-darwin-x64-baseline",
+              "supercode-linux-x64-baseline"
+            ]
+
+            for (const pkg of platformPackages) {
+              // Direct installation relative to binary
+              possiblePaths.push(
+                path.join(binaryDir, "node_modules", "@kirmad", pkg, assetType),
+                path.join(binaryDir, "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+                // One level up from binary (common for global installs)
+                path.join(binaryDir, "..", "node_modules", "@kirmad", pkg, assetType),
+                path.join(binaryDir, "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType),
+                // Two levels up (for bin directories)
+                path.join(binaryDir, "..", "..", "node_modules", "@kirmad", pkg, assetType),
+                path.join(binaryDir, "..", "..", "node_modules", "@kirmad", "supercode", "node_modules", "@kirmad", pkg, assetType)
+              )
+            }
+          }
+
           log.debug("trying binary-based paths", { binaryPath, binaryDir })
         }
       }
