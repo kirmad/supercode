@@ -1,114 +1,44 @@
 <template>
   <div class="supercode-simple">
-    <!-- Context window display -->
-    <div class="context-window">
-      <span class="context-info">{{ contextInfo }}</span>
-    </div>
-    
-    <!-- Status indicator -->
-    <div class="status-bar" :class="connectionStatus">
-      <div class="status-line">
-        <span class="status-dot"></span>
-        <span class="status-text">
-          {{ statusText }}
-          <span v-if="currentPort" class="port">:{{ currentPort }}</span>
-          <span 
-            v-if="modelInfo" 
-            class="model-info-inline clickable" 
-            @click="toggleModelSelector"
-            :title="'Click to change model'"
-          >{{ modelInfo.name }}</span>
-          <span 
-            v-if="agentInfo" 
-            class="agent-info-inline clickable" 
-            @click="toggleAgentSelector"
-            :title="'Click to change agent'"
-          >| {{ agentInfo.name }}</span>
-        </span>
+    <!-- Modern Compact Header -->
+    <header class="workflow-header">
+      <div class="header-left">
+        <div class="brand-compact">
+          <svg class="brand-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L4 7V17L12 22L20 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <span class="brand-name">SuperCode</span>
+        </div>
+        <div class="nav-pills">
+          <router-link to="/" class="nav-pill active">
+            Simple
+          </router-link>
+          <router-link to="/workflow" class="nav-pill">
+            Workflow
+          </router-link>
+        </div>
       </div>
-    </div>
+    </header>
     
     <!-- Model Selector Dropdown -->
-    <div v-if="showModelSelector" class="model-selector-dropdown">
-      <div class="model-selector-overlay" @click="hideModelSelector"></div>
-      <div class="model-selector-content">
-        <div class="model-selector-header">
-          <span>Select Model</span>
-          <button class="close-button" @click="hideModelSelector">×</button>
-        </div>
-        <div class="model-selector-body">
-          <div v-if="loadingModels" class="loading-models">Loading models...</div>
-          <div v-else-if="availableModels.length === 0" class="no-models">No models available</div>
-          <div v-else class="model-list">
-            <div 
-              v-for="model in availableModels" 
-              :key="`${model.providerId}-${model.modelId}`"
-              class="model-item" 
-              :class="{ 
-                'selected': modelInfo && modelInfo.name === model.name,
-                'selecting': selectingModel === `${model.providerId}-${model.modelId}`
-              }"
-              @click="selectModel(model.providerId, model.modelId, model.name)"
-            >
-              <div class="model-name">{{ model.name }}</div>
-              <div class="model-provider">{{ model.providerName }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ModelSelector
+      :show="showModelSelector"
+      :models="formattedAvailableModels"
+      :loading="loadingModels"
+      :current-model="modelInfo"
+      @close="hideModelSelector"
+      @select="handleModelSelect"
+    />
     
     <!-- Agent Selector Dropdown -->
-    <div v-if="showAgentSelector" class="agent-selector-dropdown">
-      <div class="agent-selector-overlay" @click="hideAgentSelector"></div>
-      <div class="agent-selector-content">
-        <div class="agent-selector-header">
-          <span>Select Agent</span>
-          <button class="close-button" @click="hideAgentSelector">×</button>
-        </div>
-        <div class="agent-selector-body">
-          <div v-if="loadingAgents" class="loading-agents">Loading agents...</div>
-          <div v-else-if="availableAgents.length === 0" class="no-agents">No agents available</div>
-          <div v-else class="agent-list">
-            <div 
-              v-for="agent in availableAgents" 
-              :key="agent.id"
-              class="agent-item" 
-              :class="{ 
-                'selected': agentInfo && agentInfo.name === agent.name,
-                'selecting': selectingAgent === agent.id
-              }"
-              @click="selectAgent(agent.id, agent.name)"
-            >
-              <div class="agent-header">
-                <div class="agent-name">{{ agent.name }}</div>
-                <div class="agent-badges">
-                  <span class="agent-mode-badge" :class="agent.mode">{{ agent.mode }}</span>
-                  <span v-if="agent.builtIn" class="built-in-badge">built-in</span>
-                </div>
-              </div>
-              <div class="agent-description">{{ agent.description || 'No description available' }}</div>
-              <div class="agent-permissions">
-                <div class="permission-group">
-                  <span class="permission-label">Edit:</span>
-                  <span class="permission-value" :class="agent.permission.edit">{{ agent.permission.edit }}</span>
-                </div>
-                <div class="permission-group">
-                  <span class="permission-label">Bash:</span>
-                  <span class="permission-value" :class="typeof agent.permission.bash === 'string' ? agent.permission.bash : 'custom'">
-                    {{ typeof agent.permission.bash === 'string' ? agent.permission.bash : 'custom' }}
-                  </span>
-                </div>
-                <div v-if="agent.permission.webfetch" class="permission-group">
-                  <span class="permission-label">WebFetch:</span>
-                  <span class="permission-value" :class="agent.permission.webfetch">{{ agent.permission.webfetch }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AgentSelector
+      :show="showAgentSelector"
+      :agents="availableAgents"
+      :loading="loadingAgents"
+      :current-agent="agentInfo"
+      @close="hideAgentSelector"
+      @select="handleAgentSelect"
+    />
     
     <!-- Todo Section -->
     <div v-if="todos.length > 0 && todos.some(todo => todo.status !== 'completed')" class="todo-section">
@@ -176,66 +106,30 @@
       </div>
     </div>
     
-    <!-- Input area -->
-    <div class="input-area">
-      <div class="input-wrapper">
-        <!-- Command completion dropdown -->
-        <div v-if="showCommandCompletion" class="command-completion-dropdown">
-          <div class="command-completion-list">
-            <div
-              v-for="(command, index) in commandCompletions"
-              :key="command.fullName"
-              class="command-completion-item"
-              :class="{ 'selected': index === selectedCompletionIndex }"
-              @click="selectCommand(command)"
-            >
-              <div class="command-name">{{ command.fullName }}</div>
-              <div v-if="command.description" class="command-description">{{ command.description }}</div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Flag suggestions dropdown -->
-        <div v-if="showFlagSuggestions" class="flag-suggestions-dropdown">
-          <div class="flag-suggestions-list">
-            <div
-              v-for="(suggestion, index) in flagSuggestions"
-              :key="suggestion.flag"
-              class="flag-suggestion-item"
-              :class="{ 'selected': index === selectedFlagIndex }"
-              @click="selectFlag(suggestion)"
-            >
-              <div class="flag-header">
-                <span class="flag-name">{{ suggestion.flag }}</span>
-                <span v-if="suggestion.namespace" class="flag-namespace">[{{ suggestion.namespace }}]</span>
-                <span v-if="suggestion.category" class="flag-category">{{ suggestion.category }}</span>
-              </div>
-              <div class="flag-description">{{ suggestion.description }}</div>
-            </div>
-          </div>
-        </div>
-        
-        <span class="prompt">></span>
-        <textarea
-          v-model="inputText"
-          @keydown="handleKeydown"
-          @input="handleInputChange"
-          @paste="handlePaste"
-          :disabled="!isConnected"
-          placeholder="Type your message... (Enter = send, Shift+Enter = new line, ↑↓ = history, ESC = cancel)"
-          class="input-field auto-expand-textarea"
-          ref="inputField"
-          rows="1"
-          :style="{ height: typeof textareaHeight === 'number' ? textareaHeight + 'px' : textareaHeight }"
-        ></textarea>
-      </div>
-    </div>
+    <!-- Modern Input Area -->
+    <FooterBar
+      v-model="inputText"
+      :placeholder="'Type your message...'"
+      :disabled="!isConnected"
+      :connection-status="connectionStatus"
+      :model-info="modelInfo"
+      :agent-info="agentInfo"
+      :port="currentPort"
+      :commands="availableCommands"
+      @submit="sendMessage"
+      @toggle-model-selector="toggleModelSelector"
+      @toggle-agent-selector="toggleAgentSelector"
+      ref="footerBar"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
 import type { Message, ConnectionStatus, WebviewMessage, StatusUpdate, AddMessage, ModelInfo, TokenUsage } from '../types'
+import FooterBar from './shared/FooterBar.vue'
+import ModelSelector from './shared/ModelSelector.vue'
+import AgentSelector from './shared/AgentSelector.vue'
 
 // Tool call interface matching TUI's ToolPart structure
 interface ToolCall {
@@ -265,7 +159,7 @@ const messages = ref<ExtendedMessage[]>([])
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
 const inputField = ref<HTMLTextAreaElement>()
-const textareaHeight = ref<number | string>(20) // Starting height for single line
+const textareaHeight = ref<number | string>(48) // Starting height with minimum size
 
 // New state for enhanced UI
 const modelInfo = ref<ModelInfo | null>(null)
@@ -374,6 +268,21 @@ const statusText = computed(() => {
     case 'error': return 'Error'
     default: return 'Disconnected'
   }
+})
+
+// Format models for the shared ModelSelector component
+const formattedAvailableModels = computed(() => {
+  return availableModels.value.map(model => ({
+    id: model.modelId,
+    name: model.name,
+    provider: model.providerId,
+    capabilities: []
+  }))
+})
+
+// Commands for the footer command completion
+const availableCommands = computed(() => {
+  return []  // Will be populated from command system if needed
 })
 
 // Store formatted context info from SDK
@@ -607,9 +516,9 @@ function formatToolAction(name: string): string {
 // Auto-resize textarea functionality
 function autoResizeTextarea() {
   if (!inputField.value) return
-  
+
   const textarea = inputField.value
-  const minHeight = 20 // Minimum single line height
+  const minHeight = 48 // Minimum height for comfortable input
   const maxHeight = 400 // Maximum height (about 20 lines)
   
   // Temporarily set to auto for proper scrollHeight calculation
@@ -1984,6 +1893,15 @@ async function selectAgent(agentId: string, agentName: string) {
   }
 }
 
+// Handler methods for shared components
+function handleModelSelect(model: any) {
+  selectModel(model.provider, model.id, model.name)
+}
+
+function handleAgentSelect(agent: any) {
+  selectAgent(agent.id, agent.name)
+}
+
 // VS Code message handling (minimal glue code for VSCode-specific communication)
 function handleVsCodeMessage(event: MessageEvent) {
   const message = event.data as WebviewMessage
@@ -2127,11 +2045,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.4;
-  color: #e8e6e3;
-  background: #181818;
+  background: var(--bg-primary, #0a0a0a);
+  color: var(--text-primary, #e0e0e0);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   position: relative;
 }
 
@@ -2139,6 +2055,142 @@ onUnmounted(() => {
 .supercode-simple * {
   list-style: none !important;
   list-style-type: none !important;
+}
+
+/* Modern Compact Header */
+.workflow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.brand-icon {
+  color: var(--accent-color, #0066ff);
+  width: 18px;
+  height: 18px;
+}
+
+.brand-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.nav-pills {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.375rem;
+}
+
+.nav-pill {
+  padding: 0.25rem 0.625rem;
+  color: var(--text-secondary, #999);
+  text-decoration: none;
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.nav-pill:hover {
+  color: var(--text-primary, #e0e0e0);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-pill.active {
+  color: white;
+  background: var(--accent-color, #0066ff);
+}
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #999);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #666;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-dot.connected { background: #00ff88; }
+.status-dot.connecting { background: #ffaa00; }
+.status-dot.error { background: #ff4444; }
+.status-dot.disconnected { background: #666; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.port {
+  color: #666;
+  font-size: 0.7rem;
+}
+
+.model-btn, .agent-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.25rem;
+  color: var(--text-secondary, #999);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.model-btn:hover, .agent-btn:hover {
+  border-color: rgba(0, 102, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #e0e0e0);
+}
+
+.btn-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-window {
@@ -2210,28 +2262,14 @@ onUnmounted(() => {
   border-bottom-color: #4fc3f7;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 8px;
-}
-
-.status-bar.connected .status-dot { background: #00ff00; }
-.status-bar.connecting .status-dot { background: #ffff00; }
-.status-bar.error .status-dot { background: #ff0000; }
-.status-bar.disconnected .status-dot { background: #666; }
-
-.port {
-  color: #888;
-  font-size: 11px;
-}
-
 .messages {
   flex: 1;
   padding: 8px 16px;
   overflow-y: auto;
   scroll-behavior: smooth;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .message {
@@ -2242,7 +2280,7 @@ onUnmounted(() => {
 
 /* User messages - console-style */
 .user-message {
-  color: #888;
+  color: var(--text-secondary, #999);
 }
 
 .user-line {
@@ -2288,7 +2326,7 @@ onUnmounted(() => {
 }
 
 .tool-title {
-  color: #e8e6e3;
+  color: var(--text-primary, #e0e0e0);
   font-size: 13px;
   line-height: 1.4;
 }
@@ -2299,7 +2337,7 @@ onUnmounted(() => {
 
 /* Assistant messages */
 .assistant-message {
-  color: #e8e6e3;
+  color: var(--text-primary, #e0e0e0);
 }
 
 .assistant-content {
@@ -2345,34 +2383,123 @@ onUnmounted(() => {
   color: #f48fb1;
 }
 
-.input-area {
-  border-top: 1px solid #333;
-  background: #1a1a1a;
+/* Modern Footer */
+.input-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
 }
 
 .input-wrapper {
-  display: flex;
-  align-items: flex-start;
-  padding: 12px 16px;
-  gap: 8px;
   position: relative;
+  margin-bottom: 0.5rem;
 }
 
-.prompt {
-  color: #4fc3f7;
-  font-weight: bold;
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.input-field {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #e8e6e3;
+.message-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.5rem;
+  padding-right: 3rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.375rem;
+  color: var(--text-primary, #e0e0e0);
   font-family: inherit;
-  font-size: inherit;
+  font-size: 0.8125rem;
+  resize: vertical;
+  transition: all 0.15s ease;
+}
+
+.message-input:focus {
+  outline: none;
+  border-color: rgba(0, 102, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.message-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-actions {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--accent-color, #0066ff);
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: var(--accent-hover, #0052cc);
+  transform: scale(1.05);
+}
+
+.submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.footer-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-secondary, #999);
+  font-size: 0.75rem;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.model-btn-footer, .agent-btn-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.25rem;
+  color: var(--text-secondary, #999);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.model-btn-footer:hover, .agent-btn-footer:hover {
+  border-color: rgba(0, 102, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #e0e0e0);
 }
 
 /* Auto-expanding textarea specific styles */
