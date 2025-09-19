@@ -59,6 +59,14 @@ export interface StatusConfig {
   enabled: boolean
 }
 
+export interface SSEMessage {
+  type: string
+  content?: string
+  tool?: string
+  output?: any
+  [key: string]: any
+}
+
 declare global {
   interface Window {
     vscode: VsCodeApi

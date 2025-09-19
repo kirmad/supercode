@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     server: isStandalone ? {
-      port: 3000,
+      port: 5000,
       open: true
     } : undefined,
     build: {
@@ -53,7 +53,7 @@ export default defineConfig(({ mode }) => {
       // Add standalone mode variables
       ...(isStandalone ? {
         'import.meta.env.VITE_STANDALONE': JSON.stringify(true),
-        'import.meta.env.VITE_SERVER_PORT': JSON.stringify(8881)
+        'import.meta.env.VITE_SERVER_PORT': JSON.stringify(5000)
       } : {})
     }
   }

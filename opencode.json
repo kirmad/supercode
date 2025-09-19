@@ -12,7 +12,7 @@
               "--context",
               "ide-assistant",
               "--project",
-              "/git/cs"
+              "~/git/supercode"
           ],
           "enabled": true
       },

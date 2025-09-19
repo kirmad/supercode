@@ -119,6 +119,7 @@
             :is="currentTabComponent"
             :task-data="currentTaskData"
             @update-task="updateTask"
+            @regenerate-plan="regeneratePlan"
           />
         </keep-alive>
       </div>
@@ -149,8 +150,8 @@ import ReviewTab from './tabs/ReviewTab.vue'
 import FooterBar from './shared/FooterBar.vue'
 import ModelSelector from './shared/ModelSelector.vue'
 import AgentSelector from './shared/AgentSelector.vue'
-import type { ConnectionStatus, ModelInfo, TokenUsage } from '../types'
-import { SuperCodeSDKClient, type SSEMessage } from '../services/SuperCodeSDKClient'
+import type { ConnectionStatus, ModelInfo, TokenUsage, SSEMessage } from '../types'
+import { SuperCodeSDKClient } from '../services/SuperCodeSDKClient'
 import { SuperCodeWebSocketClient } from '../services/SuperCodeWebSocketClient'
 import { standaloneConfig } from '../config/standalone'
 
@@ -281,6 +282,10 @@ async function pollForConnection() {
         // Subscribe to SSE events
         await sdkClient.subscribeToEvents()
 
+        // Set up message handlers
+        sdkClient.onMessage(handleSSEMessage)
+        sdkClient.onError(handleSSEError)
+
         // Fetch current model information, agent information, and token usage
         await fetchModelInfo()
         await fetchAgentInfo()
@@ -403,6 +408,148 @@ async function fetchTokenUsage() {
   }
 }
 
+// SSE Event Handlers
+function handleSSEMessage(message: SSEMessage) {
+  console.log('📨 Received SSE message:', message)
+
+  // Initialize messages array if not exists
+  if (!currentTaskData.value.messages) {
+    currentTaskData.value.messages = []
+  }
+
+  // Handle different message types
+  switch (message.type) {
+    case 'message':
+      if (message.content) {
+        // Add new assistant message
+        currentTaskData.value.messages.push({
+          id: `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+          type: 'assistant',
+          content: message.content,
+          timestamp: Date.now()
+        })
+        // Update task data to trigger reactivity
+        currentTaskData.value = { ...currentTaskData.value }
+      }
+      break
+    case 'message.updated':
+      // Process both assistant and user messages
+      const messageRole = message.properties?.info?.role
+      const messageId = message.properties?.info?.id
+      let content = null
+
+      // Extract content from the message
+      if (message.properties?.info?.parts) {
+        const parts = message.properties.info.parts
+        const textParts = parts.filter((p: any) => p.type === 'text')
+        if (textParts.length > 0) {
+          content = textParts.map((p: any) => p.text).join('')
+        }
+      } else if (message.properties?.info?.content) {
+        content = message.properties.info.content
+      } else if (message.properties?.info?.text) {
+        content = message.properties.info.text
+      } else if (message.properties?.content) {
+        content = message.properties.content
+      } else if (message.content) {
+        content = message.content
+      }
+
+      if (content && messageId) {
+        // Check if message already exists to prevent duplicates
+        let targetMessage = currentTaskData.value.messages.find(msg => msg.id === messageId)
+
+        if (!targetMessage) {
+          // Create new message
+          const messageType = messageRole === 'user' ? 'user' : 'assistant'
+          targetMessage = {
+            id: messageId,
+            type: messageType,
+            content: content,
+            timestamp: Date.now()
+          }
+          currentTaskData.value.messages.push(targetMessage)
+        } else {
+          // Update existing message
+          targetMessage.content = content
+        }
+
+        // Trigger reactivity
+        currentTaskData.value = { ...currentTaskData.value }
+      }
+      break
+    case 'message.part.updated':
+      // Handle streaming message parts similar to SimpleInterface
+      const part = message.properties?.part || message.part || message
+      const partMessageId = part?.messageID || part?.message_id || message.messageID ||
+                            message.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`
+
+      console.log('📝 message.part.updated event:', { part, partMessageId, message })
+
+      // Handle text parts with multiple possible content locations
+      let partContent = null
+
+      // Check various possible locations for the content
+      if (part.text) {
+        partContent = part.text
+      } else if (part.content) {
+        partContent = part.content
+      } else if (part.data?.text) {
+        partContent = part.data.text
+      } else if (message.text) {
+        partContent = message.text
+      } else if (message.content) {
+        partContent = message.content
+      } else if (typeof part === 'string') {
+        partContent = part
+      }
+
+      console.log('📝 Extracted content:', partContent)
+
+      if (partContent) {
+        // Find or create message for this ID
+        let targetMessage = currentTaskData.value.messages.find(
+          m => m.id === partMessageId
+        )
+
+        if (!targetMessage) {
+          // Create new assistant message
+          targetMessage = {
+            id: partMessageId,
+            type: 'assistant',
+            content: partContent,
+            timestamp: Date.now()
+          }
+          currentTaskData.value.messages.push(targetMessage)
+        } else {
+          // Update existing message - the server sends complete accumulated text
+          targetMessage.content = partContent
+        }
+
+        // Trigger reactivity
+        currentTaskData.value = { ...currentTaskData.value }
+      }
+      break
+    default:
+      console.log('Unhandled SSE message type:', message.type)
+  }
+}
+
+function handleSSEError(error: Error) {
+  console.error('❌ SSE error:', error)
+  connectionStatus.value = 'error'
+
+  // Add error message to the task data if active
+  if (taskActive.value && currentTaskData.value.messages) {
+    currentTaskData.value.messages.push({
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+      type: 'system',
+      content: `Connection error: ${error.message}`,
+      timestamp: Date.now()
+    })
+  }
+}
+
 // Methods
 const selectPhase = (phase: 'phases' | 'plan') => {
   selectedPhase.value = selectedPhase.value === phase ? null : phase
@@ -414,12 +561,12 @@ const selectPhase = (phase: 'phases' | 'plan') => {
 }
 
 const handleSubmit = async () => {
-  if (!taskDescription.value.trim() || isLoading.value) return
+  if (!taskDescription.value.trim() || isLoading.value || !sdkClient) return
 
   isLoading.value = true
   taskActive.value = true
 
-  // TODO: Integrate with SuperCode SDK to send task
+  // Store task data
   currentTaskData.value = {
     description: taskDescription.value,
     timestamp: new Date().toISOString(),
@@ -427,10 +574,21 @@ const handleSubmit = async () => {
     selectedPhase: selectedPhase.value
   }
 
-  // Simulate async operation
-  setTimeout(() => {
+  try {
+    // Send /plan command to SuperCode
+    const planCommand = `/plan ${taskDescription.value.trim()}`
+    await sdkClient.sendMessage('default-session', planCommand)
+
+    // The plan will be received through SSE events
+    // Clear the task description after sending
+    taskDescription.value = ''
+  } catch (error) {
+    console.error('Failed to send plan command:', error)
+    // Show error to user
+    taskActive.value = false
+  } finally {
     isLoading.value = false
-  }, 1000)
+  }
 }
 
 const updateTask = (updates: any) => {

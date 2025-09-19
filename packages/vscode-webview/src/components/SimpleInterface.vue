@@ -126,7 +126,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
-import type { Message, ConnectionStatus, WebviewMessage, StatusUpdate, AddMessage, ModelInfo, TokenUsage } from '../types'
+import type { Message, ConnectionStatus, WebviewMessage, StatusUpdate, AddMessage, ModelInfo, TokenUsage, SSEMessage } from '../types'
 import FooterBar from './shared/FooterBar.vue'
 import ModelSelector from './shared/ModelSelector.vue'
 import AgentSelector from './shared/AgentSelector.vue'
@@ -148,7 +148,7 @@ interface ToolCall {
 interface ExtendedMessage extends Message {
   toolCalls?: ToolCall[]
 }
-import { SuperCodeSDKClient, type SSEMessage } from '../services/SuperCodeSDKClient'
+import { SuperCodeSDKClient } from '../services/SuperCodeSDKClient'
 import { SuperCodeWebSocketClient } from '../services/SuperCodeWebSocketClient'
 import { standaloneConfig } from '../config/standalone'
 
