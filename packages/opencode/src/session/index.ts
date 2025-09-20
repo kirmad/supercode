@@ -860,7 +860,29 @@ export namespace Session {
         synthetic: true,
       })
     }
-    let system = await SystemPrompt.header(model.providerID)
+    // Build tool configuration for MCP instruction loading
+    const toolConfig: ToolFilter.ToolConfig = {
+      agent: {
+        tools: agent.tools,
+        allowedTools: agent.allowedTools,
+        denyTools: agent.denyTools,
+      },
+      command: input.commandTools,
+      flags: input.flagTools,
+      input: input.tools,
+    }
+
+    // Merge tools from registry with agent permissions
+    const registryTools = await ToolRegistry.enabled(model.providerID, model.modelID, agent)
+    if (Object.keys(registryTools).length > 0) {
+      toolConfig.agent = toolConfig.agent || {}
+      toolConfig.agent.tools = mergeDeep(toolConfig.agent.tools || {}, registryTools)
+    }
+
+    // Resolve tool configuration
+    const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
+
+    let system = await SystemPrompt.header(model.modelID)
     system.push(
       ...(await (async () => {
         if (input.system) return [input.system]
@@ -868,9 +890,49 @@ export namespace Session {
         return await SystemPrompt.provider(model.modelID)
       })())
     )
+    // Add environment info for all models via concatenation
     system.push(...(await SystemPrompt.environment()))
-    system.push(...(await SystemPrompt.custom()))
-    system.push(...(await SystemPrompt.instructions()))
+
+    // Add MCP instructions for all models via concatenation
+    const { MCPInstructions } = await import("./mcp-instructions")
+    const mcpInstructions = await MCPInstructions.loadMCPInstructions(toolResolution)
+    if (mcpInstructions) {
+      system.push(mcpInstructions)
+    }
+
+    // Get custom and instructions for later use in user message
+    const customContent = await SystemPrompt.custom()
+    const instructionsContent = await SystemPrompt.instructions()
+
+    // Add custom and instructions as system-reminder in user message
+    if (customContent.length > 0 || instructionsContent.length > 0) {
+      const contextParts: string[] = []
+
+      if (customContent.length > 0) {
+        contextParts.push("# claudeMd")
+        contextParts.push(...customContent)
+      }
+
+      if (instructionsContent.length > 0) {
+        if (contextParts.length > 0) contextParts.push("")  // Add separator
+        contextParts.push(...instructionsContent)
+      }
+
+      if (contextParts.length > 0) {
+        msgs.at(-1)?.parts.unshift({
+          id: Identifier.ascending("part"),
+          messageID: userMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          text: `<system-reminder>
+As you answer the user's questions, you can use the following context:
+${contextParts.join("\n")}
+</system-reminder>`,
+          synthetic: true,
+        })
+      }
+    }
+
     // max 2 system prompt messages for caching purposes
     const [first, ...rest] = system
     system = [first, rest.join("\n")]
@@ -914,28 +976,6 @@ export namespace Session {
     const tools: Record<string, AITool> = {}
 
     const processor = createProcessor(assistantMsg, model.info)
-
-    // Build tool configuration with proper precedence
-    const toolConfig: ToolFilter.ToolConfig = {
-      agent: {
-        tools: agent.tools,
-        allowedTools: agent.allowedTools,
-        denyTools: agent.denyTools,
-      },
-      command: input.commandTools,
-      flags: input.flagTools,
-      input: input.tools,
-    }
-    
-    // Merge tools from registry with agent permissions
-    const registryTools = await ToolRegistry.enabled(model.providerID, model.modelID, agent)
-    if (Object.keys(registryTools).length > 0) {
-      toolConfig.agent = toolConfig.agent || {}
-      toolConfig.agent.tools = mergeDeep(toolConfig.agent.tools || {}, registryTools)
-    }
-    
-    // Resolve tool configuration without merging
-    const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
     
     for (const item of await ToolRegistry.tools(model.providerID, model.modelID)) {
       if (!ToolFilter.isToolEnabled(item.id, toolResolution)) continue

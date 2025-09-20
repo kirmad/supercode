@@ -28,5 +28,5 @@
     "deny": [],
     "ask": []
   },
-  "outputStyle": "architectural-planner"
+  "outputStyle": "default"
 }

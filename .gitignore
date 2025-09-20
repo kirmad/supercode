@@ -34,3 +34,4 @@ packages/vscode-webview/vscode-output/*
 packages/vscode-webview/vscode-static/*
 git-diff-viewer/**
 .claude/**
+output-prompts/**
