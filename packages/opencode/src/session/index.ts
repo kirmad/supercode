@@ -22,6 +22,7 @@ import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 
 import { Bus } from "../bus"
 import { Config } from "../config/config"
+import { OutputStyle } from "../output-style/output-style"
 import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
@@ -883,15 +884,26 @@ export namespace Session {
     const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
 
     let system = await SystemPrompt.header(model.modelID)
+
+    // Get the configured output style
+    const config = await Config.get()
+    const outputStyle = config.outputStyle || "default"
+
     system.push(
       ...(await (async () => {
         if (input.system) return [input.system]
         if (agent.prompt) return [agent.prompt]
-        return await SystemPrompt.provider(model.modelID)
+        return await SystemPrompt.provider(model.modelID, outputStyle)
       })())
     )
-    // Add environment info for all models via concatenation
-    system.push(...(await SystemPrompt.environment()))
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        system.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
 
     // Add MCP instructions for all models via concatenation
     const { MCPInstructions } = await import("./mcp-instructions")
@@ -900,9 +912,25 @@ export namespace Session {
       system.push(mcpInstructions)
     }
 
+    // Add environment info for all models via concatenation
+    system.push(...(await SystemPrompt.environment()))
+
     // Get custom and instructions for later use in user message
     const customContent = await SystemPrompt.custom()
     const instructionsContent = await SystemPrompt.instructions()
+
+    // Add output style reminder as separate message if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleName = outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)
+      msgs.at(-1)?.parts.unshift({
+        id: Identifier.ascending("part"),
+        messageID: userMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: `<system-reminder>\n${styleName} output style is active. Remember to follow the specific guidelines for this style.\n</system-reminder>`,
+        synthetic: true,
+      })
+    }
 
     // Add custom and instructions as system-reminder in user message
     if (customContent.length > 0 || instructionsContent.length > 0) {

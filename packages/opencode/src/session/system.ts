@@ -8,6 +8,7 @@ import os from "os"
 import { $ } from "bun"
 
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
+import PROMPT_ANTHROPIC_STYLED from "./prompt/anthropic-styled.txt"
 import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
@@ -27,6 +28,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 // Built-in prompt mapping
 const BUILT_IN_PROMPTS = {
   "anthropic.txt": PROMPT_ANTHROPIC,
+  "anthropic-styled.txt": PROMPT_ANTHROPIC_STYLED,
   "qwen.txt": PROMPT_ANTHROPIC_WITHOUT_TODO,
   "beast.txt": PROMPT_BEAST,
   "gemini.txt": PROMPT_GEMINI,
@@ -107,15 +109,23 @@ export namespace SystemPrompt {
     return prompt
   }
 
-  export async function provider(modelID: string) {
+  export async function provider(modelID: string, outputStyle?: string) {
     let promptFile = "qwen.txt"
 
+    // Choose the appropriate base prompt based on model
     if (modelID.includes("gpt-5")) promptFile = "codex.txt"
     else if (modelID.includes("gpt-") || modelID.includes("o1") || modelID.includes("o3")) promptFile = "beast.txt"
     else if (modelID.includes("gemini-")) promptFile = "gemini.txt"
-    else if (modelID.includes("claude")) promptFile = "anthropic.txt"
+    else if (modelID.includes("claude")) {
+      // For Anthropic models, use the styled prompt if output style is active
+      if (outputStyle && outputStyle !== "default") {
+        promptFile = "anthropic-styled.txt"
+      } else {
+        promptFile = "anthropic.txt"
+      }
+    }
 
-    const prompt = await SystemPrompt.loadPrompt(promptFile)
+    let prompt = await SystemPrompt.loadPrompt(promptFile)
     const processedPrompt = await processTemplate(prompt)
 
     return [processedPrompt]

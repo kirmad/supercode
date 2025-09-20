@@ -1,6 +1,8 @@
 import { Log } from "../util/log"
 import { Bus } from "../bus"
 import { describeRoute, generateSpecs, openAPISpecs } from "hono-openapi"
+import path from "node:path"
+import fs from "node:fs/promises"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
@@ -203,6 +205,85 @@ export namespace Server {
       }),
       async (c) => {
         return c.json(await Config.get())
+      },
+    )
+    .get(
+      "/output-styles",
+      describeRoute({
+        description: "Get available output styles",
+        operationId: "outputStyles.list",
+        responses: {
+          200: {
+            description: "List of output styles",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z
+                    .object({
+                      styles: z.array(
+                        z.object({
+                          name: z.string(),
+                          description: z.string().optional(),
+                          builtIn: z.boolean(),
+                        })
+                      ),
+                    })
+                    .openapi({
+                      ref: "OutputStylesList",
+                    }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const { OutputStyle } = await import("../output-style/output-style")
+        const styles = await OutputStyle.list()
+        return c.json({ styles })
+      },
+    )
+    .post(
+      "/output-style/set",
+      describeRoute({
+        description: "Set output style",
+        operationId: "outputStyle.set",
+        responses: {
+          200: {
+            description: "Output style updated",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    success: z.boolean(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          outputStyle: z.string(),
+        }),
+      ),
+      async (c) => {
+        const { outputStyle } = c.req.valid("json")
+        const config = await Config.get()
+        config.outputStyle = outputStyle
+
+        // Save to config file
+        const configPath = path.join(Global.Path.config, "opencode.jsonc")
+        await fs.mkdir(path.dirname(configPath), { recursive: true })
+        await fs.writeFile(
+          configPath,
+          JSON.stringify(config, null, 2),
+          "utf-8"
+        )
+
+        return c.json({ success: true })
       },
     )
     .get(

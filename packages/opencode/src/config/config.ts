@@ -365,6 +365,12 @@ export namespace Config {
         .describe(
           "Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing",
         ),
+      outputStyle: z
+        .string()
+        .optional()
+        .describe(
+          "Output style mode: controls the tone and format of responses. Options: 'default', 'explanatory', 'learning', or custom styles",
+        ),
       autoshare: z
         .boolean()
         .optional()

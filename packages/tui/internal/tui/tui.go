@@ -731,6 +731,17 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Provider.Name,
 			msg.Model.Name,
 		))
+	case app.OutputStyleSelectedMsg:
+		// Update the local app state
+		a.app.OutputStyle = msg.StyleName
+
+		// Save the output style via API
+		cmds = append(cmds, api.SetOutputStyle(
+			context.Background(),
+			a.app.Client,
+			msg.StyleName,
+		))
+		cmds = append(cmds, toast.NewSuccessToast(fmt.Sprintf("Output style set to %s", msg.StyleName)))
 	case app.AgentSelectedMsg:
 		updated, cmd := a.app.SwitchToAgent(msg.AgentName)
 		a.app = updated
@@ -1588,6 +1599,10 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 	case commands.ModelListCommand:
 		modelDialog := dialog.NewModelDialog(a.app)
 		a.modal = modelDialog
+
+	case commands.OutputStyleListCommand:
+		outputStyleDialog := dialog.NewOutputStyleDialog(a.app)
+		a.modal = outputStyleDialog
 
 	case commands.MCPListCommand:
 		mcpDialog := dialog.NewMCPDialog(a.app)

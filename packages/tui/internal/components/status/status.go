@@ -156,9 +156,31 @@ func (m *statusComponent) View() string {
 		Background(t.BackgroundPanel()).
 		Foreground(t.TextMuted())
 	agent = faintStyle.Render(key+" ") + agent
-	modeWidth := lipgloss.Width(agent)
 
-	availableWidth := m.width - logoWidth - modeWidth
+	// Display the current output style
+	outputStyle := "DEFAULT" // Default value
+	if m.app.OutputStyle != "" {
+		outputStyle = strings.ToUpper(m.app.OutputStyle)
+	}
+
+	styleStyle := styles.NewStyle().
+		Background(t.BackgroundElement()).
+		Foreground(t.TextMuted())
+	styleNameStyle := styleStyle.Bold(true).Render
+	styleDescStyle := styleStyle.Render
+	style := styleNameStyle(outputStyle) + styleDescStyle(" STYLE")
+	style = styleStyle.
+		Padding(0, 1).
+		BorderLeft(true).
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderForeground(t.BackgroundElement()).
+		BorderBackground(t.BackgroundPanel()).
+		Render(style)
+
+	rightSection := style + agent
+	rightSectionWidth := lipgloss.Width(rightSection)
+
+	availableWidth := m.width - logoWidth - rightSectionWidth
 	branchSuffix := ""
 	if m.branch != "" {
 		branchSuffix = ":" + m.branch
@@ -190,7 +212,7 @@ func (m *statusComponent) View() string {
 			View: logo + cwd,
 		},
 		layout.FlexItem{
-			View: agent,
+			View: rightSection,
 		},
 	)
 

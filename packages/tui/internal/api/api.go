@@ -71,10 +71,25 @@ func NotifyAgentChange(ctx context.Context, client *opencode.Client, agentName, 
 		if displayName != "" {
 			payload["displayName"] = displayName
 		}
-		
+
 		err := client.Post(ctx, "/tui/notify-agent-changed", payload, nil)
 		if err != nil {
 			log.Printf("Error notifying agent change: %v", err)
+		}
+		return nil
+	}
+}
+
+// SetOutputStyle sets the output style configuration
+func SetOutputStyle(ctx context.Context, client *opencode.Client, styleName string) tea.Cmd {
+	return func() tea.Msg {
+		payload := map[string]interface{}{
+			"outputStyle": styleName,
+		}
+
+		err := client.Post(ctx, "/output-style/set", payload, nil)
+		if err != nil {
+			log.Printf("Error setting output style: %v", err)
 		}
 		return nil
 	}
