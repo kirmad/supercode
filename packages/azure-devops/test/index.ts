@@ -43,6 +43,11 @@ const TEST_SUITES = {
     name: 'Generate Prompts Utility',
     file: './utilities/generate-sample-prompts.ts',
     description: 'Generate comprehensive prompts for multiple work items'
+  },
+  'build-client': {
+    name: 'Build Client Test',
+    file: './suites/test-build-client.ts',
+    description: 'Test Azure DevOps build management APIs and PR build monitoring'
   }
 };
 

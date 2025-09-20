@@ -4,17 +4,20 @@
 
 import { WorkItemClient } from './work-item-client.js';
 import { PullRequestClient } from './pull-request-client.js';
+import { BuildClient } from './build-client.js';
 import type { AzureDevOpsConfig } from '../interfaces/index.js';
 
 export class AzureDevOpsClient {
   public readonly workItems: WorkItemClient;
   public readonly pullRequests: PullRequestClient;
+  public readonly builds: BuildClient;
   private config: AzureDevOpsConfig;
 
   constructor(config: AzureDevOpsConfig) {
     this.config = config;
     this.workItems = new WorkItemClient(config);
     this.pullRequests = new PullRequestClient(config);
+    this.builds = new BuildClient(config);
   }
 
   /**

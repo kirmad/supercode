@@ -9,6 +9,7 @@
     "test:pr": "bun test/index.ts pr-details",
     "test:context": "bun test/index.ts work-item-context",
     "test:prompts": "bun test/index.ts generate-prompts",
+    "test:build": "bun test/index.ts build-client",
     "test:clean": "rm -rf test-artifacts/*",
     "typecheck": "tsc --noEmit"
   },
