@@ -77,6 +77,18 @@
           </svg>
           <span class="btn-label">{{ agentInfo.name }}</span>
         </button>
+        <button
+          v-if="outputStyleInfo"
+          class="output-style-btn-footer"
+          @click="$emit('toggle-output-style-selector')"
+          :title="'Output Style: ' + outputStyleInfo.name"
+        >
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M7 7H13M7 10H13M7 13H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="btn-label">{{ outputStyleInfo.name }}</span>
+        </button>
       </div>
     </div>
   </footer>
@@ -94,6 +106,7 @@ const props = defineProps<{
   connectionStatus: ConnectionStatus
   modelInfo?: ModelInfo | null
   agentInfo?: { name: string; description?: string; id?: string } | null
+  outputStyleInfo?: { name: string; description?: string } | null
   port?: number
   commands?: Array<{ name: string; description: string }>
 }>()
@@ -104,6 +117,7 @@ const emit = defineEmits<{
   'submit': [value: string]
   'toggle-model-selector': []
   'toggle-agent-selector': []
+  'toggle-output-style-selector': []
 }>()
 
 // Local state
@@ -378,7 +392,7 @@ defineExpose({
   gap: 0.5rem;
 }
 
-.model-btn-footer, .agent-btn-footer {
+.model-btn-footer, .agent-btn-footer, .output-style-btn-footer {
   display: flex;
   align-items: center;
   gap: 0.375rem;
@@ -392,7 +406,7 @@ defineExpose({
   transition: all 0.15s ease;
 }
 
-.model-btn-footer:hover, .agent-btn-footer:hover {
+.model-btn-footer:hover, .agent-btn-footer:hover, .output-style-btn-footer:hover {
   border-color: rgba(0, 102, 255, 0.5);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary, #e0e0e0);

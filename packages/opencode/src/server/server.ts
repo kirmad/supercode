@@ -68,6 +68,10 @@ export namespace Server {
       agentName: z.string(),
       displayName: z.string().optional(),
     })),
+    OutputStyleChanged: Bus.event("tui.output.style.changed", z.object({
+      styleName: z.string(),
+      description: z.string().optional(),
+    })),
   }
 
   const app = new Hono()
@@ -282,6 +286,15 @@ export namespace Server {
           JSON.stringify(config, null, 2),
           "utf-8"
         )
+
+        // Emit output style changed event for external listeners
+        const { OutputStyle } = await import("../output-style/output-style")
+        const styles = await OutputStyle.list()
+        const selectedStyle = styles.find(s => s.name === outputStyle)
+        await Bus.publish(Server.Event.OutputStyleChanged, {
+          styleName: outputStyle,
+          description: selectedStyle?.description
+        })
 
         return c.json({ success: true })
       },

@@ -40,6 +40,16 @@
       @select="handleAgentSelect"
     />
 
+    <!-- Output Style Selector Dropdown -->
+    <OutputStyleSelector
+      :show="showOutputStyleSelector"
+      :styles="availableOutputStyles"
+      :loading="loadingOutputStyles"
+      :current-style="outputStyleInfo"
+      @close="hideOutputStyleSelector"
+      @select="handleOutputStyleSelect"
+    />
+
     <!-- Modern Tab Navigation -->
     <nav class="workflow-tabs">
       <div class="tabs-container">
@@ -134,9 +144,11 @@
       :model-info="modelInfo"
       :agent-info="agentInfo"
       :port="currentPort"
+      :output-style-info="outputStyleInfo"
       @submit="handleSubmit"
       @toggle-model-selector="toggleModelSelector"
       @toggle-agent-selector="toggleAgentSelector"
+      @toggle-output-style-selector="toggleOutputStyleSelector"
       ref="footerBar"
     />
   </div>
@@ -150,6 +162,7 @@ import ReviewTab from './tabs/ReviewTab.vue'
 import FooterBar from './shared/FooterBar.vue'
 import ModelSelector from './shared/ModelSelector.vue'
 import AgentSelector from './shared/AgentSelector.vue'
+import OutputStyleSelector from './shared/OutputStyleSelector.vue'
 import type { ConnectionStatus, ModelInfo, TokenUsage, SSEMessage } from '../types'
 import { SuperCodeSDKClient } from '../services/SuperCodeSDKClient'
 import { SuperCodeWebSocketClient } from '../services/SuperCodeWebSocketClient'
@@ -200,16 +213,21 @@ const connectionStatus = ref<ConnectionStatus>('disconnected')
 const modelInfo = ref<ModelInfo | null>(null)
 const selectedPhase = ref<'phases' | 'plan' | null>(null)
 const agentInfo = ref<{ name: string; description?: string; id?: string } | null>(null)
+const outputStyleInfo = ref<{ name: string; description?: string } | null>(null)
 const tokenUsage = ref<TokenUsage | null>(null)
 const showModelSelector = ref(false)
 const showAgentSelector = ref(false)
+const showOutputStyleSelector = ref(false)
 const availableAgents = ref<AvailableAgent[]>([])
 const availableModels = ref<AvailableModel[]>([])
+const availableOutputStyles = ref<{ id: string; name: string; description: string }[]>([])
 const formattedContextInfo = ref<string>('Context Unavailable')
 const loadingModels = ref(false)
 const selectingModel = ref<string | null>(null)
 const loadingAgents = ref(false)
 const selectingAgent = ref<string | null>(null)
+const loadingOutputStyles = ref(false)
+const selectingOutputStyle = ref<string | null>(null)
 
 // Computed properties
 const currentTabComponent = computed(() => {
@@ -286,9 +304,10 @@ async function pollForConnection() {
         sdkClient.onMessage(handleSSEMessage)
         sdkClient.onError(handleSSEError)
 
-        // Fetch current model information, agent information, and token usage
+        // Fetch current model information, agent information, output style, and token usage
         await fetchModelInfo()
         await fetchAgentInfo()
+        await fetchOutputStyleInfo()
         await fetchTokenUsage()
 
         return // Success - exit polling loop
@@ -374,6 +393,40 @@ async function fetchAgentInfo() {
       name: 'Agent Unavailable',
       description: '',
       id: 'default'
+    }
+  }
+}
+
+async function fetchOutputStyleInfo() {
+  if (!sdkClient) {
+    console.log('❌ No SDK client available for output style fetching')
+    return
+  }
+
+  try {
+    console.log('🔄 Calling getCurrentOutputStyle() from component...')
+    const styleData = await sdkClient.getCurrentOutputStyle()
+    console.log('📊 Output style data received in component:', styleData)
+
+    // Update output style info based on received data
+    if (styleData && styleData.name) {
+      outputStyleInfo.value = {
+        name: styleData.name,
+        description: styleData.description || ''
+      }
+      console.log('✅ Output style info updated in component:', outputStyleInfo.value)
+    } else {
+      console.log('⚠️ Invalid or unavailable output style data:', styleData)
+      outputStyleInfo.value = {
+        name: 'default',
+        description: 'Concise and direct responses'
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch output style info:', error)
+    outputStyleInfo.value = {
+      name: 'default',
+      description: 'Concise and direct responses'
     }
   }
 }
@@ -530,6 +583,21 @@ function handleSSEMessage(message: SSEMessage) {
         currentTaskData.value = { ...currentTaskData.value }
       }
       break
+    case 'tui.model.changed':
+      // Model changed - refresh model info
+      console.log('🔄 Model changed event received, refreshing model info...')
+      fetchModelInfo()
+      break
+    case 'tui.agent.changed':
+      // Agent changed - refresh agent info
+      console.log('🔄 Agent changed event received, refreshing agent info...')
+      fetchAgentInfo()
+      break
+    case 'tui.output.style.changed':
+      // Output style changed - refresh output style info
+      console.log('🔄 Output style changed event received, refreshing output style info...')
+      fetchOutputStyleInfo()
+      break
     default:
       console.log('Unhandled SSE message type:', message.type)
   }
@@ -609,6 +677,12 @@ function hideAgentSelector() {
   showAgentSelector.value = false
   availableAgents.value = []
   selectingAgent.value = null
+}
+
+function hideOutputStyleSelector() {
+  showOutputStyleSelector.value = false
+  availableOutputStyles.value = []
+  selectingOutputStyle.value = null
 }
 
 // Toggle methods
@@ -699,6 +773,42 @@ const toggleAgentSelector = async () => {
   }
 }
 
+const toggleOutputStyleSelector = async () => {
+  if (showOutputStyleSelector.value) {
+    hideOutputStyleSelector()
+    return
+  }
+
+  showOutputStyleSelector.value = true
+  showModelSelector.value = false
+  showAgentSelector.value = false
+  loadingOutputStyles.value = true
+
+  // Fetch available output styles
+  if (sdkClient) {
+    try {
+      const stylesData = await sdkClient.getAvailableOutputStyles()
+      console.log('Output styles data:', stylesData)
+      if (stylesData && Array.isArray(stylesData)) {
+        availableOutputStyles.value = stylesData
+      }
+    } catch (error) {
+      console.error('Failed to fetch available output styles:', error)
+      availableOutputStyles.value = [
+        {
+          id: 'default',
+          name: 'Default',
+          description: 'Concise and direct responses'
+        }
+      ]
+    } finally {
+      loadingOutputStyles.value = false
+    }
+  } else {
+    loadingOutputStyles.value = false
+  }
+}
+
 // Selection methods
 async function selectModel(providerId: string, modelId: string, modelName: string) {
   if (!sdkClient) {
@@ -754,6 +864,32 @@ async function selectAgent(agentId: string, agentName: string) {
   }
 }
 
+async function selectOutputStyle(styleId: string, styleName: string, styleDescription: string) {
+  if (!sdkClient) {
+    console.error('No SDK client available for setting output style')
+    return
+  }
+
+  selectingOutputStyle.value = styleId
+
+  try {
+    await sdkClient.setOutputStyle(styleId)
+
+    // Update local output style info
+    outputStyleInfo.value = {
+      name: styleName,
+      description: styleDescription
+    }
+
+    // Hide the selector
+    hideOutputStyleSelector()
+  } catch (error) {
+    console.error('Failed to set output style:', error)
+  } finally {
+    selectingOutputStyle.value = null
+  }
+}
+
 // Handler methods for shared components
 function handleModelSelect(model: any) {
   selectModel(model.provider, model.id, model.name)
@@ -761,6 +897,10 @@ function handleModelSelect(model: any) {
 
 function handleAgentSelect(agent: any) {
   selectAgent(agent.id, agent.name)
+}
+
+function handleOutputStyleSelect(style: any) {
+  selectOutputStyle(style.id, style.name, style.description)
 }
 
 // Lifecycle
