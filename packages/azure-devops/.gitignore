@@ -1,0 +1,29 @@
+node_modules
+dist
+.DS_Store
+
+# Environment files (contain secrets)
+.env
+.env.test
+.env.local
+run-test-secure.sh
+
+# Test artifacts (never commit)
+test-artifacts/
+logs/
+*.log
+*.txt
+!.env.sample
+!README.txt
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+.trash/
+
+# Build artifacts
+tsconfig.tsbuildinfo
