@@ -74,6 +74,27 @@ export namespace Session {
     }
   }
 
+  // Helper function to notify TUI about output style changes
+  async function notifyTUIOutputStyle(outputStyle: string | undefined, logger: typeof log) {
+    if (!outputStyle) return
+
+    try {
+      const { sendToTUI } = await import("../server/tui")
+
+      // Send notification to TUI about output style change
+      // Fire and forget - don't block on TUI response
+      sendToTUI("/tui/update-output-style", {
+        styleName: outputStyle,
+      }).catch((err) => {
+        // Silently ignore errors - TUI might not be running
+        logger.debug("Failed to notify TUI about output style", { error: err })
+      })
+    } catch (err) {
+      // Module import might fail if server is not initialized
+      logger.debug("Could not send output style to TUI", { error: err })
+    }
+  }
+
   const OUTPUT_TOKEN_MAX = 32_000
 
   /**
@@ -439,6 +460,7 @@ export namespace Session {
       allowedTools: z.array(z.string()).optional(),
       denyTools: z.array(z.string()).optional(),
     }).optional(),
+    outputStyle: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -554,6 +576,11 @@ export namespace Session {
             allowedTools: commandResult.allowedTools,
             denyTools: commandResult.denyTools,
           }
+        }
+
+        // Add output style from command to input
+        if (commandResult.outputStyle) {
+          input.outputStyle = commandResult.outputStyle
         }
       }
     }
@@ -885,9 +912,12 @@ export namespace Session {
 
     let system = await SystemPrompt.header(model.modelID)
 
-    // Get the configured output style
+    // Get the output style from command, or fall back to config
     const config = await Config.get()
-    const outputStyle = config.outputStyle || "default"
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
+    // Notify TUI about custom command output style
+    await notifyTUIOutputStyle(input.outputStyle, l)
 
     system.push(
       ...(await (async () => {

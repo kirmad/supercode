@@ -21,6 +21,7 @@ export namespace CustomCommands {
     "argument-hint"?: string
     "allowed-tools"?: string | string[]
     "deny-tools"?: string | string[]
+    "output-style"?: string
     [key: string]: any
   }
 
@@ -98,6 +99,7 @@ export namespace CustomCommands {
     content: string
     allowedTools?: string[]
     denyTools?: string[]
+    outputStyle?: string
   }
 
   export async function executeCommand(input: string): Promise<CommandExecutionResult | null> {
@@ -126,19 +128,24 @@ export namespace CustomCommands {
       const result: CommandExecutionResult = {
         content: processedContent
       }
-      
+
       // Process allowed-tools
       if (metadata["allowed-tools"]) {
         result.allowedTools = Array.isArray(metadata["allowed-tools"])
           ? metadata["allowed-tools"]
           : String(metadata["allowed-tools"]).split(/[,\s]+/).filter(Boolean)
       }
-      
+
       // Process deny-tools
       if (metadata["deny-tools"]) {
         result.denyTools = Array.isArray(metadata["deny-tools"])
           ? metadata["deny-tools"]
           : String(metadata["deny-tools"]).split(/[,\s]+/).filter(Boolean)
+      }
+
+      // Process output-style
+      if (metadata["output-style"]) {
+        result.outputStyle = String(metadata["output-style"]).trim()
       }
       
       return result

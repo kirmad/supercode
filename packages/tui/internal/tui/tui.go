@@ -845,6 +845,25 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated, cmd := a.executeCommand(commands.Command(command))
 			a = updated.(Model)
 			cmds = append(cmds, cmd)
+		case "/tui/update-output-style":
+			var body struct {
+				StyleName string `json:"styleName"`
+			}
+			json.Unmarshal((msg.Body), &body)
+			// Update the output style in TUI
+			a.app.OutputStyle = body.StyleName
+			// Send the OutputStyleSelectedMsg to update UI components
+			cmd := util.CmdHandler(app.OutputStyleSelectedMsg{
+				StyleName: body.StyleName,
+			})
+			cmds = append(cmds, cmd)
+		case "/tui/get-output-style":
+			// Return the current output style
+			response = struct {
+				StyleName string `json:"styleName"`
+			}{
+				StyleName: a.app.OutputStyle,
+			}
 		case "/tui/show-toast":
 			var body struct {
 				Title   string `json:"title,omitempty"`

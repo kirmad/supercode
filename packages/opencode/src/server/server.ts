@@ -1838,6 +1838,52 @@ export namespace Server {
       },
     )
     .post(
+      "/tui/update-output-style",
+      describeRoute({
+        description: "Update the output style in TUI",
+        operationId: "tui.updateOutputStyle",
+        responses: {
+          200: {
+            description: "Output style updated successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          styleName: z.string(),
+        }),
+      ),
+      async (c) => c.json(await callTui(c)),
+    )
+    .get(
+      "/tui/get-output-style",
+      describeRoute({
+        description: "Get the current output style from TUI",
+        operationId: "tui.getOutputStyle",
+        responses: {
+          200: {
+            description: "Current output style retrieved",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    styleName: z.string(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => c.json(await callTui(c)),
+    )
+    .post(
       "/tui/show-toast",
       describeRoute({
         description: "Show a toast notification in the TUI",
