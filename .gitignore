@@ -26,6 +26,19 @@ opencodetmp/*
 packages/tui/test-tui
 .trash/
 .serena/cache/**/*.pkl
+
+# Test artifacts and temporary test files
+test/test-artifacts/
+test-artifacts/
+**/test-artifacts/
+test/*.js
+test/*.json
+test/*.txt
+test/*.html
+test/*.md
+test/package.json
+test-*.log
+test-ui-simulation.log
 **/logs/*.log
 sdks/vscode/.vscode-test/*
 sdks/vscode/out/*

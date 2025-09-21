@@ -9,6 +9,7 @@ export interface Message {
 export interface ModelInfo {
   name: string
   provider: string
+  modelId?: string
   version?: string
 }
 

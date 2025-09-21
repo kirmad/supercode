@@ -5,17 +5,13 @@
       <div class="header-left">
         <div class="brand-compact">
           <svg class="brand-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L4 7V17L12 22L20 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 2L4 7V17L12 22L20 17V7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
           </svg>
           <span class="brand-name">SuperCode</span>
         </div>
         <div class="nav-pills">
-          <router-link to="/" class="nav-pill">
-            Simple
-          </router-link>
-          <router-link to="/workflow" class="nav-pill active">
-            Workflow
-          </router-link>
+          <router-link to="/" class="nav-pill"> Simple </router-link>
+          <router-link to="/workflow" class="nav-pill active"> Workflow </router-link>
         </div>
       </div>
     </header>
@@ -67,10 +63,15 @@
     <!-- Main Content Area -->
     <main class="workflow-content">
       <!-- Modern Welcome Screen -->
-      <div v-if="!taskActive" class="welcome-container">
+      <div v-if="!taskActive && false" class="welcome-container">
         <div class="welcome-icon">
           <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
-            <path d="M24 4L8 14V34L24 44L40 34V14L24 4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path
+              d="M24 4L8 14V34L24 44L40 34V14L24 4Z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linejoin="round"
+            />
           </svg>
         </div>
         <h2 class="welcome-title">What can I help you build today?</h2>
@@ -78,58 +79,82 @@
 
         <!-- Phase Cards -->
         <div class="phase-cards">
-          <div
-            class="phase-card"
-            :class="{ selected: selectedPhase === 'phases' }"
-            @click="selectPhase('phases')"
-          >
+          <div class="phase-card" :class="{ selected: selectedPhase === 'phases' }" @click="selectPhase('phases')">
             <h3 class="phase-title">
               <svg class="phase-icon-inline" width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M9 5H7C5.89543 5 5 5.89543 5 7V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V7C19 5.89543 18.1046 5 17 5H15" stroke="currentColor" stroke-width="2"/>
-                <path d="M9 5C9 6.65685 10.3431 8 12 8C13.6569 8 15 6.65685 15 5C15 3.34315 13.6569 2 12 2C10.3431 2 9 3.34315 9 5Z" stroke="currentColor" stroke-width="2"/>
+                <path
+                  d="M9 5H7C5.89543 5 5 5.89543 5 7V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V7C19 5.89543 18.1046 5 17 5H15"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+                <path
+                  d="M9 5C9 6.65685 10.3431 8 12 8C13.6569 8 15 6.65685 15 5C15 3.34315 13.6569 2 12 2C10.3431 2 9 3.34315 9 5Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
               </svg>
               Phases
             </h3>
-            <p class="phase-description">Start with a conversation to clarify intent, then break the task into manageable phases.</p>
+            <p class="phase-description">
+              Start with a conversation to clarify intent, then break the task into manageable phases.
+            </p>
             <div v-if="selectedPhase === 'phases'" class="selection-indicator">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="9" fill="var(--accent-color)"/>
-                <path d="M6 10L8.5 12.5L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="10" cy="10" r="9" fill="var(--accent-color)" />
+                <path
+                  d="M6 10L8.5 12.5L14 7"
+                  stroke="white"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </div>
           </div>
 
-          <div
-            class="phase-card"
-            :class="{ selected: selectedPhase === 'plan' }"
-            @click="selectPhase('plan')"
-          >
+          <div class="phase-card" :class="{ selected: selectedPhase === 'plan' }" @click="selectPhase('plan')">
             <h3 class="phase-title">
               <svg class="phase-icon-inline" width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" stroke="currentColor" stroke-width="2"/>
-                <path d="M14 2V8H20" stroke="currentColor" stroke-width="2"/>
+                <path
+                  d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+                <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" />
               </svg>
               Plan
             </h3>
-            <p class="phase-description">Get a detailed file-level plan, refine it with AI, and send it to the agent for execution.</p>
+            <p class="phase-description">
+              Get a detailed file-level plan, refine it with AI, and send it to the agent for execution.
+            </p>
             <div v-if="selectedPhase === 'plan'" class="selection-indicator">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="9" fill="var(--accent-color)"/>
-                <path d="M6 10L8.5 12.5L14 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="10" cy="10" r="9" fill="var(--accent-color)" />
+                <path
+                  d="M6 10L8.5 12.5L14 7"
+                  stroke="white"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Tab Content (shown when task is active) -->
-      <div v-else class="tab-content">
+      <!-- Tab Content (shown when task is active or in development mode) -->
+      <div v-else-if="taskActive || true" class="tab-content">
         <keep-alive>
           <component
             :is="currentTabComponent"
             :task-data="currentTaskData"
+            :model-info="modelInfo"
+            :ws-client="sdkClient"
             @update-task="updateTask"
             @regenerate-plan="regeneratePlan"
+            @send-to-implementation="handleSendToImplementation"
+            @send-to-plan="handleSendToPlan"
           />
         </keep-alive>
       </div>
@@ -155,18 +180,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import PlanTab from './tabs/PlanTab.vue'
-import ImplementTab from './tabs/ImplementTab.vue'
-import ReviewTab from './tabs/ReviewTab.vue'
-import FooterBar from './shared/FooterBar.vue'
-import ModelSelector from './shared/ModelSelector.vue'
-import AgentSelector from './shared/AgentSelector.vue'
-import OutputStyleSelector from './shared/OutputStyleSelector.vue'
-import type { ConnectionStatus, ModelInfo, TokenUsage, SSEMessage } from '../types'
-import { SuperCodeSDKClient } from '../services/SuperCodeSDKClient'
-import { SuperCodeWebSocketClient } from '../services/SuperCodeWebSocketClient'
-import { standaloneConfig } from '../config/standalone'
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue"
+import PlanTab from "./tabs/PlanTab.vue"
+import ImplementTab from "./tabs/ImplementTab.vue"
+import ReviewTab from "./tabs/ReviewTab.vue"
+import PromptGenerationTab from "./tabs/PromptGenerationTab.vue"
+import FooterBar from "./shared/FooterBar.vue"
+import ModelSelector from "./shared/ModelSelector.vue"
+import AgentSelector from "./shared/AgentSelector.vue"
+import OutputStyleSelector from "./shared/OutputStyleSelector.vue"
+import type { ConnectionStatus, ModelInfo, TokenUsage, SSEMessage } from "../types"
+import { SuperCodeSDKClient } from "../services/SuperCodeSDKClient"
+import { SuperCodeWebSocketClient } from "../services/SuperCodeWebSocketClient"
+import { standaloneConfig } from "../config/standalone"
 
 // Type definitions for models and agents
 interface AvailableModel {
@@ -192,9 +218,10 @@ interface AvailableAgent {
 
 // Tab configuration
 const tabs = [
-  { id: 'plan', name: 'Plan', component: PlanTab },
-  { id: 'implement', name: 'Implement', component: ImplementTab },
-  { id: 'review', name: 'Review', component: ReviewTab }
+  { id: "prompt", name: "Prompt Generation", component: PromptGenerationTab },
+  { id: "plan", name: "Plan", component: PlanTab },
+  { id: "implement", name: "Implement", component: ImplementTab },
+  { id: "review", name: "Review", component: ReviewTab },
 ]
 
 // SDK Client instance
@@ -204,14 +231,14 @@ let sdkClient: SuperCodeSDKClient | SuperCodeWebSocketClient | null = null
 const currentPort = ref<number>(standaloneConfig.serverPort)
 
 // Reactive state
-const activeTab = ref('plan')
+const activeTab = ref("prompt")
 const taskActive = ref(false)
-const taskDescription = ref('')
+const taskDescription = ref("")
 const isLoading = ref(false)
 const currentTaskData = ref({})
-const connectionStatus = ref<ConnectionStatus>('disconnected')
+const connectionStatus = ref<ConnectionStatus>("disconnected")
 const modelInfo = ref<ModelInfo | null>(null)
-const selectedPhase = ref<'phases' | 'plan' | null>(null)
+const selectedPhase = ref<"phases" | "plan" | null>(null)
 const agentInfo = ref<{ name: string; description?: string; id?: string } | null>(null)
 const outputStyleInfo = ref<{ name: string; description?: string } | null>(null)
 const tokenUsage = ref<TokenUsage | null>(null)
@@ -221,7 +248,7 @@ const showOutputStyleSelector = ref(false)
 const availableAgents = ref<AvailableAgent[]>([])
 const availableModels = ref<AvailableModel[]>([])
 const availableOutputStyles = ref<{ id: string; name: string; description: string }[]>([])
-const formattedContextInfo = ref<string>('Context Unavailable')
+const formattedContextInfo = ref<string>("Context Unavailable")
 const loadingModels = ref(false)
 const selectingModel = ref<string | null>(null)
 const loadingAgents = ref(false)
@@ -231,48 +258,52 @@ const selectingOutputStyle = ref<string | null>(null)
 
 // Computed properties
 const currentTabComponent = computed(() => {
-  const tab = tabs.find(t => t.id === activeTab.value)
+  const tab = tabs.find((t) => t.id === activeTab.value)
   return tab?.component || PlanTab
 })
 
 const indicatorStyle = computed(() => {
-  const index = tabs.findIndex(t => t.id === activeTab.value)
+  const index = tabs.findIndex((t) => t.id === activeTab.value)
   return {
-    transform: `translateX(${index * 100}%)`
+    transform: `translateX(${index * 100}%)`,
   }
 })
 
-const isConnected = computed(() => connectionStatus.value === 'connected')
+const isConnected = computed(() => connectionStatus.value === "connected")
 const statusText = computed(() => {
   switch (connectionStatus.value) {
-    case 'connected': return 'Connected'
-    case 'connecting': return 'Connecting...'
-    case 'error': return 'Error'
-    default: return 'Disconnected'
+    case "connected":
+      return "Connected"
+    case "connecting":
+      return "Connecting..."
+    case "error":
+      return "Error"
+    default:
+      return "Disconnected"
   }
 })
 
 // SDK Client initialization
 async function initializeSDKClient() {
   console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
-  connectionStatus.value = 'connecting'
+  connectionStatus.value = "connecting"
 
   // Initialize SDK client - use WebSocket if enabled in config
   if (standaloneConfig.useWebSocket) {
-    console.log('🔌 Using WebSocket client for communication')
+    console.log("🔌 Using WebSocket client for communication")
     sdkClient = new SuperCodeWebSocketClient({
       baseUrl: `http://localhost:${currentPort.value}`,
       port: currentPort.value,
       timeout: 5000,
       sessionId: undefined,
-      directory: undefined
+      directory: undefined,
     })
   } else {
-    console.log('📡 Using HTTP client for communication')
+    console.log("📡 Using HTTP client for communication")
     sdkClient = new SuperCodeSDKClient({
       baseUrl: `http://localhost:${currentPort.value}`,
       port: currentPort.value,
-      timeout: 5000
+      timeout: 5000,
     })
   }
 
@@ -288,14 +319,14 @@ async function pollForConnection() {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       if (!sdkClient) {
-        connectionStatus.value = 'error'
+        connectionStatus.value = "error"
         return
       }
 
       const isConnected = await sdkClient.testConnection()
 
       if (isConnected) {
-        connectionStatus.value = 'connected'
+        connectionStatus.value = "connected"
 
         // Subscribe to SSE events
         await sdkClient.subscribeToEvents()
@@ -319,17 +350,17 @@ async function pollForConnection() {
     // Calculate delay with exponential backoff
     const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay)
     console.log(`⏳ Waiting ${delay}ms before retry...`)
-    await new Promise(resolve => setTimeout(resolve, delay))
+    await new Promise((resolve) => setTimeout(resolve, delay))
   }
 
   // All retries exhausted
-  connectionStatus.value = 'error'
-  console.error('❌ Failed to connect after all retries')
+  connectionStatus.value = "error"
+  console.error("❌ Failed to connect after all retries")
 }
 
 async function fetchModelInfo() {
   if (!sdkClient) {
-    console.log('❌ No SDK client available for model fetching')
+    console.log("❌ No SDK client available for model fetching")
     return
   }
 
@@ -340,101 +371,104 @@ async function fetchModelInfo() {
     if (modelData && modelData.name) {
       modelInfo.value = {
         name: modelData.name,
-        provider: modelData.provider || '',
-        version: modelData.version || ''
+        provider: modelData.provider || "",
+        modelId: modelData.modelId,
+        version: modelData.version || "",
       }
     } else {
       modelInfo.value = {
-        name: 'Unknown Model',
-        provider: '',
-        version: ''
+        name: "Unknown Model",
+        provider: "",
+        modelId: undefined,
+        version: "",
       }
     }
   } catch (error) {
-    console.error('❌ Failed to fetch model info:', error)
+    console.error("❌ Failed to fetch model info:", error)
     modelInfo.value = {
-      name: 'Model Unavailable',
-      provider: '',
-      version: ''
+      name: "Model Unavailable",
+      provider: "",
+      modelId: undefined,
+      version: "",
     }
   }
 }
 
 async function fetchAgentInfo() {
   if (!sdkClient) {
-    console.log('❌ No SDK client available for agent fetching')
+    console.log("❌ No SDK client available for agent fetching")
     return
   }
 
   try {
-    console.log('🔄 Calling getCurrentAgent() from component...')
+    console.log("🔄 Calling getCurrentAgent() from component...")
     const agentData = await sdkClient.getCurrentAgent()
-    console.log('📊 Agent data received in component:', agentData)
+    console.log("📊 Agent data received in component:", agentData)
 
     // Update agent info based on received data
-    if (agentData && agentData.name && agentData.name !== 'Agent Unavailable') {
+    if (agentData && agentData.name && agentData.name !== "Agent Unavailable") {
       agentInfo.value = {
         name: agentData.name,
-        description: agentData.description || '',
-        id: agentData.id || 'default'
+        description: agentData.description || "",
+        id: agentData.id || "default",
       }
-      console.log('✅ Agent info updated successfully:', agentInfo.value)
+      console.log("✅ Agent info updated successfully:", agentInfo.value)
     } else {
       agentInfo.value = {
-        name: 'Unknown Agent',
-        description: '',
-        id: 'default'
+        name: "Unknown Agent",
+        description: "",
+        id: "default",
       }
-      console.log('⚠️ Using fallback agent info')
+      console.log("⚠️ Using fallback agent info")
     }
   } catch (error) {
-    console.error('❌ Failed to fetch agent info:', error)
+    console.error("❌ Failed to fetch agent info:", error)
     agentInfo.value = {
-      name: 'Agent Unavailable',
-      description: '',
-      id: 'default'
+      name: "Agent Unavailable",
+      description: "",
+      id: "default",
     }
   }
 }
 
 async function fetchOutputStyleInfo() {
   if (!sdkClient) {
-    console.log('❌ No SDK client available for output style fetching')
+    console.log("❌ No SDK client available for output style fetching")
     return
   }
 
   try {
-    console.log('🔄 Calling getCurrentOutputStyle() from component...')
+    console.log("🔄 Calling getCurrentOutputStyle() from component...")
     const styleData = await sdkClient.getCurrentOutputStyle()
-    console.log('📊 Output style data received in component:', styleData)
+    console.log("📊 Output style data received in component:", styleData)
 
     // Update output style info based on received data
     if (styleData && styleData.name) {
       outputStyleInfo.value = {
         name: styleData.name,
-        description: styleData.description || ''
+        description: styleData.description || "",
       }
-      console.log('✅ Output style info updated in component:', outputStyleInfo.value)
+      console.log("✅ Output style info updated in component:", outputStyleInfo.value)
     } else {
-      console.log('⚠️ Invalid or unavailable output style data:', styleData)
+      console.log("⚠️ Invalid or unavailable output style data:", styleData)
       outputStyleInfo.value = {
-        name: 'default',
-        description: 'Concise and direct responses'
+        name: "default",
+        description: "Concise and direct responses",
       }
     }
   } catch (error) {
-    console.error('❌ Failed to fetch output style info:', error)
+    console.error("❌ Failed to fetch output style info:", error)
     outputStyleInfo.value = {
-      name: 'default',
-      description: 'Concise and direct responses'
+      name: "default",
+      description: "Concise and direct responses",
     }
   }
 }
 
 async function fetchTokenUsage() {
   if (!sdkClient) {
-    console.log('❌ No SDK client available for token usage fetching')
-    formattedContextInfo.value = 'Context Unavailable'
+    console.log("❌ No SDK client available for token usage fetching")
+    formattedContextInfo.value = "Context Unavailable"
     return
   }
 
@@ -449,21 +483,21 @@ async function fetchTokenUsage() {
       tokenUsage.value = {
         used: tokenData.used,
         max: tokenData.max,
-        percentage: tokenData.percentage
+        percentage: tokenData.percentage,
       }
     } else {
       tokenUsage.value = { used: -1, max: -1, percentage: -1 }
     }
   } catch (error) {
-    console.error('❌ Failed to fetch token usage info:', error)
-    formattedContextInfo.value = 'Context Unavailable'
+    console.error("❌ Failed to fetch token usage info:", error)
+    formattedContextInfo.value = "Context Unavailable"
     tokenUsage.value = { used: -1, max: -1, percentage: -1 }
   }
 }
 
 // SSE Event Handlers
 function handleSSEMessage(message: SSEMessage) {
-  console.log('📨 Received SSE message:', message)
+  console.log("📨 Received SSE message:", message)
 
   // Initialize messages array if not exists
   if (!currentTaskData.value.messages) {
@@ -472,20 +506,20 @@ function handleSSEMessage(message: SSEMessage) {
 
   // Handle different message types
   switch (message.type) {
-    case 'message':
+    case "message":
       if (message.content) {
         // Add new assistant message
         currentTaskData.value.messages.push({
           id: `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-          type: 'assistant',
+          type: "assistant",
           content: message.content,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         })
         // Update task data to trigger reactivity
         currentTaskData.value = { ...currentTaskData.value }
       }
       break
-    case 'message.updated':
+    case "message.updated":
       // Process both assistant and user messages
       const messageRole = message.properties?.info?.role
       const messageId = message.properties?.info?.id
@@ -494,9 +528,9 @@ function handleSSEMessage(message: SSEMessage) {
       // Extract content from the message
       if (message.properties?.info?.parts) {
         const parts = message.properties.info.parts
-        const textParts = parts.filter((p: any) => p.type === 'text')
+        const textParts = parts.filter((p: any) => p.type === "text")
         if (textParts.length > 0) {
-          content = textParts.map((p: any) => p.text).join('')
+          content = textParts.map((p: any) => p.text).join("")
         }
       } else if (message.properties?.info?.content) {
         content = message.properties.info.content
@@ -510,16 +544,16 @@ function handleSSEMessage(message: SSEMessage) {
 
       if (content && messageId) {
         // Check if message already exists to prevent duplicates
-        let targetMessage = currentTaskData.value.messages.find(msg => msg.id === messageId)
+        let targetMessage = currentTaskData.value.messages.find((msg) => msg.id === messageId)
 
         if (!targetMessage) {
           // Create new message
-          const messageType = messageRole === 'user' ? 'user' : 'assistant'
+          const messageType = messageRole === "user" ? "user" : "assistant"
           targetMessage = {
             id: messageId,
             type: messageType,
             content: content,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           }
           currentTaskData.value.messages.push(targetMessage)
         } else {
@@ -531,13 +565,17 @@ function handleSSEMessage(message: SSEMessage) {
         currentTaskData.value = { ...currentTaskData.value }
       }
       break
-    case 'message.part.updated':
+    case "message.part.updated":
       // Handle streaming message parts similar to SimpleInterface
       const part = message.properties?.part || message.part || message
-      const partMessageId = part?.messageID || part?.message_id || message.messageID ||
-                            message.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`
+      const partMessageId =
+        part?.messageID ||
+        part?.message_id ||
+        message.messageID ||
+        message.id ||
+        `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`
 
-      console.log('📝 message.part.updated event:', { part, partMessageId, message })
+      console.log("📝 message.part.updated event:", { part, partMessageId, message })
 
       // Handle text parts with multiple possible content locations
       let partContent = null
@@ -553,25 +591,33 @@ function handleSSEMessage(message: SSEMessage) {
         partContent = message.text
       } else if (message.content) {
         partContent = message.content
-      } else if (typeof part === 'string') {
+      } else if (typeof part === "string") {
         partContent = part
       }
 
-      console.log('📝 Extracted content:', partContent)
+      console.log("📝 Extracted content:", partContent)
 
       if (partContent) {
+        // Forward to PromptEnhancementService if on the prompt tab
+        if (activeTab.value === "prompt") {
+          // Emit an event that the PromptGenerationTab can listen to
+          currentTaskData.value.streamingUpdate = {
+            type: 'message.part.updated',
+            content: partContent,
+            timestamp: Date.now()
+          }
+        }
+
         // Find or create message for this ID
-        let targetMessage = currentTaskData.value.messages.find(
-          m => m.id === partMessageId
-        )
+        let targetMessage = currentTaskData.value.messages.find((m) => m.id === partMessageId)
 
         if (!targetMessage) {
           // Create new assistant message
           targetMessage = {
             id: partMessageId,
-            type: 'assistant',
+            type: "assistant",
             content: partContent,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           }
           currentTaskData.value.messages.push(targetMessage)
         } else {
@@ -583,48 +629,48 @@ function handleSSEMessage(message: SSEMessage) {
         currentTaskData.value = { ...currentTaskData.value }
       }
       break
-    case 'tui.model.changed':
+    case "tui.model.changed":
       // Model changed - refresh model info
-      console.log('🔄 Model changed event received, refreshing model info...')
+      console.log("🔄 Model changed event received, refreshing model info...")
       fetchModelInfo()
       break
-    case 'tui.agent.changed':
+    case "tui.agent.changed":
       // Agent changed - refresh agent info
-      console.log('🔄 Agent changed event received, refreshing agent info...')
+      console.log("🔄 Agent changed event received, refreshing agent info...")
       fetchAgentInfo()
       break
-    case 'tui.output.style.changed':
+    case "tui.output.style.changed":
       // Output style changed - refresh output style info
-      console.log('🔄 Output style changed event received, refreshing output style info...')
+      console.log("🔄 Output style changed event received, refreshing output style info...")
       fetchOutputStyleInfo()
       break
     default:
-      console.log('Unhandled SSE message type:', message.type)
+      console.log("Unhandled SSE message type:", message.type)
   }
 }
 
 function handleSSEError(error: Error) {
-  console.error('❌ SSE error:', error)
-  connectionStatus.value = 'error'
+  console.error("❌ SSE error:", error)
+  connectionStatus.value = "error"
 
   // Add error message to the task data if active
   if (taskActive.value && currentTaskData.value.messages) {
     currentTaskData.value.messages.push({
       id: `msg_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-      type: 'system',
+      type: "system",
       content: `Connection error: ${error.message}`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     })
   }
 }
 
 // Methods
-const selectPhase = (phase: 'phases' | 'plan') => {
+const selectPhase = (phase: "phases" | "plan") => {
   selectedPhase.value = selectedPhase.value === phase ? null : phase
 
   // Optionally switch to the appropriate tab when selecting
-  if (phase === 'plan' && selectedPhase.value === 'plan') {
-    activeTab.value = 'plan'
+  if (phase === "plan" && selectedPhase.value === "plan") {
+    activeTab.value = "plan"
   }
 }
 
@@ -638,20 +684,20 @@ const handleSubmit = async () => {
   currentTaskData.value = {
     description: taskDescription.value,
     timestamp: new Date().toISOString(),
-    status: 'planning',
-    selectedPhase: selectedPhase.value
+    status: "planning",
+    selectedPhase: selectedPhase.value,
   }
 
   try {
     // Send /plan command to SuperCode
     const planCommand = `/plan ${taskDescription.value.trim()}`
-    await sdkClient.sendMessage('default-session', planCommand)
+    await sdkClient.sendMessage("default-session", planCommand)
 
     // The plan will be received through SSE events
     // Clear the task description after sending
-    taskDescription.value = ''
+    taskDescription.value = ""
   } catch (error) {
-    console.error('Failed to send plan command:', error)
+    console.error("Failed to send plan command:", error)
     // Show error to user
     taskActive.value = false
   } finally {
@@ -662,7 +708,54 @@ const handleSubmit = async () => {
 const updateTask = (updates: any) => {
   currentTaskData.value = {
     ...currentTaskData.value,
-    ...updates
+    ...updates,
+  }
+}
+
+const regeneratePlan = async () => {
+  console.log("Regenerating plan...")
+  // Implement plan regeneration logic
+}
+
+const handleSendToImplementation = (enhancedData: any) => {
+  console.log("Sending enhanced prompt to implementation:", enhancedData)
+
+  // Switch to the implement tab
+  activeTab.value = "implement"
+
+  // Update task data with enhanced prompt
+  currentTaskData.value = {
+    ...currentTaskData.value,
+    enhancedPrompt: enhancedData.prompt,
+    originalPrompt: enhancedData.originalPrompt,
+    promptMetadata: enhancedData.metadata,
+  }
+
+  // Optionally auto-submit to implementation
+  if (enhancedData.prompt) {
+    taskDescription.value = enhancedData.prompt
+    // Could trigger handleSubmit() here if desired
+  }
+}
+
+const handleSendToPlan = (enhancedData: any) => {
+  console.log("Sending enhanced prompt to plan:", enhancedData)
+
+  // Switch to the plan tab
+  activeTab.value = "plan"
+
+  // Update task data with enhanced prompt
+  currentTaskData.value = {
+    ...currentTaskData.value,
+    enhancedPrompt: enhancedData.prompt,
+    originalPrompt: enhancedData.originalPrompt,
+    promptMetadata: enhancedData.metadata,
+  }
+
+  // Optionally auto-submit to plan
+  if (enhancedData.prompt) {
+    taskDescription.value = enhancedData.prompt
+    // Could trigger handleSubmit() here if desired
   }
 }
 
@@ -699,8 +792,8 @@ const toggleModelSelector = async () => {
   // Fetch available models
   if (sdkClient) {
     try {
-      const providersData = await sdkClient.getProviders() as any
-      console.log('Providers data:', providersData)
+      const providersData = (await sdkClient.getProviders()) as any
+      console.log("Providers data:", providersData)
       if (providersData && providersData.providers) {
         const models: AvailableModel[] = []
 
@@ -711,8 +804,8 @@ const toggleModelSelector = async () => {
               models.push({
                 id: modelId,
                 name: model.name || modelId,
-                provider: provider.name || 'Unknown',
-                capabilities: model.capabilities || []
+                provider: provider.name || "Unknown",
+                capabilities: model.capabilities || [],
               })
             }
           }
@@ -720,7 +813,7 @@ const toggleModelSelector = async () => {
         availableModels.value = models
       }
     } catch (error) {
-      console.error('Failed to fetch available models:', error)
+      console.error("Failed to fetch available models:", error)
       availableModels.value = []
     } finally {
       loadingModels.value = false
@@ -743,27 +836,25 @@ const toggleAgentSelector = async () => {
   // Fetch available agents
   if (sdkClient) {
     try {
-      const agentsData = await sdkClient.getAvailableAgents() as any[]
-      console.log('Agents data:', agentsData)
+      const agentsData = (await sdkClient.getAvailableAgents()) as any[]
+      console.log("Agents data:", agentsData)
       if (agentsData && Array.isArray(agentsData)) {
         // Filter for primary and "all" mode agents only (exclude subagents)
-        const selectableAgents = agentsData.filter((agent: any) =>
-          agent.mode === 'primary' || agent.mode === 'all'
-        )
+        const selectableAgents = agentsData.filter((agent: any) => agent.mode === "primary" || agent.mode === "all")
 
         const agents: AvailableAgent[] = selectableAgents.map((agent: any) => ({
           id: agent.name,
           name: agent.name,
-          description: agent.description || 'No description available',
+          description: agent.description || "No description available",
           mode: agent.mode,
           builtIn: agent.builtIn || false,
-          permission: agent.permission || { edit: 'unknown', bash: 'unknown' },
-          tools: agent.tools || {}
+          permission: agent.permission || { edit: "unknown", bash: "unknown" },
+          tools: agent.tools || {},
         }))
         availableAgents.value = agents
       }
     } catch (error) {
-      console.error('Failed to fetch available agents:', error)
+      console.error("Failed to fetch available agents:", error)
       availableAgents.value = []
     } finally {
       loadingAgents.value = false
@@ -788,18 +879,18 @@ const toggleOutputStyleSelector = async () => {
   if (sdkClient) {
     try {
       const stylesData = await sdkClient.getAvailableOutputStyles()
-      console.log('Output styles data:', stylesData)
+      console.log("Output styles data:", stylesData)
       if (stylesData && Array.isArray(stylesData)) {
         availableOutputStyles.value = stylesData
       }
     } catch (error) {
-      console.error('Failed to fetch available output styles:', error)
+      console.error("Failed to fetch available output styles:", error)
       availableOutputStyles.value = [
         {
-          id: 'default',
-          name: 'Default',
-          description: 'Concise and direct responses'
-        }
+          id: "default",
+          name: "Default",
+          description: "Concise and direct responses",
+        },
       ]
     } finally {
       loadingOutputStyles.value = false
@@ -812,7 +903,7 @@ const toggleOutputStyleSelector = async () => {
 // Selection methods
 async function selectModel(providerId: string, modelId: string, modelName: string) {
   if (!sdkClient) {
-    console.error('No SDK client available for setting model')
+    console.error("No SDK client available for setting model")
     return
   }
 
@@ -826,13 +917,14 @@ async function selectModel(providerId: string, modelId: string, modelName: strin
     modelInfo.value = {
       name: modelName,
       provider: providerId,
-      version: ''
+      modelId: modelId,
+      version: "",
     }
 
     // Hide the selector
     hideModelSelector()
   } catch (error) {
-    console.error('Failed to set model:', error)
+    console.error("Failed to set model:", error)
   } finally {
     selectingModel.value = null
   }
@@ -840,7 +932,7 @@ async function selectModel(providerId: string, modelId: string, modelName: strin
 
 async function selectAgent(agentId: string, agentName: string) {
   if (!sdkClient) {
-    console.error('No SDK client available for setting agent')
+    console.error("No SDK client available for setting agent")
     return
   }
 
@@ -852,13 +944,13 @@ async function selectAgent(agentId: string, agentName: string) {
     // Update local agent info
     agentInfo.value = {
       name: agentName,
-      id: agentId
+      id: agentId,
     }
 
     // Hide the selector
     hideAgentSelector()
   } catch (error) {
-    console.error('Failed to set agent:', error)
+    console.error("Failed to set agent:", error)
   } finally {
     selectingAgent.value = null
   }
@@ -866,7 +958,7 @@ async function selectAgent(agentId: string, agentName: string) {
 
 async function selectOutputStyle(styleId: string, styleName: string, styleDescription: string) {
   if (!sdkClient) {
-    console.error('No SDK client available for setting output style')
+    console.error("No SDK client available for setting output style")
     return
   }
 
@@ -878,13 +970,13 @@ async function selectOutputStyle(styleId: string, styleName: string, styleDescri
     // Update local output style info
     outputStyleInfo.value = {
       name: styleName,
-      description: styleDescription
+      description: styleDescription,
     }
 
     // Hide the selector
     hideOutputStyleSelector()
   } catch (error) {
-    console.error('Failed to set output style:', error)
+    console.error("Failed to set output style:", error)
   } finally {
     selectingOutputStyle.value = null
   }
@@ -910,7 +1002,7 @@ onMounted(async () => {
 
   // Focus task input
   nextTick(() => {
-    const input = document.querySelector('.task-input') as HTMLTextAreaElement
+    const input = document.querySelector(".task-input") as HTMLTextAreaElement
     input?.focus()
   })
 })
@@ -935,7 +1027,7 @@ onUnmounted(() => {
   height: 100vh;
   background: var(--bg-primary, #0a0a0a);
   color: var(--text-primary, #e0e0e0);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Modern Compact Header */
@@ -1026,14 +1118,14 @@ onUnmounted(() => {
   background: #666;
 }
 
-
 .status-text {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.model-btn, .agent-btn {
+.model-btn,
+.agent-btn {
   display: flex;
   align-items: center;
   gap: 0.375rem;
@@ -1047,7 +1139,8 @@ onUnmounted(() => {
   transition: all 0.15s ease;
 }
 
-.model-btn:hover, .agent-btn:hover {
+.model-btn:hover,
+.agent-btn:hover {
   border-color: rgba(0, 102, 255, 0.5);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary, #e0e0e0);
@@ -1406,7 +1499,9 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .footer-info {
@@ -1487,8 +1582,13 @@ onUnmounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Model/Agent Selector Dropdowns */

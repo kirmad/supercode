@@ -442,25 +442,29 @@ export class SuperCodeWebSocketClient {
   /**
    * Get current model/provider information
    */
-  async getCurrentModel(): Promise<{ name: string; provider: string; version?: string }> {
+  async getCurrentModel(): Promise<{ name: string; provider: string; modelId?: string; version?: string }> {
     try {
       await this.ensureConnected();
       const modelData = await this.wsClient.request('GET', '/tui/get-model');
-      
+
       if (modelData && ((modelData as any).modelName || (modelData as any).modelID)) {
         const modelName = (modelData as any).modelName || (modelData as any).modelID || 'Unknown Model';
         const providerName = (modelData as any).providerName || (modelData as any).providerID || 'Unknown Provider';
-        
+        const modelId = (modelData as any).modelID || undefined;
+        const providerId = (modelData as any).providerID || undefined;
+
         return {
           name: modelName,
-          provider: providerName,
+          provider: providerId || providerName,
+          modelId: modelId,
           version: ''
         };
       }
-      
+
       return {
         name: 'Model Unavailable',
         provider: '',
+        modelId: undefined,
         version: ''
       };
     } catch (error) {
@@ -468,6 +472,7 @@ export class SuperCodeWebSocketClient {
       return {
         name: 'Model Unavailable',
         provider: '',
+        modelId: undefined,
         version: ''
       };
     }

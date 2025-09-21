@@ -73,7 +73,7 @@ const cli = yargs(hideBin(process.argv))
     })
 
     // Install seeds on first run (runs in background)
-    SeedInstaller.installSeedsOnce().catch(error => {
+    SeedInstaller.installSeedsOnce().catch((error) => {
       Log.Default.warn("seed installation failed", { error: error.message })
     })
   })
