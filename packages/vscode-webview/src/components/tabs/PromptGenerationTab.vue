@@ -629,11 +629,25 @@ async function handleFollowUp() {
     )
 
     console.log('[PromptGenerationTab] Follow-up enhancement result:', result);
+    console.log('[PromptGenerationTab] Enhanced prompt from result:', result.enhancedPrompt?.substring(0, 200));
 
     if (result.enhancedPrompt) {
       // Update the enhanced prompt with the new version
+      console.log('[PromptGenerationTab] Updating enhancedPrompt.value with:', result.enhancedPrompt.length, 'chars');
+
+      // Force Vue reactivity by resetting first then setting
+      enhancedPrompt.value = ''
+      await nextTick()
       enhancedPrompt.value = result.enhancedPrompt
+
+      enhancedMetadata.value = null
+      await nextTick()
       enhancedMetadata.value = result.metadata
+
+      console.log('[PromptGenerationTab] After update, enhancedPrompt.value is:', enhancedPrompt.value.substring(0, 200))
+
+      // Force component re-render if needed
+      await nextTick()
 
       // Append new research items to existing ones
       if (result.researchItems && result.researchItems.length > 0) {

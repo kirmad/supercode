@@ -534,29 +534,9 @@ export class PromptEnhancementService {
         this.initializeClient();
       }
 
-      // Prepare the prompt with XML generation instructions
-      let fullPrompt = `Generate an enhanced prompt with XML formatting.
-
-IMPORTANT INSTRUCTIONS:
-1. Send <research-update> tags IMMEDIATELY as you discover each insight - don't wait until the end
-2. Stream research findings in real-time as you analyze different aspects
-3. Each research update should be sent as soon as it's discovered
-4. After all research, provide the final <enhanced-prompt> with complete specification
-5. Consider the provided context sources when enhancing the prompt
-
-REQUIRED XML FORMAT:
-- <research-update type="analysis|pattern|requirement|best-practice" priority="high|medium|low">Send each finding immediately as discovered</research-update>
-- <enhanced-prompt><metadata>...</metadata><content>Complete enhanced specification</content></enhanced-prompt>
-- <clarification-needed>...</clarification-needed> if clarification is needed
-
-STREAMING PROCESS:
-1. Start analyzing and immediately output research updates
-2. Don't accumulate findings - stream each one as you discover it
-3. Continue streaming updates throughout your analysis
-4. Finally provide the complete enhanced prompt
-
-Original prompt to enhance:
-${originalPrompt}`;
+      // Use the custom command for prompt enhancement
+      // The command and output style handle all the formatting instructions
+      let fullPrompt = `/enhance-prompt ${originalPrompt}`;
 
       // Add clarification answers if provided
       if (clarificationAnswers && clarificationAnswers.length > 0) {
@@ -793,26 +773,24 @@ ${originalPrompt}`;
       this.currentSessionId = sessionId; // Track the current session for follow-up
       console.log('[PromptEnhancementService] Follow-up session created and set as current:', sessionId);
 
-      // Construct the follow-up prompt that includes context
-      // Use the same XML format as the initial enhancement for consistency
-      const followUpPrompt = `/enhance I have an original prompt: "${context.originalPrompt}"
+      // Use the custom command for follow-up enhancement
+      // Construct the follow-up context as part of the command
+      const followUpPrompt = `/enhance-prompt
+## Follow-up Enhancement Request
 
-You previously enhanced it to: "${context.currentEnhancedPrompt}"
+### Original Prompt
+${context.originalPrompt}
 
-The user has provided additional suggestions: "${context.followUpSuggestion}"
+### Previously Enhanced Version
+${context.currentEnhancedPrompt}
 
-Please update the enhanced prompt to incorporate these follow-up suggestions while:
-1. Maintaining the structure and quality of the current enhanced prompt
-2. Adding the new requirements/refinements from the follow-up
-3. Ensuring consistency and completeness
-4. Providing any additional research insights needed for the new suggestions
+### Additional Requirements
+${context.followUpSuggestion}
 
-Previous research context has ${context.previousResearch.length} items that should be considered.
-
-IMPORTANT: Format your response using the same XML structure as before:
-- Use <research-update> tags for any new research insights
-- Use <enhanced-prompt> tag with <metadata> and <content> for the updated prompt
-- Stream research findings in real-time as you discover them`;
+### Context
+- Previous research items: ${context.previousResearch.length}
+- Please incorporate the follow-up suggestions while maintaining the quality and structure of the current enhanced prompt
+- Add any new research insights needed for the additional requirements`;
 
       // Send the follow-up enhancement request
       const messageResponse = await fetch(`http://localhost:${this.port}/session/${sessionId}/message`, {
@@ -836,46 +814,124 @@ IMPORTANT: Format your response using the same XML structure as before:
         throw new Error(`Failed to send follow-up message: ${messageResponse.statusText}`);
       }
 
-      // Process the streaming response
+      // Process the streaming response - similar to processStreamingResponse
       const reader = messageResponse.body?.getReader();
       const decoder = new TextDecoder();
-      let enhancedText = '';
+      let fullContent = '';
+      const processedResearchContent = new Set<string>();
 
       if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+            const chunk = decoder.decode(value, { stream: true });
+            fullContent += chunk;
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
+            // Process streaming research from the chunk immediately
+            this.processStreamingResearch(chunk, processedResearchContent);
 
-                // Process different message types
-                if (data.type === 'content' && data.text) {
-                  enhancedText += data.text;
+            // Try to parse as JSON for structured responses
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const data = JSON.parse(line.slice(6));
 
-                  // Extract and process any inline research updates
-                  this.processStreamingResearch(data.text);
-                } else if (data.type === 'message.complete') {
-                  // Message is complete
-                  break;
+                  // Process different message types
+                  if (data.type === 'content' && data.text) {
+                    // Extract and process any inline research updates
+                    this.processStreamingResearch(data.text, processedResearchContent);
+                  } else if (data.type === 'message.part.updated' && data.text) {
+                    // Handle accumulated text updates
+                    this.processStreamingResearch(data.text, processedResearchContent);
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
                 }
-              } catch (e) {
-                // Skip invalid JSON
               }
             }
           }
+        } finally {
+          reader.releaseLock();
         }
       }
 
-      // Process the enhanced prompt
-      this.enhancedPrompt = enhancedText.trim();
+      // Process the complete response exactly like the initial enhancement
+      let textContent = '';
+      let isAssistantMessage = false;
 
-      // Metadata has already been set during streaming
+      try {
+        // Parse the accumulated content as JSON streaming response
+        const lines = fullContent.split('\n');
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              // Handle SSE format (data: prefix)
+              let jsonStr = line;
+              if (line.startsWith('data: ')) {
+                jsonStr = line.slice(6);
+              }
+
+              const jsonResponse = JSON.parse(jsonStr);
+
+              // Check if this is an assistant message (not user message)
+              // Assistant messages typically have role: 'assistant' or come after user messages
+              if (jsonResponse.role === 'assistant' || jsonResponse.sender === 'assistant') {
+                isAssistantMessage = true;
+              } else if (jsonResponse.role === 'user' || jsonResponse.sender === 'user') {
+                isAssistantMessage = false;
+                continue; // Skip user messages
+              }
+
+              // Extract text content from message parts (only from assistant messages)
+              if (jsonResponse.parts && Array.isArray(jsonResponse.parts)) {
+                // This is likely the assistant's response
+                for (const part of jsonResponse.parts) {
+                  if (part.type === 'text' && part.text) {
+                    // Only accumulate if we're past any user message
+                    // Follow-up responses might include the user prompt first
+                    if (!part.text.includes('/enhance-prompt')) {
+                      textContent = part.text; // Use the latest text (overwrite previous)
+                    }
+                  }
+                }
+              } else if (jsonResponse.text && isAssistantMessage) {
+                // Direct text property from assistant
+                textContent = jsonResponse.text;
+              }
+            } catch {
+              // Not valid JSON line, continue
+            }
+          }
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse as JSON, treating as text:', parseError);
+        textContent = fullContent;
+      }
+
+      // If no text content extracted, use the full content
+      if (!textContent) {
+        textContent = fullContent;
+      }
+
+      console.log('[PromptEnhancementService] Follow-up: Extracted text content length:', textContent.length);
+      console.log('[PromptEnhancementService] Follow-up: Text preview:', textContent.substring(0, 500));
+      console.log('[PromptEnhancementService] Follow-up: Contains enhanced-prompt tag?', textContent.includes('<enhanced-prompt>'));
+      console.log('[PromptEnhancementService] Follow-up: Contains content tag?', textContent.includes('<content>'));
+
+      // Process the enhanced prompt - parse the XML response
+      const enhancedResult = this.parseEnhancedPrompt(textContent.trim());
+
+      if (enhancedResult) {
+        this.enhancedPrompt = enhancedResult.prompt;
+        this.metadata = enhancedResult.metadata;
+        console.log('[PromptEnhancementService] Follow-up: Successfully parsed enhanced prompt:', this.enhancedPrompt.length, 'chars');
+      } else {
+        console.warn('[PromptEnhancementService] Follow-up: Failed to parse XML, using raw text as fallback');
+        this.enhancedPrompt = enhancedText.trim();
+      }
 
       const result: EnhancementResult = {
         enhancedPrompt: this.enhancedPrompt,

@@ -247,7 +247,7 @@ export namespace CustomCommands {
 
   async function getCommandPaths(namespace: string, command: string): Promise<string[]> {
     const paths: string[] = []
-    
+
     try {
       // Project-specific paths (using same approach as .opencode/command)
       // This will search up from Instance.directory to Instance.worktree
@@ -263,11 +263,15 @@ export namespace CustomCommands {
       const projectCommandsDir = path.join(process.cwd(), ".opencode", "commands")
       paths.push(path.join(projectCommandsDir, namespace, `${command}.md`))
     }
-    
+
     // Global path
     const globalCommandsDir = path.join(Global.Path.config, "commands")
     paths.push(path.join(globalCommandsDir, namespace, `${command}.md`))
-    
+
+    // Built-in defaults path (package-included commands)
+    const builtinCommandsDir = path.join(__dirname, "defaults")
+    paths.push(path.join(builtinCommandsDir, namespace, `${command}.md`))
+
     return paths
   }
 
@@ -288,7 +292,7 @@ export namespace CustomCommands {
 
   async function getRootCommandPaths(command: string): Promise<string[]> {
     const paths: string[] = []
-    
+
     try {
       // Project-specific paths (using same approach as .opencode/command)
       const projectPaths = await Filesystem.findUp(
@@ -303,11 +307,15 @@ export namespace CustomCommands {
       const projectCommandsDir = path.join(process.cwd(), ".opencode", "commands")
       paths.push(path.join(projectCommandsDir, `${command}.md`))
     }
-    
+
     // Global path
     const globalCommandsDir = path.join(Global.Path.config, "commands")
     paths.push(path.join(globalCommandsDir, `${command}.md`))
-    
+
+    // Built-in defaults path (package-included commands)
+    const builtinCommandsDir = path.join(__dirname, "defaults")
+    paths.push(path.join(builtinCommandsDir, `${command}.md`))
+
     return paths
   }
 }
