@@ -26,7 +26,8 @@
   "dependencies": {
     "vue": "^3.5.0",
     "vue-router": "^4.5.0",
-    "@kirmad/supercode-sdk": "latest"
+    "@kirmad/supercode-sdk": "latest",
+    "@supercode/azure-devops": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",

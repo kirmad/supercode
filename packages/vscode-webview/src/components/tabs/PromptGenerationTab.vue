@@ -42,6 +42,16 @@
       />
     </GlassCard>
 
+    <!-- Source Management Section -->
+    <GlassCard hoverable custom-class="sources-card">
+      <SourceManager
+        ref="sourceManagerRef"
+        v-model="sources"
+        :credentials="adoCredentials"
+        @sources-changed="handleSourcesChanged"
+      />
+    </GlassCard>
+
     <!-- Modern Research Section -->
     <transition name="slide-fade">
       <ResearchItemsList
@@ -223,7 +233,8 @@
 import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { PromptEnhancementService } from '../../services/PromptEnhancementService'
 import { SuperCodeWebSocketClient } from '../../services/SuperCodeWebSocketClient'
-import { ClarificationQuestion, EnhancedPromptMetadata, ResearchItem } from '../../types/prompt-generation'
+import type { ClarificationQuestion, EnhancedPromptMetadata, ResearchItem } from '../../types/prompt-generation'
+import type { ADOSource } from '../../services/ADOSourceService'
 
 // Import shared components
 import GlassCard from '../shared/GlassCard.vue'
@@ -232,42 +243,12 @@ import ProgressBar from '../shared/ProgressBar.vue'
 import MetricGroup from '../shared/MetricGroup.vue'
 import ResearchItemsList from '../shared/ResearchItemsList.vue'
 import CharacterLimitInput from '../shared/CharacterLimitInput.vue'
-import SectionHeader from '../shared/SectionHeader.vue'
+// import SectionHeader from '../shared/SectionHeader.vue' // Not used currently
 import ClarificationQuestions from '../shared/ClarificationQuestions.vue'
 import FollowUpInput from '../shared/FollowUpInput.vue'
+import SourceManager from '../shared/SourceManager.vue'
 
-interface Props {
-  modelValue: any
-  sessionId: string | null
-  wsClient: SuperCodeWebSocketClient
-  taskData?: any
-  modelInfo?: { name: string; provider: string; version?: string } | null
-}
-
-// Composition API Interfaces
-interface ResearchItem {
-  id: string
-  type: 'analysis' | 'pattern' | 'requirement' | 'best-practice' | 'clarification'
-  priority: 'high' | 'medium' | 'low'
-  content: string
-  timestamp: number
-  status: 'pending' | 'in-progress' | 'completed'
-}
-
-interface ClarificationQuestion {
-  id: string
-  text: string
-  type: 'text' | 'choice'
-  options?: Array<{ label: string; value: string }>
-  answer?: string
-}
-
-interface EnhancedPromptMetadata {
-  complexity?: string
-  domains?: string[]
-  technologies?: string[]
-  patterns?: string[]
-}
+// Types are imported from '../../types/prompt-generation'
 
 // Props
 const props = defineProps<{
@@ -276,6 +257,11 @@ const props = defineProps<{
   wsClient: SuperCodeWebSocketClient
   taskData?: any
   modelInfo?: { name: string; provider: string; version?: string } | null
+  adoCredentials?: {
+    organization?: string
+    project?: string
+    pat?: string
+  }
 }>()
 
 // Emits
@@ -283,6 +269,7 @@ const emit = defineEmits(['update-task', 'send-to-implementation', 'send-to-plan
 
 // Template refs
 const researchContainer = ref<HTMLElement | null>(null)
+const sourceManagerRef = ref<InstanceType<typeof SourceManager> | null>(null)
 
 // State
 const initialPrompt = ref('')
@@ -297,6 +284,7 @@ const currentPhase = ref('')
 const processingTime = ref(0)
 const error = ref<string | null>(null)
 const researchExpanded = ref(true)
+const sources = ref<ADOSource[]>([])
 
 // Autoscroll state
 const userHasScrolled = ref(false)
@@ -328,6 +316,17 @@ const allQuestionsAnswered = computed(() => {
   return clarificationQuestions.value.every(q => q.answer && q.answer.trim() !== '')
 })
 
+// ADO Credentials - load from props or environment
+const adoCredentials = computed(() => {
+  // If credentials are provided via props, use them
+  if (props.adoCredentials) {
+    return props.adoCredentials
+  }
+
+  // Otherwise, SourceManager will load from environment
+  return undefined
+})
+
 // Enhancement Service
 let enhancementService: PromptEnhancementService | null = null
 
@@ -341,6 +340,9 @@ async function handleEnhance() {
     setupEnhancementCallbacks()
   }
 
+  // Clear any previous session data in the service to ensure clean state
+  enhancementService.clear()
+
   isEnhancing.value = true
   progressPercentage.value = 0
   currentPhase.value = 'Initializing enhancement process...'
@@ -352,17 +354,31 @@ async function handleEnhance() {
   try {
     // Extract provider and model from modelInfo prop or use defaults
     const providerId = props.modelInfo?.provider || 'anthropic'
-    const modelId = props.modelInfo?.modelId || 'claude-3-5-sonnet-latest'
+    const modelId = props.modelInfo?.name || 'claude-3-5-sonnet-latest'
 
     console.log('[PromptGenerationTab] Calling enhancementService.enhancePrompt with prompt:', initialPrompt.value);
     console.log('[PromptGenerationTab] Using provider:', providerId, 'model:', modelId);
+
+    // Collect selected related items from all sources
+    const selectedRelatedItems: any = {}
+    if (sourceManagerRef.value) {
+      for (const source of sources.value) {
+        const selectedItems = sourceManagerRef.value.getSelectedRelatedItems?.(source.id || '')
+        if (selectedItems) {
+          selectedRelatedItems[source.id || ''] = selectedItems
+        }
+      }
+    }
+    console.log('[PromptGenerationTab] Selected related items:', selectedRelatedItems);
 
     // Use real AI enhancement with SuperCode
     const result = await enhancementService.enhancePrompt(
       initialPrompt.value,
       clarificationAnswers.value.length > 0 ? clarificationAnswers.value : undefined,
       providerId,
-      modelId
+      modelId,
+      sources.value, // Pass sources for context
+      selectedRelatedItems // Pass selected related items
     )
 
     console.log('[PromptGenerationTab] Enhancement result:', result);
@@ -444,6 +460,12 @@ function clearPrompt() {
   currentPhase.value = ''
   followUpSuggestion.value = ''
   followUpHistory.value = []
+  sources.value = []
+}
+
+function handleSourcesChanged(newSources: ADOSource[]) {
+  sources.value = newSources
+  // Could trigger re-enhancement or other actions here
 }
 
 async function copyEnhancedPrompt() {
@@ -585,7 +607,7 @@ async function handleFollowUp() {
   try {
     // Extract provider and model from modelInfo prop or use defaults
     const providerId = props.modelInfo?.provider || 'anthropic'
-    const modelId = props.modelInfo?.modelId || 'claude-3-5-sonnet-latest'
+    const modelId = props.modelInfo?.name || 'claude-3-5-sonnet-latest'
 
     console.log('[PromptGenerationTab] Applying follow-up suggestion:', followUpSuggestion.value);
     console.log('[PromptGenerationTab] Using provider:', providerId, 'model:', modelId);
@@ -595,7 +617,8 @@ async function handleFollowUp() {
       originalPrompt: initialPrompt.value,
       currentEnhancedPrompt: enhancedPrompt.value,
       followUpSuggestion: followUpSuggestion.value,
-      previousResearch: researchItems.value
+      previousResearch: researchItems.value,
+      sources: sources.value
     }
 
     // Call the enhancement service with the follow-up context
@@ -681,6 +704,7 @@ function startNewPrompt() {
   enhancementCount.value = 0
   researchSourceCount.value = 0
   contextAddedPercentage.value = 0
+  sources.value = []
   if (enhancementService) {
     enhancementService.clear()
   }
@@ -692,7 +716,7 @@ function setupEnhancementCallbacks() {
   if (!enhancementService) return
 
   // Real-time research updates callback
-  enhancementService.onResearchUpdate = (items) => {
+  enhancementService.onResearchItemUpdate((items) => {
     console.log('[PromptGenerationTab] Research update received:', items.length, 'items')
     researchItems.value = items
     // Update progress based on research items
@@ -715,27 +739,12 @@ function setupEnhancementCallbacks() {
     nextTick(() => {
       scrollToLatestResearch()
     })
-  }
-
-  enhancementService.onResearchItemUpdate((items) => {
-    researchItems.value = items
-    // Update progress based on research items
-    progressPercentage.value = Math.min(10 + (items.length * 5), 70)
-    currentPhase.value = `Researching... (${items.length} insights discovered)`
-
-    // Smart autoscroll to show latest research
-    scrollToLatestResearch()
   })
 
-  enhancementService.onClarificationNeeded = (questions) => {
+  enhancementService.onClarificationRequest((questions) => {
     clarificationQuestions.value = questions
     currentPhase.value = 'Clarification required'
-  }
-
-  enhancementService.onProgressUpdate = (phase, percentage) => {
-    currentPhase.value = phase
-    progressPercentage.value = percentage
-  }
+  })
 }
 
 // Lifecycle Hooks
@@ -996,6 +1005,12 @@ watch(() => props.taskData, (newData) => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* Source Management Card */
+.sources-card {
+  margin-bottom: 0.5rem;
+  background: var(--glass-bg);
 }
 
 /* Visual Enhancements */

@@ -5,6 +5,9 @@
  */
 
 import { SuperCodeWebSocketClient } from './SuperCodeWebSocketClient';
+import type { ADOSource } from './ADOSourceService';
+import { ADOSourceService } from './ADOSourceService';
+import { ADOContentService, type SelectedItems } from './ADOContentService';
 
 export interface ResearchItem {
   id: string;
@@ -30,6 +33,7 @@ export interface EnhancedPromptMetadata {
   domains: string[];
   technologies: string[];
   patterns: string[];
+  sources?: string[]; // Track which sources were used
 }
 
 export interface EnhancementResult {
@@ -38,6 +42,15 @@ export interface EnhancementResult {
   researchItems: ResearchItem[];
   clarificationQuestions?: ClarificationQuestion[];
   processingTime: number;
+}
+
+export interface EnhancementOptions {
+  originalPrompt: string;
+  clarificationAnswers?: ClarificationQuestion[];
+  providerId?: string;
+  modelId?: string;
+  sources?: ADOSource[];
+  selectedRelatedItems?: Record<string, SelectedItems>;
 }
 
 export interface EnhancementProgress {
@@ -97,13 +110,14 @@ export class PromptEnhancementService {
    * Handle WebSocket message parts for real-time updates
    */
   private handleWebSocketMessagePart(part: any) {
-    // Filter out messages from other sessions
-    if (this.currentSessionId && part.sessionId !== this.currentSessionId) {
-      console.log('[PromptEnhancementService] Ignoring message from different session:', part.sessionId, '!==', this.currentSessionId);
+    // Filter out messages from other sessions (check both sessionId and sessionID for compatibility)
+    const partSessionId = part.sessionId || part.sessionID;
+    if (this.currentSessionId && partSessionId !== this.currentSessionId) {
+      console.log('[PromptEnhancementService] Ignoring message from different session:', partSessionId, '!==', this.currentSessionId);
       return;
     }
 
-    console.log('[PromptEnhancementService] Received WebSocket message part for current session:', part);
+    console.log('[PromptEnhancementService] Received WebSocket message part for current session:', partSessionId);
 
     // Extract text content from various possible locations
     const textContent = part?.text || part?.content || part?.properties?.text || part?.properties?.content || '';
@@ -351,7 +365,7 @@ export class PromptEnhancementService {
   /**
    * Process streaming response from SuperCode
    */
-  private async processStreamingResponse(response: Response): Promise<EnhancementResult> {
+  private async processStreamingResponse(response: Response, sources?: ADOSource[]): Promise<EnhancementResult> {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
@@ -459,14 +473,21 @@ export class PromptEnhancementService {
         }
       }
 
+      // Add sources to metadata if provided
+      const finalMetadata = this.metadata || {
+        complexity: 'moderate',
+        domains: [],
+        technologies: [],
+        patterns: []
+      };
+
+      if (sources && sources.length > 0) {
+        finalMetadata.sources = sources.map(s => s.title);
+      }
+
       return {
         enhancedPrompt: this.enhancedPrompt,
-        metadata: this.metadata || {
-          complexity: 'moderate',
-          domains: [],
-          technologies: [],
-          patterns: []
-        },
+        metadata: finalMetadata,
         researchItems: this.researchItems,
         clarificationQuestions: this.clarificationQuestions.length > 0 ? this.clarificationQuestions : undefined,
         processingTime: Date.now() - startTime
@@ -483,13 +504,22 @@ export class PromptEnhancementService {
     originalPrompt: string,
     clarificationAnswers?: ClarificationQuestion[],
     providerId: string = 'anthropic',
-    modelId: string = 'claude-3-5-sonnet-latest'
+    modelId: string = 'claude-3-5-sonnet-latest',
+    sources?: ADOSource[],
+    selectedRelatedItems?: Record<string, SelectedItems>
   ): Promise<EnhancementResult> {
     console.log('[PromptEnhancementService] enhancePrompt called with:', {
-      originalPrompt,
-      clarificationAnswers,
+      originalPrompt: originalPrompt.substring(0, 100) + '...',
+      clarificationAnswers: clarificationAnswers?.length || 0,
       providerId,
-      modelId
+      modelId,
+      sources: sources?.length || 0,
+      selectedRelatedItems: selectedRelatedItems ? Object.keys(selectedRelatedItems).map(key => ({
+        sourceId: key,
+        parentTask: selectedRelatedItems[key]?.parentTask ? 'present' : 'none',
+        tasks: selectedRelatedItems[key]?.tasks?.length || 0,
+        prs: selectedRelatedItems[key]?.prs?.length || 0
+      })) : 'none'
     });
 
     // Clear global processed set for new enhancement session
@@ -512,6 +542,7 @@ IMPORTANT INSTRUCTIONS:
 2. Stream research findings in real-time as you analyze different aspects
 3. Each research update should be sent as soon as it's discovered
 4. After all research, provide the final <enhanced-prompt> with complete specification
+5. Consider the provided context sources when enhancing the prompt
 
 REQUIRED XML FORMAT:
 - <research-update type="analysis|pattern|requirement|best-practice" priority="high|medium|low">Send each finding immediately as discovered</research-update>
@@ -527,13 +558,92 @@ STREAMING PROCESS:
 Original prompt to enhance:
 ${originalPrompt}`;
 
-      console.log('[PromptEnhancementService] Full prompt to send:', fullPrompt);
+      // Add clarification answers if provided
       if (clarificationAnswers && clarificationAnswers.length > 0) {
         fullPrompt += '\n\nClarification Answers:\n';
         for (const qa of clarificationAnswers) {
           fullPrompt += `- ${qa.text}: ${qa.answer}\n`;
         }
       }
+
+      // Add context sources if provided
+      if (sources && sources.length > 0) {
+        console.log('[PromptEnhancementService] Adding sources to prompt:', sources.length, 'sources');
+        fullPrompt += '\n\n## Context Sources\n';
+        fullPrompt += 'The following sources provide additional context for this prompt:\n\n';
+
+        // Construct content for each source
+        for (const source of sources) {
+          try {
+            // Check if content already exists or needs to be constructed
+            if (!source.content || (source.type === 'workitem' && selectedRelatedItems)) {
+              // Initialize ADO services if needed to construct content
+              const adoService = new ADOSourceService();
+
+              // Check if service is initialized
+              if (!adoService.isReady()) {
+                // Try to initialize with cached credentials
+                const { getADOCredentials } = await import('../config/ado.config');
+                const creds = getADOCredentials();
+                if (creds.organization && creds.project && creds.pat) {
+                  await adoService.initialize(creds);
+
+                  // Create content service and construct content
+                  const contentService = new ADOContentService(adoService);
+                  // Get the selected items for this specific source
+                  const sourceRelatedItems = selectedRelatedItems?.[source.id || ''];
+                  const constructedContent = await contentService.constructContent(source, sourceRelatedItems);
+
+                  // Update source with constructed content
+                  source.content = constructedContent;
+                  console.log('[PromptEnhancementService] Constructed content for source:', source.title, 'with related items:', sourceRelatedItems);
+                } else {
+                  console.warn('[PromptEnhancementService] ADO credentials not available, using basic content');
+                }
+              } else {
+                // Service is ready, construct content
+                const contentService = new ADOContentService(adoService);
+                // Get the selected items for this specific source
+                const sourceRelatedItems = selectedRelatedItems?.[source.id || ''];
+                const constructedContent = await contentService.constructContent(source, sourceRelatedItems);
+                source.content = constructedContent;
+                console.log('[PromptEnhancementService] Constructed content for source:', source.title, 'with related items:', sourceRelatedItems);
+              }
+            }
+
+            // Add the content to the prompt
+            if (source.content) {
+              // The content already includes title, type, and state from ADOContentService
+              // Just add the full content directly
+              fullPrompt += source.content;
+              fullPrompt += '\n\n';
+            } else {
+              // Fallback to basic info if no content
+              fullPrompt += `### ${source.title}\n`;
+              fullPrompt += `Type: ${source.type === 'workitem' ? 'Work Item' : 'Pull Request'}\n`;
+              if (source.state) fullPrompt += `State: ${source.state}\n`;
+              if (source.description) {
+                fullPrompt += '\n**Description:**\n' + source.description + '\n';
+              }
+              fullPrompt += '\n---\n\n';
+            }
+          } catch (error) {
+            console.error('[PromptEnhancementService] Error constructing content for source:', source.title, error);
+            // Add basic info if content construction fails
+            fullPrompt += `### ${source.title}\n`;
+            fullPrompt += `Type: ${source.type === 'workitem' ? 'Work Item' : 'Pull Request'}\n`;
+            if (source.state) fullPrompt += `State: ${source.state}\n`;
+            if (source.description) {
+              fullPrompt += '\n' + source.description + '\n';
+            }
+            fullPrompt += '\n---\n\n';
+          }
+        }
+
+        fullPrompt += 'Use the above context sources to better understand the requirements and provide more accurate enhancement.\n';
+      }
+
+      console.log('[PromptEnhancementService] Full prompt length:', fullPrompt.length, 'characters');
 
       // Always create a new session for each enhancement
       console.log('[PromptEnhancementService] Creating new session with provider:', providerId, 'model:', modelId);
@@ -558,6 +668,7 @@ ${originalPrompt}`;
       const sessionId = newSession.id;
       this.currentSessionId = sessionId; // Track the current session
       console.log('[PromptEnhancementService] Created new session and set as current:', sessionId);
+      console.log('[PromptEnhancementService] Session tracking initialized - will only accept events with sessionID:', sessionId);
 
       // Create the request payload using the custom command as a message
       const requestPayload = {
@@ -586,7 +697,7 @@ ${originalPrompt}`;
       }
 
       // Process the streaming response
-      return await this.processStreamingResponse(response);
+      return await this.processStreamingResponse(response, sources);
 
     } catch (error) {
       console.error('Error enhancing prompt with SuperCode:', error);
@@ -636,10 +747,13 @@ ${originalPrompt}`;
       currentEnhancedPrompt: string;
       followUpSuggestion: string;
       previousResearch: ResearchItem[];
+      sources?: ADOSource[];
     },
     providerId: string = 'anthropic',
     modelId: string = 'claude-3-5-sonnet-latest'
   ): Promise<EnhancementResult> {
+    const startTime = Date.now();
+
     try {
       // Clear session tracking for new follow-up session
       this.currentSessionId = null;
@@ -761,17 +875,22 @@ IMPORTANT: Format your response using the same XML structure as before:
       // Process the enhanced prompt
       this.enhancedPrompt = enhancedText.trim();
 
-      // Extract metadata from the enhanced prompt if present
-      this.metadata = this.extractMetadata(this.enhancedPrompt);
+      // Metadata has already been set during streaming
 
       const result: EnhancementResult = {
         enhancedPrompt: this.enhancedPrompt,
-        metadata: this.metadata,
+        metadata: this.metadata || {
+          complexity: 'moderate',
+          domains: [],
+          technologies: [],
+          patterns: []
+        },
         researchItems: this.researchItems.filter(item =>
           // Only return new research items from this follow-up
           !context.previousResearch.some(prev => prev.id === item.id)
         ),
-        clarificationQuestions: []
+        clarificationQuestions: [],
+        processingTime: Date.now() - startTime
       };
 
       return result;

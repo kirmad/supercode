@@ -31,6 +31,7 @@ packages/tui/test-tui
 test/test-artifacts/
 test-artifacts/
 **/test-artifacts/
+**/test/artifacts/
 test/*.js
 test/*.json
 test/*.txt
@@ -38,6 +39,10 @@ test/*.html
 test/*.md
 test/package.json
 test-*.log
+test-*.ts
+test-*.js
+validate-*.ts
+validate-*.js
 test-ui-simulation.log
 **/logs/*.log
 sdks/vscode/.vscode-test/*
@@ -45,6 +50,8 @@ sdks/vscode/out/*
 packages/vscode-webview/dist/*
 packages/vscode-webview/vscode-output/*
 packages/vscode-webview/vscode-static/*
+packages/vscode-webview/logs/*
+packages/vscode-webview/.opencode/*
 git-diff-viewer/**
 .claude/**
 output-prompts/**
