@@ -1571,6 +1571,7 @@ ${contextParts.join("\n")}
     sessionID: Identifier.schema("session"),
     agent: z.string().optional(),
     model: z.string().optional(),
+    outputStyle: z.string().optional(),
     arguments: z.string(),
     command: z.string(),
   })
@@ -1656,6 +1657,7 @@ ${contextParts.join("\n")}
         return undefined
       })(),
       agent,
+      outputStyle: input.outputStyle,
       commandTools: {
         allowedTools: command.allowedTools,
         denyTools: command.denyTools,
@@ -2123,7 +2125,7 @@ ${contextParts.join("\n")}
     return next
   }
 
-  export async function summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+  export async function summarize(input: { sessionID: string; providerID: string; modelID: string; outputStyle?: string; }, skipLock: boolean = false) {
     using abort = skipLock ? {
       signal: new AbortController().signal,
       async [Symbol.dispose]() {
@@ -2134,12 +2136,25 @@ ${contextParts.join("\n")}
     const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
     const filtered = msgs.filter((msg) => !lastSummary || msg.info.id >= lastSummary.info.id)
     const model = await Provider.getModel(input.providerID, input.modelID)
+
+    // Get the output style from input, or fall back to config
+    const config = await Config.get()
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
     const system = [
       ...(await SystemPrompt.summarize(model.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
       ...(await SystemPrompt.instructions()),
     ]
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        system.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
 
     const next: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2200,7 +2215,7 @@ ${contextParts.join("\n")}
    * Enhanced summarize function that follows the compaction logic from how-to.md
    * This creates a continuation prompt for when approaching context limits
    */
-  export async function enhanced_summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+  export async function enhanced_summarize(input: { sessionID: string; providerID: string; modelID: string; outputStyle?: string; }, skipLock: boolean = false) {
     using abort = skipLock ? {
       signal: new AbortController().signal,
       async [Symbol.dispose]() {
@@ -2334,6 +2349,10 @@ ${contextParts.join("\n")}
       log.info("Could not read todos during compaction", { error })
     }
     
+    // Get the output style from input, or fall back to config
+    const config = await Config.get()
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
     // Create the final summary message with proper system prompts
     const summarySystem = [
       ...(await SystemPrompt.header(input.providerID)),
@@ -2341,6 +2360,14 @@ ${contextParts.join("\n")}
       ...(await SystemPrompt.custom()),
       ...(await SystemPrompt.instructions()),
     ]
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        summarySystem.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
     
     const finalSummaryMsg: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2477,6 +2504,7 @@ Continue on with the tasks at hand if applicable.
     modelID: string
     providerID: string
     messageID: string
+    outputStyle?: string
   }) {
     await Session.prompt({
       sessionID: input.sessionID,
@@ -2485,6 +2513,7 @@ Continue on with the tasks at hand if applicable.
         providerID: input.providerID,
         modelID: input.modelID,
       },
+      outputStyle: input.outputStyle,
       parts: [
         {
           id: Identifier.ascending("part"),

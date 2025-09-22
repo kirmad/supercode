@@ -436,12 +436,19 @@ export namespace Server {
           .object({
             parentID: z.string().optional(),
             title: z.string().optional(),
+            outputStyle: z.string().optional(),
           })
           .optional(),
       ),
       async (c) => {
         const body = c.req.valid("json") ?? {}
         const session = await Session.create(body.parentID, body.title)
+
+        // Note: outputStyle is not stored in the session itself,
+        // but can be passed when sending messages to the session
+        // This allows clients to specify a preferred outputStyle at session creation
+        // which they can then use when sending the first message
+
         return c.json(session)
       },
     )
@@ -541,6 +548,7 @@ export namespace Server {
           messageID: z.string(),
           providerID: z.string(),
           modelID: z.string(),
+          outputStyle: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -661,6 +669,7 @@ export namespace Server {
         z.object({
           providerID: z.string(),
           modelID: z.string(),
+          outputStyle: z.string().optional(),
         }),
       ),
       async (c) => {
