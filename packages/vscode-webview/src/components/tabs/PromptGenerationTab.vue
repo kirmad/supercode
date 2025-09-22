@@ -15,11 +15,17 @@
           </div>
         </div>
         <div class="input-actions">
+          <EnhancementCommandSelector
+            v-model="selectedCommandId"
+            @command-selected="handleCommandSelected"
+            :ws-client="wsClient"
+          />
           <ActionButton
             v-if="initialPrompt && !isEnhancing"
             @click="clearPrompt"
             variant="icon"
             title="Clear"
+            custom-class="clear-btn"
           >
             <template #icon>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -80,6 +86,10 @@
               </svg>
             </div>
             <h3 class="section-title modern">Enhanced Specification</h3>
+            <div v-if="selectedCommand && selectedCommand.id !== 'default'" class="enhancement-style-badge">
+              <span class="badge-icon">{{ selectedCommand.icon }}</span>
+              <span class="badge-label">{{ selectedCommand.name }}</span>
+            </div>
           </div>
         </div>
 
@@ -183,11 +193,14 @@
         data-testid="enhance-button"
       >
         <template #icon>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <span v-if="selectedCommand && selectedCommand.id !== 'default'" style="margin-right: 0.25rem;">
+            {{ selectedCommand.icon }}
+          </span>
+          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" opacity="0.9"/>
           </svg>
         </template>
-        Enhance with AI
+        {{ selectedCommand && selectedCommand.id !== 'default' ? `Enhance as ${selectedCommand.name}` : 'Enhance with AI' }}
       </ActionButton>
 
       <ActionButton
@@ -247,14 +260,16 @@ import CharacterLimitInput from '../shared/CharacterLimitInput.vue'
 import ClarificationQuestions from '../shared/ClarificationQuestions.vue'
 import FollowUpInput from '../shared/FollowUpInput.vue'
 import SourceManager from '../shared/SourceManager.vue'
+import EnhancementCommandSelector from '../shared/EnhancementCommandSelector.vue'
+import { CommandDiscoveryService, type EnhancementCommand } from '../../services/CommandDiscoveryService'
 
 // Types are imported from '../../types/prompt-generation'
 
 // Props
 const props = defineProps<{
-  modelValue: any
-  sessionId: string | null
-  wsClient: SuperCodeWebSocketClient
+  modelValue?: any
+  sessionId?: string | null
+  wsClient?: SuperCodeWebSocketClient
   taskData?: any
   modelInfo?: { name: string; provider: string; version?: string } | null
   adoCredentials?: {
@@ -285,6 +300,8 @@ const processingTime = ref(0)
 const error = ref<string | null>(null)
 const researchExpanded = ref(true)
 const sources = ref<ADOSource[]>([])
+const selectedCommandId = ref('default')
+const selectedCommand = ref<EnhancementCommand | null>(null)
 
 // Autoscroll state
 const userHasScrolled = ref(false)
@@ -331,6 +348,12 @@ const adoCredentials = computed(() => {
 let enhancementService: PromptEnhancementService | null = null
 
 // Methods
+function handleCommandSelected(command: EnhancementCommand) {
+  selectedCommand.value = command;
+  selectedCommandId.value = command.id;
+  console.log('[PromptGenerationTab] Command selected:', command.name, command.command);
+}
+
 async function handleEnhance() {
   if (!initialPrompt.value || isEnhancing.value) return
 
@@ -371,6 +394,10 @@ async function handleEnhance() {
     }
     console.log('[PromptGenerationTab] Selected related items:', selectedRelatedItems);
 
+    // Get the enhancement command to use
+    const enhancementCommand = selectedCommand.value?.command || '/enhance-prompt';
+    console.log('[PromptGenerationTab] Using enhancement command:', enhancementCommand);
+
     // Use real AI enhancement with SuperCode
     const result = await enhancementService.enhancePrompt(
       initialPrompt.value,
@@ -378,7 +405,8 @@ async function handleEnhance() {
       providerId,
       modelId,
       sources.value, // Pass sources for context
-      selectedRelatedItems // Pass selected related items
+      selectedRelatedItems, // Pass selected related items
+      enhancementCommand // Pass the selected command
     )
 
     console.log('[PromptGenerationTab] Enhancement result:', result);
@@ -621,11 +649,15 @@ async function handleFollowUp() {
       sources: sources.value
     }
 
+    // Get the enhancement command to use
+    const enhancementCommand = selectedCommand.value?.command || '/enhance-prompt';
+
     // Call the enhancement service with the follow-up context
     const result = await enhancementService.enhanceWithFollowUp(
       combinedContext,
       providerId,
-      modelId
+      modelId,
+      enhancementCommand
     )
 
     console.log('[PromptGenerationTab] Follow-up enhancement result:', result);
@@ -762,10 +794,27 @@ function setupEnhancementCallbacks() {
 }
 
 // Lifecycle Hooks
-onMounted(() => {
+onMounted(async () => {
   // Initialize enhancement service (will use real SuperCode if available, fallback to simulation)
   enhancementService = new PromptEnhancementService(props.wsClient)
   setupEnhancementCallbacks()
+
+  // Initialize command discovery and get default command
+  const commandService = CommandDiscoveryService.getInstance(props.wsClient);
+  try {
+    await commandService.discoverCommands();
+    selectedCommand.value = commandService.getDefaultCommand();
+  } catch (error) {
+    console.error('Failed to discover commands:', error);
+    // Use fallback default command
+    selectedCommand.value = {
+      id: 'default',
+      name: 'Standard Enhancement',
+      icon: '✨',
+      command: '/enhance-prompt',
+      description: 'Comprehensive prompt enhancement'
+    };
+  }
 })
 
 onBeforeUnmount(() => {
@@ -833,6 +882,13 @@ watch(() => props.taskData, (newData) => {
   gap: 1rem;
   overflow-y: auto;
   background: linear-gradient(180deg, var(--bg-primary) 0%, rgba(26, 26, 26, 0.95) 100%);
+  position: relative;
+}
+
+/* Input Card - Prevent layout shifts */
+.input-card {
+  position: relative;
+  z-index: 5;
 }
 
 /* Header Section */
@@ -883,13 +939,28 @@ watch(() => props.taskData, (newData) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
+  position: relative;
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.input-actions .clear-btn {
+  margin-left: 0.25rem;
 }
 
 .input-label-group {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .label-icon {
@@ -910,6 +981,41 @@ watch(() => props.taskData, (newData) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+}
+
+.enhancement-style-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  margin-left: auto;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15), rgba(116, 75, 162, 0.15));
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+  animation: fadeInScale 0.3s ease;
+}
+
+.enhancement-style-badge .badge-icon {
+  font-size: 0.875rem;
+}
+
+.enhancement-style-badge .badge-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--primary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .quick-actions.modern {

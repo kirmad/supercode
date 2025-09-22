@@ -506,7 +506,8 @@ export class PromptEnhancementService {
     providerId: string = 'anthropic',
     modelId: string = 'claude-3-5-sonnet-latest',
     sources?: ADOSource[],
-    selectedRelatedItems?: Record<string, SelectedItems>
+    selectedRelatedItems?: Record<string, SelectedItems>,
+    enhancementCommand: string = '/enhance-prompt'
   ): Promise<EnhancementResult> {
     console.log('[PromptEnhancementService] enhancePrompt called with:', {
       originalPrompt: originalPrompt.substring(0, 100) + '...',
@@ -536,7 +537,7 @@ export class PromptEnhancementService {
 
       // Use the custom command for prompt enhancement
       // The command and output style handle all the formatting instructions
-      let fullPrompt = `/enhance-prompt ${originalPrompt}`;
+      let fullPrompt = `${enhancementCommand} ${originalPrompt}`;
 
       // Add clarification answers if provided
       if (clarificationAnswers && clarificationAnswers.length > 0) {
@@ -730,7 +731,8 @@ export class PromptEnhancementService {
       sources?: ADOSource[];
     },
     providerId: string = 'anthropic',
-    modelId: string = 'claude-3-5-sonnet-latest'
+    modelId: string = 'claude-3-5-sonnet-latest',
+    enhancementCommand: string = '/enhance-prompt'
   ): Promise<EnhancementResult> {
     const startTime = Date.now();
 
@@ -775,7 +777,7 @@ export class PromptEnhancementService {
 
       // Use the custom command for follow-up enhancement
       // Construct the follow-up context as part of the command
-      const followUpPrompt = `/enhance-prompt
+      const followUpPrompt = `${enhancementCommand}
 ## Follow-up Enhancement Request
 
 ### Original Prompt
