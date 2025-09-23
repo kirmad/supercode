@@ -75,20 +75,31 @@ export namespace Session {
   }
 
   // Helper function to notify TUI about output style changes
-  async function notifyTUIOutputStyle(outputStyle: string | undefined, logger: typeof log) {
+  async function notifyTUIOutputStyle(outputStyle: string | undefined, sessionID: string, logger: typeof log) {
     if (!outputStyle) return
 
     try {
       const { sendToTUI } = await import("../server/tui")
 
-      // Send notification to TUI about output style change
-      // Fire and forget - don't block on TUI response
-      sendToTUI("/tui/update-output-style", {
-        styleName: outputStyle,
-      }).catch((err) => {
-        // Silently ignore errors - TUI might not be running
-        logger.debug("Failed to notify TUI about output style", { error: err })
-      })
+      // First check if this session is the active TUI session
+      const activeSession = await sendToTUI("/tui/active-session", {}).catch(() => null)
+
+      // Only notify TUI if this is the active session
+      if (activeSession && activeSession.sessionID === sessionID) {
+        // Send notification to TUI about output style change
+        // Fire and forget - don't block on TUI response
+        sendToTUI("/tui/update-output-style", {
+          styleName: outputStyle,
+        }).catch((err) => {
+          // Silently ignore errors - TUI might not be running
+          logger.debug("Failed to notify TUI about output style", { error: err })
+        })
+      } else {
+        logger.debug("Skipping TUI notification - not the active session", {
+          currentSession: sessionID,
+          activeSession: activeSession?.sessionID
+        })
+      }
     } catch (err) {
       // Module import might fail if server is not initialized
       logger.debug("Could not send output style to TUI", { error: err })
@@ -916,8 +927,8 @@ export namespace Session {
     const config = await Config.get()
     const outputStyle = input.outputStyle || config.outputStyle || "default"
 
-    // Notify TUI about custom command output style
-    await notifyTUIOutputStyle(input.outputStyle, l)
+    // Notify TUI about custom command output style only if this is the active TUI session
+    await notifyTUIOutputStyle(input.outputStyle, input.sessionID, l)
 
     system.push(
       ...(await (async () => {
