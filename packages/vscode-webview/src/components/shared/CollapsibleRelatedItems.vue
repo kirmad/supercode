@@ -228,11 +228,11 @@ onMounted(() => {
     allPropsKeys: Object.keys(props),
     parentTask: props.parentTask,
     relatedTasks: props.relatedTasks,
-    relatedPrs: props.relatedPrs,
+    relatedPrs: props.relatedPRs,
     relatedPRs: props.relatedPRs,
     hasParentTask: !!props.parentTask,
     hasRelatedTasks: !!props.relatedTasks,
-    hasRelatedPrs: !!props.relatedPrs,
+    hasRelatedPrs: !!props.relatedPRs,
     hasRelatedPRs: !!props.relatedPRs,
     fullProps: {...props}
   })

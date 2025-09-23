@@ -2,6 +2,12 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import './style.css'
+import { getADOCredentials } from './config/ado.config'
+
+// Debug: Log ADO settings when app loads
+console.log('[SuperCode] App starting...');
+console.log('[SuperCode] Window ADO Settings:', (window as any).adoSettings);
+console.log('[SuperCode] ADO Credentials from config:', getADOCredentials());
 
 // Create Vue app with router
 const app = createApp(App)

@@ -1,6 +1,6 @@
 <template>
   <footer class="footer-bar">
-    <div class="input-wrapper">
+    <div v-if="!hideInput" class="input-wrapper">
       <!-- Command completion dropdown -->
       <div v-if="showCommandCompletion" class="command-completion-dropdown">
         <div class="command-completion-list">
@@ -44,7 +44,7 @@
       </div>
     </div>
 
-    <div class="footer-info">
+    <div class="footer-info" :class="{ 'footer-info-full': hideInput }">
       <div class="footer-left">
         <div class="status-badge">
           <span class="status-dot" :class="connectionStatus"></span>
@@ -103,6 +103,7 @@ const props = defineProps<{
   modelValue: string
   placeholder?: string
   disabled?: boolean
+  hideInput?: boolean
   connectionStatus: ConnectionStatus
   modelInfo?: ModelInfo | null
   agentInfo?: { name: string; description?: string; id?: string } | null
@@ -340,6 +341,10 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   font-size: 0.75rem;
+}
+
+.footer-info-full {
+  padding: 0.75rem 1rem;
 }
 
 .footer-left {

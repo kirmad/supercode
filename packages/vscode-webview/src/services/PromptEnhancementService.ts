@@ -188,7 +188,8 @@ export class PromptEnhancementService {
     const clarificationBlocks = this.parseXMLContent(content, 'clarification-needed');
 
     for (const block of clarificationBlocks) {
-      const questionRegex = /<question\s+id="([^"]+)">\s*<text>([^<]+)<\/text>\s*<options>([^<]+)<\/options>\s*<\/question>/g;
+      // Updated regex to handle multiline question blocks
+      const questionRegex = /<question\s+id="([^"]+)">\s*<text>([^<]+)<\/text>\s*<options>([\s\S]*?)<\/options>\s*<\/question>/g;
       let match;
 
       while ((match = questionRegex.exec(block)) !== null) {
@@ -212,6 +213,55 @@ export class PromptEnhancementService {
     }
 
     return questions;
+  }
+
+  /**
+   * Process streaming clarification questions from text content
+   */
+  public processStreamingClarifications(textContent: string): void {
+    // Extract clarification-needed blocks
+    const clarificationRegex = /<clarification-needed>([\s\S]*?)<\/clarification-needed>/g;
+    let match;
+
+    while ((match = clarificationRegex.exec(textContent)) !== null) {
+      const block = match[1];
+
+      // Parse individual questions
+      const questionRegex = /<question\s+id="([^"]+)">\s*<text>([^<]+)<\/text>\s*<options>([\s\S]*?)<\/options>\s*<\/question>/g;
+      let qMatch;
+
+      while ((qMatch = questionRegex.exec(block)) !== null) {
+        const questionId = qMatch[1];
+
+        // Check if we already have this question
+        if (!this.clarificationQuestions.some(q => q.id === questionId)) {
+          const optionRegex = /<option\s+value="([^"]+)">([^<]+)<\/option>/g;
+          const options: Array<{ value: string; label: string }> = [];
+          let optionMatch;
+
+          while ((optionMatch = optionRegex.exec(qMatch[3])) !== null) {
+            options.push({
+              value: optionMatch[1],
+              label: optionMatch[2].trim()
+            });
+          }
+
+          const question: ClarificationQuestion = {
+            id: questionId,
+            text: qMatch[2].trim(),
+            options
+          };
+
+          this.clarificationQuestions.push(question);
+
+          // Trigger real-time update callback
+          if (this.onClarificationNeeded) {
+            console.log('[PromptEnhancementService] Real-time clarification:', question.text);
+            this.onClarificationNeeded([...this.clarificationQuestions]);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -391,6 +441,9 @@ export class PromptEnhancementService {
         // Try to process research updates from the chunk immediately
         // This handles both raw text and JSON-wrapped text
         this.processStreamingResearch(chunk, processedResearchContent);
+
+        // Also process streaming clarification questions
+        this.processStreamingClarifications(chunk);
 
         // Also try to parse as JSON for structured responses
         try {
@@ -626,30 +679,39 @@ export class PromptEnhancementService {
 
       console.log('[PromptEnhancementService] Full prompt length:', fullPrompt.length, 'characters');
 
-      // Always create a new session for each enhancement
-      console.log('[PromptEnhancementService] Creating new session with provider:', providerId, 'model:', modelId);
-      const newSessionResponse = await fetch(`http://localhost:${this.port}/session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          directory: '.',  // Use current directory since we're in browser context
-          projectID: 'vscode-webview',
-          providerID: providerId,
-          modelID: modelId
-        })
-      });
+      // Only create a new session if we don't have clarification answers
+      // If we have clarification answers, they should be sent via sendClarificationAnswers() to the existing session
+      let sessionId: string;
 
-      if (!newSessionResponse.ok) {
-        throw new Error(`Failed to create session: ${newSessionResponse.statusText}`);
+      if (!clarificationAnswers || clarificationAnswers.length === 0) {
+        console.log('[PromptEnhancementService] Creating new session with provider:', providerId, 'model:', modelId);
+        const newSessionResponse = await fetch(`http://localhost:${this.port}/session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            directory: '.',  // Use current directory since we're in browser context
+            projectID: 'vscode-webview',
+            providerID: providerId,
+            modelID: modelId
+          })
+        });
+
+        if (!newSessionResponse.ok) {
+          throw new Error(`Failed to create session: ${newSessionResponse.statusText}`);
+        }
+
+        const newSession = await newSessionResponse.json();
+        sessionId = newSession.id;
+        this.currentSessionId = sessionId; // Track the current session
+        console.log('[PromptEnhancementService] Created new session and set as current:', sessionId);
+        console.log('[PromptEnhancementService] Session tracking initialized - will only accept events with sessionID:', sessionId);
+      } else {
+        // This shouldn't happen as clarification answers should be sent via sendClarificationAnswers()
+        console.warn('[PromptEnhancementService] WARNING: enhancePrompt called with clarification answers. Use sendClarificationAnswers() instead.');
+        throw new Error('Clarification answers should be sent via sendClarificationAnswers() to the existing session');
       }
-
-      const newSession = await newSessionResponse.json();
-      const sessionId = newSession.id;
-      this.currentSessionId = sessionId; // Track the current session
-      console.log('[PromptEnhancementService] Created new session and set as current:', sessionId);
-      console.log('[PromptEnhancementService] Session tracking initialized - will only accept events with sessionID:', sessionId);
 
       // Create the request payload using the custom command as a message
       const requestPayload = {
@@ -707,6 +769,115 @@ export class PromptEnhancementService {
    */
   public getCurrentSessionId(): string | null {
     return this.currentSessionId;
+  }
+
+  /**
+   * Send clarification answers to an existing session
+   */
+  public async sendClarificationAnswers(
+    clarificationAnswers: ClarificationQuestion[]
+  ): Promise<EnhancementResult> {
+    if (!this.currentSessionId) {
+      throw new Error('No active session to send clarification answers to');
+    }
+
+    console.log('[PromptEnhancementService] Sending clarification answers to session:', this.currentSessionId);
+    console.log('[PromptEnhancementService] Answers:', JSON.stringify(clarificationAnswers, null, 2));
+
+    try {
+      // Format the clarification answers as a response with full context
+      let answerText = 'Here are my answers to your clarification questions:\n\n';
+      for (const qa of clarificationAnswers) {
+        // Get the full answer text - either the direct answer or the label of the selected option
+        let fullAnswer = qa.answer || '';
+
+        // If the answer is an option value (like "a", "b", "c"), get the full label text
+        if (qa.options && qa.options.length > 0) {
+          const selectedOption = qa.options.find(opt => opt.value === qa.answer);
+          if (selectedOption) {
+            fullAnswer = selectedOption.label;
+          }
+        }
+
+        answerText += `**${qa.text}**\n${fullAnswer}\n\n`;
+      }
+
+      // Send the answers as a message to the existing session
+      const requestPayload = {
+        parts: [
+          {
+            type: 'text',
+            text: answerText
+          }
+        ]
+      };
+
+      // Send request to the existing session's message endpoint
+      const response = await fetch(`http://localhost:${this.port}/session/${this.currentSessionId}/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send clarification answers: ${response.statusText}`);
+      }
+
+      // Process the streaming response
+      return await this.processStreamingResponse(response);
+
+    } catch (error) {
+      console.error('Error sending clarification answers:', error);
+      throw new Error(`Failed to send clarification answers: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Send follow-up suggestion to an existing session
+   */
+  public async sendFollowUpSuggestion(
+    followUpSuggestion: string
+  ): Promise<EnhancementResult> {
+    if (!this.currentSessionId) {
+      throw new Error('No active session to send follow-up suggestion to');
+    }
+
+    console.log('[PromptEnhancementService] Sending follow-up suggestion to session:', this.currentSessionId);
+    console.log('[PromptEnhancementService] Follow-up:', followUpSuggestion);
+
+    try {
+      // Send the follow-up suggestion as a message to the existing session
+      const requestPayload = {
+        parts: [
+          {
+            type: 'text',
+            text: followUpSuggestion
+          }
+        ]
+      };
+
+      // Send request to the existing session's message endpoint
+      const response = await fetch(`http://localhost:${this.port}/session/${this.currentSessionId}/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send follow-up suggestion: ${response.statusText}`);
+      }
+
+      // Process the streaming response
+      return await this.processStreamingResponse(response);
+
+    } catch (error) {
+      console.error('Error sending follow-up suggestion:', error);
+      throw new Error(`Failed to send follow-up suggestion: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
@@ -932,7 +1103,7 @@ ${context.followUpSuggestion}
         console.log('[PromptEnhancementService] Follow-up: Successfully parsed enhanced prompt:', this.enhancedPrompt.length, 'chars');
       } else {
         console.warn('[PromptEnhancementService] Follow-up: Failed to parse XML, using raw text as fallback');
-        this.enhancedPrompt = enhancedText.trim();
+        this.enhancedPrompt = textContent.trim();
       }
 
       const result: EnhancementResult = {

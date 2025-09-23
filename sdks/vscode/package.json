@@ -180,6 +180,16 @@
         "command": "supercode.showDynamicCommandsForFile",
         "title": "SuperCode: Run custom prompt",
         "category": "SuperCode"
+      },
+      {
+        "command": "supercode.createADOWorkspaceConfig",
+        "title": "Create ADO Workspace Config",
+        "category": "SuperCode"
+      },
+      {
+        "command": "supercode.openADOWorkspaceConfig",
+        "title": "Open ADO Workspace Config",
+        "category": "SuperCode"
       }
     ],
     "submenus": [
@@ -428,6 +438,22 @@
           "type": "boolean",
           "default": true,
           "description": "When true, 'Open SuperCode' will connect to existing instances if available. When false, always creates a new instance."
+        },
+        "supercode.azureDevOps.organization": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps organization name (e.g., 'mycompany' from https://dev.azure.com/mycompany)"
+        },
+        "supercode.azureDevOps.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps project name"
+        },
+        "supercode.azureDevOps.pat": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure DevOps Personal Access Token with appropriate permissions (Work Items: Read, Code: Read, Pull Request: Read). **Note:** This is stored as plain text in VS Code settings.",
+          "scope": "machine"
         }
       }
     }

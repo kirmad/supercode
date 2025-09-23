@@ -24,7 +24,17 @@ export function getADOCredentials(): Partial<ADOConfig> {
     const vscodeApi = (window as any).vscode;
     const state = vscodeApi.getState();
     if (state?.adoCredentials) {
+      console.log('[ADO Config] Using VS Code extension settings');
       return state.adoCredentials;
+    }
+  }
+
+  // Try to get from window.adoSettings (injected by VS Code extension on initial load)
+  if (typeof (window as any).adoSettings !== 'undefined') {
+    const adoSettings = (window as any).adoSettings;
+    if (adoSettings?.adoCredentials) {
+      console.log('[ADO Config] Using VS Code injected settings');
+      return adoSettings.adoCredentials;
     }
   }
 

@@ -52,7 +52,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SuperCode</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src {{cspSource}} 'unsafe-inline'; connect-src http://localhost:* ws://localhost:*;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; script-src {{cspSource}} 'unsafe-inline'; connect-src http://localhost:* ws://localhost:* https://dev.azure.com https://*.visualstudio.com;">
     <link href="{{cssUri}}" rel="stylesheet" />
 </head>
 <body>
@@ -62,6 +62,9 @@ try {
         const vscode = acquireVsCodeApi();
         window.vscode = vscode;
         window.supercodePort = {{port}};
+
+        // ADO Settings from VS Code configuration
+        window.adoSettings = JSON.parse('{{adoSettings}}'.replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
     </script>
     <script src="{{scriptUri}}"></script>
 </body>

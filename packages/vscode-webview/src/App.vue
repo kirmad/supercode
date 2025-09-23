@@ -13,7 +13,7 @@
           Simple
         </router-link>
         <router-link to="/workflow" class="nav-link" :class="{ active: $route.name === 'workflow' }">
-          Workflow
+          Workflow <span class="alpha-badge">alpha</span>
         </router-link>
       </div>
       <div class="nav-actions">
@@ -66,10 +66,7 @@ onMounted(() => {
   document.documentElement.setAttribute('data-theme', savedTheme)
 })
 
-// Save theme preference
-const saveTheme = () => {
-  localStorage.setItem('supercode-theme', isDarkTheme.value ? 'dark' : 'light')
-}
+// Save theme preference - removed as unused
 
 // Watch theme changes
 onMounted(() => {
@@ -174,6 +171,45 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   font-weight: 500;
+}
+
+/* Alpha badge styling */
+.alpha-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  height: 16px;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ff6b35, #ff8c42);
+  color: white;
+  border-radius: 3px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  animation: pulse-glow 2s infinite;
+  position: relative;
+  top: -1px;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  }
+  50% {
+    box-shadow: 0 1px 6px rgba(255, 107, 53, 0.5), 0 0 10px rgba(255, 107, 53, 0.2);
+  }
+}
+
+.nav-link.active .alpha-badge {
+  background: linear-gradient(135deg, #ff4500, #ff6347);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: none;
 }
 
 .nav-actions {

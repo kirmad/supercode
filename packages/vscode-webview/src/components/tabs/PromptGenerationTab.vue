@@ -68,12 +68,19 @@
       />
     </transition>
 
-    <!-- Clarification Questions Section -->
-    <ClarificationQuestions
-      v-if="clarificationQuestions.length > 0"
-      :questions="clarificationQuestions"
-      @submit="submitClarifications"
-    />
+    <!-- Clarification Display Section -->
+    <transition name="slide-fade">
+      <ClarificationDisplay
+        v-if="clarificationQuestions.length > 0"
+        :questions="clarificationQuestions"
+        :expanded="clarificationExpanded"
+        :review-mode="clarificationsSubmitted"
+        :is-processing="isEnhancing"
+        @toggle-expand="clarificationExpanded = !clarificationExpanded"
+        @submit="handleClarificationSubmit"
+        @skip="handleClarificationSkip"
+      />
+    </transition>
 
     <!-- Modern Enhanced Prompt Section -->
     <transition name="scale-fade">
@@ -149,7 +156,13 @@
 
         <div class="enhanced-content modern">
           <div class="content-wrapper">
-            <pre class="enhanced-text modern" data-testid="enhanced-text">{{ enhancedPrompt }}</pre>
+            <MarkdownRenderer
+              :content="enhancedPrompt"
+              :show-copy-button="false"
+              :enable-mermaid="true"
+              :enable-syntax-highlight="true"
+              custom-class="enhanced-prompt-markdown"
+            />
           </div>
         </div>
 
@@ -244,9 +257,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount } from 'vue'
-import { PromptEnhancementService } from '../../services/PromptEnhancementService'
+import { PromptEnhancementService, type ClarificationQuestion } from '../../services/PromptEnhancementService'
 import { SuperCodeWebSocketClient } from '../../services/SuperCodeWebSocketClient'
-import type { ClarificationQuestion, EnhancedPromptMetadata, ResearchItem } from '../../types/prompt-generation'
+import type { EnhancedPromptMetadata, ResearchItem } from '../../types/prompt-generation'
 import type { ADOSource } from '../../services/ADOSourceService'
 
 // Import shared components
@@ -257,7 +270,9 @@ import MetricGroup from '../shared/MetricGroup.vue'
 import ResearchItemsList from '../shared/ResearchItemsList.vue'
 import CharacterLimitInput from '../shared/CharacterLimitInput.vue'
 // import SectionHeader from '../shared/SectionHeader.vue' // Not used currently
-import ClarificationQuestions from '../shared/ClarificationQuestions.vue'
+import ClarificationWizard from '../shared/ClarificationWizard.vue'
+import ClarificationDisplay from '../shared/ClarificationDisplay.vue'
+import MarkdownRenderer from '../shared/MarkdownRenderer.vue'
 import FollowUpInput from '../shared/FollowUpInput.vue'
 import SourceManager from '../shared/SourceManager.vue'
 import EnhancementCommandSelector from '../shared/EnhancementCommandSelector.vue'
@@ -294,6 +309,8 @@ const isEnhancing = ref(false)
 const researchItems = ref<ResearchItem[]>([])
 const clarificationQuestions = ref<ClarificationQuestion[]>([])
 const clarificationAnswers = ref<ClarificationQuestion[]>([])
+const clarificationExpanded = ref(true)
+const clarificationsSubmitted = ref(false)
 const progressPercentage = ref(0)
 const currentPhase = ref('')
 const processingTime = ref(0)
@@ -313,10 +330,10 @@ const followUpSuggestions = computed(() => {
   const suggestions = []
   if (enhancedPrompt.value) {
     suggestions.push(
-      { id: '1', text: 'Add more technical details', icon: '🔧' },
-      { id: '2', text: 'Include performance requirements', icon: '⚡' },
-      { id: '3', text: 'Specify user experience goals', icon: '🎨' },
-      { id: '4', text: 'Add security considerations', icon: '🛡️' }
+      { id: '1', text: 'Add technical details', icon: '🔧' },
+      { id: '2', text: 'Add performance specs', icon: '⚡' },
+      { id: '3', text: 'Add UX requirements', icon: '🎨' },
+      { id: '4', text: 'Add security needs', icon: '🛡️' }
     )
   }
   return suggestions
@@ -401,7 +418,7 @@ async function handleEnhance() {
     // Use real AI enhancement with SuperCode
     const result = await enhancementService.enhancePrompt(
       initialPrompt.value,
-      clarificationAnswers.value.length > 0 ? clarificationAnswers.value : undefined,
+      undefined, // Clarification answers are now sent separately via sendClarificationAnswers()
       providerId,
       modelId,
       sources.value, // Pass sources for context
@@ -417,12 +434,43 @@ async function handleEnhance() {
       hasResearchItems: !!(result.researchItems && result.researchItems.length > 0)
     });
 
+    // Check for clarification questions first
     if (result.clarificationQuestions && result.clarificationQuestions.length > 0) {
       console.log('[PromptGenerationTab] Setting clarification questions:', result.clarificationQuestions);
       clarificationQuestions.value = result.clarificationQuestions
-      currentPhase.value = 'Clarification needed'
+      currentPhase.value = 'clarification'
+
+      // When clarifications are present, don't show enhanced prompt unless explicitly provided with proper tags
+      // The service will only return enhancedPrompt if it found <enhanced-prompt> tags
+      if (result.enhancedPrompt) {
+        console.log('[PromptGenerationTab] Enhanced prompt provided WITH clarifications - showing both');
+        enhancedPrompt.value = result.enhancedPrompt
+        enhancedMetadata.value = result.metadata
+        researchItems.value = result.researchItems
+
+        // Calculate display metrics
+        if (result.metadata) {
+          enhancementCount.value = (result.metadata.technologies?.length || 0) + (result.metadata.patterns?.length || 0)
+          researchSourceCount.value = result.researchItems?.length || 0
+        } else {
+          enhancementCount.value = result.researchItems?.length || 0
+          researchSourceCount.value = result.researchItems?.length || 0
+        }
+
+        if (initialPrompt.value.length > 0) {
+          contextAddedPercentage.value = Math.round((enhancedPrompt.value.length / initialPrompt.value.length - 1) * 100)
+        }
+
+        progressPercentage.value = 80 // Not quite complete since we're waiting for clarifications
+        currentPhase.value = 'Enhanced prompt ready - please answer clarification questions for further refinement'
+      } else {
+        // Only clarifications, no enhanced prompt yet
+        console.log('[PromptGenerationTab] Only clarifications provided, no enhanced prompt');
+        enhancedPrompt.value = ''
+      }
     } else if (result.enhancedPrompt) {
-      console.log('[PromptGenerationTab] Setting enhanced prompt:', result.enhancedPrompt);
+      // Set the enhanced prompt when no clarifications are present
+      console.log('[PromptGenerationTab] Setting enhanced prompt (no clarifications):', result.enhancedPrompt);
       console.log('[PromptGenerationTab] Setting metadata:', result.metadata);
       enhancedPrompt.value = result.enhancedPrompt
       enhancedMetadata.value = result.metadata
@@ -440,7 +488,7 @@ async function handleEnhance() {
       if (initialPrompt.value.length > 0) {
         contextAddedPercentage.value = Math.round((enhancedPrompt.value.length / initialPrompt.value.length - 1) * 100)
       }
-
+      // We have an enhanced prompt but no clarifications - enhancement is complete
       progressPercentage.value = 100
       currentPhase.value = 'Enhancement complete!'
 
@@ -452,8 +500,13 @@ async function handleEnhance() {
         enhancedPrompt: enhancedPrompt.value,
         originalPrompt: initialPrompt.value,
         research: researchItems.value,
-        clarifications: clarificationQuestions.value
+        clarifications: []
       })
+    } else {
+      // No enhanced prompt and no clarifications - shouldn't happen but handle it
+      console.warn('[PromptGenerationTab] Enhancement returned neither prompt nor clarifications')
+      currentPhase.value = 'Enhancement completed without changes'
+      progressPercentage.value = 100
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Enhancement failed'
@@ -478,12 +531,94 @@ async function submitClarifications() {
   await handleEnhance()
 }
 
+async function handleClarificationSubmit(data: any) {
+  console.log('[PromptGenerationTab] Clarification submit:', data)
+  console.log('[PromptGenerationTab] Clarification answers structure:', JSON.stringify(data.answers, null, 2))
+
+  // If we have answers, send them as a reply to the existing session
+  if (data.answers && data.answers.length > 0 && enhancementService) {
+    const hasActiveSession = enhancementService.getCurrentSessionId()
+
+    if (hasActiveSession) {
+      isEnhancing.value = true
+      progressPercentage.value = 50
+      currentPhase.value = 'Processing clarification answers...'
+      // Keep questions but mark them as submitted for review
+      clarificationsSubmitted.value = true
+      // Store the answers in the questions for review
+      clarificationQuestions.value = data.answers
+
+      try {
+        // Send clarification answers to existing session
+        const result = await enhancementService.sendClarificationAnswers(data.answers)
+
+        console.log('[PromptGenerationTab] Clarification response result:', result)
+
+        // Process the result
+        if (result.enhancedPrompt) {
+          enhancedPrompt.value = result.enhancedPrompt
+          currentPhase.value = 'Enhancement complete!'
+          progressPercentage.value = 100
+        }
+
+        // Keep clarification answers for review
+        clarificationAnswers.value = data.answers
+
+        // Update metrics
+        if (result.metadata) {
+          enhancementCount.value = result.metadata.enhancementCount || 1
+          researchSourceCount.value = result.metadata.researchSourceCount || researchItems.value.length
+          contextAddedPercentage.value = result.metadata.contextAddedPercentage || 0
+        }
+
+        // Check if we have more clarification questions
+        if (result.clarificationQuestions && result.clarificationQuestions.length > 0) {
+          // New clarification questions received, reset the submitted state
+          clarificationQuestions.value = result.clarificationQuestions
+          clarificationsSubmitted.value = false
+          currentPhase.value = 'clarification'
+        }
+      } catch (error) {
+        console.error('[PromptGenerationTab] Error sending clarification answers:', error)
+        currentPhase.value = 'Error processing clarification answers'
+        error.value = error instanceof Error ? error.message : 'Unknown error occurred'
+      } finally {
+        isEnhancing.value = false
+      }
+    } else {
+      console.warn('[PromptGenerationTab] No active session to send clarification answers to')
+      clarificationQuestions.value = []
+      currentPhase.value = ''
+    }
+  } else {
+    // If no answers, just exit clarification phase
+    clarificationQuestions.value = []
+    currentPhase.value = ''
+  }
+}
+
+async function handleClarificationSkip() {
+  console.log('[PromptGenerationTab] Clarification skip')
+
+  // Mark clarifications as skipped but keep them visible for review
+  clarificationsSubmitted.value = true
+  currentPhase.value = ''
+
+  // The enhanced prompt should already be set, just ensure we're showing it
+  if (enhancedPrompt.value) {
+    currentPhase.value = 'Enhancement complete!'
+  }
+}
+
 
 function clearPrompt() {
   initialPrompt.value = ''
   enhancedPrompt.value = ''
   researchItems.value = []
   clarificationQuestions.value = []
+  clarificationAnswers.value = []
+  clarificationsSubmitted.value = false
+  clarificationExpanded.value = true
   progressPercentage.value = 0
   currentPhase.value = ''
   followUpSuggestion.value = ''
@@ -621,6 +756,15 @@ async function handleFollowUp() {
     setupEnhancementCallbacks()
   }
 
+  // Check if we have an active session
+  const hasActiveSession = enhancementService.getCurrentSessionId()
+
+  if (!hasActiveSession) {
+    console.warn('[PromptGenerationTab] No active session for follow-up suggestion');
+    error.value = 'No active session. Please enhance a prompt first.'
+    return
+  }
+
   // Store the follow-up in history
   followUpHistory.value.push(followUpSuggestion.value)
 
@@ -633,31 +777,11 @@ async function handleFollowUp() {
   researchExpanded.value = true
 
   try {
-    // Extract provider and model from modelInfo prop or use defaults
-    const providerId = props.modelInfo?.provider || 'anthropic'
-    const modelId = props.modelInfo?.name || 'claude-3-5-sonnet-latest'
+    console.log('[PromptGenerationTab] Sending follow-up suggestion to existing session');
 
-    console.log('[PromptGenerationTab] Applying follow-up suggestion:', followUpSuggestion.value);
-    console.log('[PromptGenerationTab] Using provider:', providerId, 'model:', modelId);
-
-    // Create a combined prompt that includes the original, enhanced, and follow-up
-    const combinedContext = {
-      originalPrompt: initialPrompt.value,
-      currentEnhancedPrompt: enhancedPrompt.value,
-      followUpSuggestion: followUpSuggestion.value,
-      previousResearch: researchItems.value,
-      sources: sources.value
-    }
-
-    // Get the enhancement command to use
-    const enhancementCommand = selectedCommand.value?.command || '/enhance-prompt';
-
-    // Call the enhancement service with the follow-up context
-    const result = await enhancementService.enhanceWithFollowUp(
-      combinedContext,
-      providerId,
-      modelId,
-      enhancementCommand
+    // Send follow-up suggestion to existing session
+    const result = await enhancementService.sendFollowUpSuggestion(
+      followUpSuggestion.value
     )
 
     console.log('[PromptGenerationTab] Follow-up enhancement result:', result);
@@ -696,8 +820,14 @@ async function handleFollowUp() {
         contextAddedPercentage.value = Math.round((enhancedPrompt.value.length / initialPrompt.value.length - 1) * 100)
       }
 
-      progressPercentage.value = 100
-      currentPhase.value = 'Follow-up applied successfully!'
+      // Check if we have new clarification questions
+      if (result.clarificationQuestions && result.clarificationQuestions.length > 0) {
+        clarificationQuestions.value = result.clarificationQuestions
+        currentPhase.value = 'clarification'
+      } else {
+        progressPercentage.value = 100
+        currentPhase.value = 'Follow-up applied successfully!'
+      }
 
       // Clear the follow-up input
       followUpSuggestion.value = ''
@@ -751,6 +881,10 @@ function startNewPrompt() {
   researchSourceCount.value = 0
   contextAddedPercentage.value = 0
   sources.value = []
+  clarificationQuestions.value = []
+  clarificationAnswers.value = []
+  clarificationsSubmitted.value = false
+  clarificationExpanded.value = true
   if (enhancementService) {
     enhancementService.clear()
   }
@@ -789,7 +923,7 @@ function setupEnhancementCallbacks() {
 
   enhancementService.onClarificationRequest((questions) => {
     clarificationQuestions.value = questions
-    currentPhase.value = 'Clarification required'
+    currentPhase.value = 'clarification'
   })
 }
 
@@ -1042,18 +1176,50 @@ watch(() => props.taskData, (newData) => {
 }
 
 .enhanced-content {
-  padding: 1.5rem 1rem 1rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 0;
   margin-bottom: 1rem;
+  position: relative;
 }
 
-.enhanced-text {
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  margin: 0;
+.enhanced-content.modern {
+  background: transparent;
+  border: none;
+}
+
+.content-wrapper {
+  width: 100%;
+  position: relative;
+}
+
+/* Enhanced prompt markdown specific styling */
+.enhanced-prompt-markdown {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.2) 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.enhanced-prompt-markdown::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #8b5cf6, #7c3aed, #8b5cf6);
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* Action Section */
@@ -1137,6 +1303,7 @@ watch(() => props.taskData, (newData) => {
 .enhanced-card {
   position: relative;
   overflow: visible;
+  margin-top: 1.5rem; /* Ensure spacing when shown with clarifications */
 }
 
 .enhanced-card::before {

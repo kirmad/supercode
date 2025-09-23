@@ -14,9 +14,10 @@ export class StaticWebviewManager {
    * Get webview content using separate static files (HTML, CSS, JS)
    */
   public static getWebviewContent(
-    port: number, 
+    port: number,
     context: vscode.ExtensionContext,
-    webview: vscode.Webview
+    webview: vscode.Webview,
+    adoSettings?: any
   ): string {
     try {
       // Load HTML template (with caching)
@@ -34,12 +35,18 @@ export class StaticWebviewManager {
         vscode.Uri.joinPath(context.extensionUri, 'static', 'webview.js')
       );
       
+      // Prepare ADO settings JSON for injection
+      const adoSettingsJson = adoSettings
+        ? JSON.stringify(adoSettings).replace(/'/g, '&#39;').replace(/"/g, '&quot;')
+        : '{}';
+
       // Replace placeholders in HTML template
       return htmlTemplate
         .replace(/\{\{port\}\}/g, port.toString())
         .replace(/\{\{cssUri\}\}/g, cssUri.toString())
         .replace(/\{\{scriptUri\}\}/g, scriptUri.toString())
-        .replace(/\{\{cspSource\}\}/g, webview.cspSource);
+        .replace(/\{\{cspSource\}\}/g, webview.cspSource)
+        .replace(/\{\{adoSettings\}\}/g, adoSettingsJson);
         
     } catch (error) {
       console.error('[StaticWebviewManager] Failed to load static files:', error);

@@ -11,7 +11,7 @@
         </div>
         <div class="nav-pills">
           <router-link to="/" class="nav-pill"> Simple </router-link>
-          <router-link to="/workflow" class="nav-pill active"> Workflow </router-link>
+          <router-link to="/workflow" class="nav-pill active"> Workflow <span class="alpha-badge">ALPHA</span> </router-link>
         </div>
       </div>
     </header>
@@ -151,6 +151,7 @@
             :task-data="currentTaskData"
             :model-info="modelInfo"
             :ws-client="sdkClient"
+            :tab-type="activeTab"
             @update-task="updateTask"
             @regenerate-plan="regeneratePlan"
             @send-to-implementation="handleSendToImplementation"
@@ -170,6 +171,7 @@
       :agent-info="agentInfo"
       :port="currentPort"
       :output-style-info="outputStyleInfo"
+      :hide-input="true"
       @submit="handleSubmit"
       @toggle-model-selector="toggleModelSelector"
       @toggle-agent-selector="toggleAgentSelector"
@@ -185,14 +187,27 @@ import PlanTab from "./tabs/PlanTab.vue"
 import ImplementTab from "./tabs/ImplementTab.vue"
 import ReviewTab from "./tabs/ReviewTab.vue"
 import PromptGenerationTab from "./tabs/PromptGenerationTab.vue"
+import ComingSoonTab from "./tabs/ComingSoonTab.vue"
 import FooterBar from "./shared/FooterBar.vue"
 import ModelSelector from "./shared/ModelSelector.vue"
 import AgentSelector from "./shared/AgentSelector.vue"
 import OutputStyleSelector from "./shared/OutputStyleSelector.vue"
-import type { ConnectionStatus, ModelInfo, TokenUsage, SSEMessage } from "../types"
+import { ConnectionStatus, type ModelInfo, type TokenUsage, type SSEMessage } from "../types"
 import { SuperCodeSDKClient } from "../services/SuperCodeSDKClient"
 import { SuperCodeWebSocketClient } from "../services/SuperCodeWebSocketClient"
 import { standaloneConfig } from "../config/standalone"
+
+// Type definitions for task data
+interface TaskData {
+  messages?: Array<{
+    id: string
+    type: string
+    content: string
+    timestamp: number
+  }>
+  streamingUpdate?: string
+  [key: string]: any
+}
 
 // Type definitions for models and agents
 interface AvailableModel {
@@ -219,9 +234,15 @@ interface AvailableAgent {
 // Tab configuration
 const tabs = [
   { id: "prompt", name: "Prompt Generation", component: PromptGenerationTab },
-  { id: "plan", name: "Plan", component: PlanTab },
-  { id: "implement", name: "Implement", component: ImplementTab },
-  { id: "review", name: "Review", component: ReviewTab },
+  { id: "plan", name: "Plan", component: ComingSoonTab }, // Temporarily using ComingSoonTab, original PlanTab still imported
+  { id: "implement", name: "Implement", component: ComingSoonTab },
+  { id: "review", name: "Review", component: ComingSoonTab },
+  { id: "validate", name: "Validate", component: ComingSoonTab },
+  { id: "enhance", name: "Enhance", component: ComingSoonTab },
+  { id: "build", name: "Build", component: ComingSoonTab },
+  { id: "deploy", name: "Deploy", component: ComingSoonTab },
+  { id: "maintain", name: "Maintain", component: ComingSoonTab },
+  { id: "daemon", name: "Daemon", component: ComingSoonTab },
 ]
 
 // SDK Client instance
@@ -235,8 +256,8 @@ const activeTab = ref("prompt")
 const taskActive = ref(false)
 const taskDescription = ref("")
 const isLoading = ref(false)
-const currentTaskData = ref({})
-const connectionStatus = ref<ConnectionStatus>("disconnected")
+const currentTaskData = ref<TaskData>({})
+const connectionStatus = ref<ConnectionStatus>(ConnectionStatus.DISCONNECTED)
 const modelInfo = ref<ModelInfo | null>(null)
 const selectedPhase = ref<"phases" | "plan" | null>(null)
 const agentInfo = ref<{ name: string; description?: string; id?: string } | null>(null)
@@ -269,7 +290,7 @@ const indicatorStyle = computed(() => {
   }
 })
 
-const isConnected = computed(() => connectionStatus.value === "connected")
+const isConnected = computed(() => connectionStatus.value === ConnectionStatus.CONNECTED)
 const statusText = computed(() => {
   switch (connectionStatus.value) {
     case "connected":
@@ -286,7 +307,7 @@ const statusText = computed(() => {
 // SDK Client initialization
 async function initializeSDKClient() {
   console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
-  connectionStatus.value = "connecting"
+  connectionStatus.value = ConnectionStatus.CONNECTING
 
   // Initialize SDK client - use WebSocket if enabled in config
   if (standaloneConfig.useWebSocket) {
@@ -319,14 +340,14 @@ async function pollForConnection() {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       if (!sdkClient) {
-        connectionStatus.value = "error"
+        connectionStatus.value = ConnectionStatus.ERROR
         return
       }
 
       const isConnected = await sdkClient.testConnection()
 
       if (isConnected) {
-        connectionStatus.value = "connected"
+        connectionStatus.value = ConnectionStatus.CONNECTED
 
         // Subscribe to SSE events
         await sdkClient.subscribeToEvents()
@@ -354,7 +375,7 @@ async function pollForConnection() {
   }
 
   // All retries exhausted
-  connectionStatus.value = "error"
+  connectionStatus.value = ConnectionStatus.ERROR
   console.error("❌ Failed to connect after all retries")
 }
 
@@ -372,7 +393,7 @@ async function fetchModelInfo() {
       modelInfo.value = {
         name: modelData.name,
         provider: modelData.provider || "",
-        modelId: modelData.modelId,
+        modelId: modelData.modelId || modelData.name,
         version: modelData.version || "",
       }
     } else {
@@ -410,7 +431,7 @@ async function fetchAgentInfo() {
       agentInfo.value = {
         name: agentData.name,
         description: agentData.description || "",
-        id: agentData.id || "default",
+        id: agentData.id || agentData.name || "default",
       }
       console.log("✅ Agent info updated successfully:", agentInfo.value)
     } else {
@@ -651,7 +672,7 @@ function handleSSEMessage(message: SSEMessage) {
 
 function handleSSEError(error: Error) {
   console.error("❌ SSE error:", error)
-  connectionStatus.value = "error"
+  connectionStatus.value = ConnectionStatus.ERROR
 
   // Add error message to the task data if active
   if (taskActive.value && currentTaskData.value.messages) {
@@ -1095,6 +1116,45 @@ onUnmounted(() => {
 .nav-pill.active {
   color: white;
   background: var(--accent-color, #0066ff);
+}
+
+/* Alpha badge styling */
+.alpha-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  height: 16px;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ff6b35, #ff8c42);
+  color: white;
+  border-radius: 3px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  animation: pulse-glow 2s infinite;
+  position: relative;
+  top: -1px;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  }
+  50% {
+    box-shadow: 0 1px 6px rgba(255, 107, 53, 0.5), 0 0 10px rgba(255, 107, 53, 0.2);
+  }
+}
+
+.nav-pill.active .alpha-badge {
+  background: linear-gradient(135deg, #ff4500, #ff6347);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: none;
 }
 
 .header-actions {

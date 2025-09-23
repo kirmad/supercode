@@ -1,13 +1,14 @@
 <template>
   <div class="follow-up-input">
     <SectionHeader
-      v-if="showHeader"
+      v-if="showHeader && suggestions.length > 0"
       :title="headerTitle"
       :badge="suggestions.length"
       variant="minimal"
+      custom-class="compact-header"
     />
 
-    <div class="suggestions-container">
+    <div class="suggestions-container" v-if="suggestions.length > 0">
       <transition-group name="fade-slide">
         <button
           v-for="suggestion in suggestions"
@@ -15,6 +16,7 @@
           class="suggestion-chip"
           :class="{ 'active': selectedId === suggestion.id }"
           @click="handleSuggestionClick(suggestion)"
+          :title="suggestion.text"
         >
           <span v-if="suggestion.icon" class="chip-icon">{{ suggestion.icon }}</span>
           <span class="chip-text">{{ suggestion.text }}</span>
@@ -145,6 +147,7 @@ watch(customText, (newValue) => {
 </script>
 
 <style scoped>
+/* Compact and clean styling */
 .follow-up-input {
   width: 100%;
 }
@@ -152,125 +155,130 @@ watch(customText, (newValue) => {
 .suggestions-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
 }
 
+/* Compact suggestion chips */
 .suggestion-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.875rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 20px;
-  color: var(--text-primary);
-  font-size: 0.8rem;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   position: relative;
   overflow: hidden;
 }
 
-.suggestion-chip::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    transparent 50%,
-    transparent 100%
-  );
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
+/* Subtle hover effect */
 .suggestion-chip:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
-.suggestion-chip:hover::before {
-  opacity: 1;
-}
-
+/* Active state - minimal but clear */
 .suggestion-chip.active {
-  background: rgba(102, 126, 234, 0.1);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
 }
 
+.suggestion-chip.active .chip-icon {
+  color: #a78bfa;
+}
+
+/* Compact icon */
 .chip-icon {
-  font-size: 0.9rem;
-  opacity: 0.8;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
 }
 
+.suggestion-chip:hover .chip-icon {
+  opacity: 0.9;
+}
+
+/* Clean text */
 .chip-text {
-  max-width: 200px;
+  max-width: 150px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.01em;
 }
 
+/* Minimal badge */
 .chip-badge {
-  padding: 0.125rem 0.375rem;
-  background: rgba(102, 126, 234, 0.2);
-  border-radius: 8px;
-  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  background: rgba(139, 92, 246, 0.12);
+  border-radius: 6px;
+  font-size: 0.625rem;
   font-weight: 600;
-  color: var(--primary-color);
+  color: #a78bfa;
+  margin-left: 0.125rem;
 }
 
+/* Clean separator */
 .custom-input-container {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--glass-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-/* Animations */
+/* Smooth animations */
 .fade-slide-enter-active,
 .fade-slide-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translateY(-4px);
 }
 
 .fade-slide-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(4px);
 }
 
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
+/* Remove excessive effects for cleaner look */
+.suggestion-chip::before,
+.suggestion-chip::after {
+  display: none;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .suggestions-container {
+    gap: 0.25rem;
   }
-  100% {
-    transform: translateX(100%);
+
+  .suggestion-chip {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .chip-icon {
+    font-size: 0.75rem;
+  }
+
+  .chip-text {
+    max-width: 120px;
   }
 }
 
-.suggestion-chip:hover::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
-  animation: shimmer 0.6s ease-in-out;
+/* Compact header styling */
+:deep(.compact-header) {
+  margin-bottom: 0.5rem !important;
+  padding-bottom: 0.25rem !important;
 }
 </style>

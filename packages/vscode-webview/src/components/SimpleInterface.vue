@@ -14,7 +14,7 @@
             Simple
           </router-link>
           <router-link to="/workflow" class="nav-pill">
-            Workflow
+            Workflow <span class="alpha-badge">ALPHA</span>
           </router-link>
         </div>
       </div>
@@ -63,7 +63,7 @@
           <input 
             type="checkbox" 
             :checked="todo.status === 'completed'"
-            @change="updateTodoStatus(todo.id, $event.target.checked ? 'completed' : 'pending')"
+            @change="updateTodoStatus(todo.id, ($event.target as HTMLInputElement)?.checked ? 'completed' : 'pending')"
             class="todo-checkbox"
           />
           <span class="todo-status-icon">{{ getStatusIcon(todo.status) }}</span>
@@ -138,7 +138,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick, watch, onUnmounted } from 'vue'
-import type { Message, ConnectionStatus, WebviewMessage, StatusUpdate, AddMessage, ModelInfo, TokenUsage, SSEMessage } from '../types'
+import { ConnectionStatus, type Message, type WebviewMessage, type StatusUpdate, type ModelInfo, type TokenUsage, type SSEMessage } from '../types'
 import FooterBar from './shared/FooterBar.vue'
 import ModelSelector from './shared/ModelSelector.vue'
 import AgentSelector from './shared/AgentSelector.vue'
@@ -1426,7 +1426,7 @@ function parseTodoFromToolOutput(toolName: string, output: string, metadata?: an
 // SDK Client functions
 async function initializeSDKClient() {
   console.log(`🔄 Starting SDK client initialization on port ${currentPort.value}`)
-  connectionStatus.value = 'connecting'
+  connectionStatus.value = ConnectionStatus.CONNECTING
   
   // Initialize SDK client - use WebSocket if enabled in config
   if (standaloneConfig.useWebSocket) {
@@ -1460,7 +1460,7 @@ async function pollForConnection() {
     try {
       
       if (!sdkClient) {
-        connectionStatus.value = 'error'
+        connectionStatus.value = ConnectionStatus.ERROR
         return
       }
       
@@ -1468,7 +1468,7 @@ async function pollForConnection() {
       
       
       if (isConnected) {
-        connectionStatus.value = 'connected'
+        connectionStatus.value = ConnectionStatus.CONNECTED
         
         // Subscribe to SSE events
         await sdkClient.subscribeToEvents()
@@ -1498,7 +1498,7 @@ async function pollForConnection() {
   }
   
   // All attempts failed
-  connectionStatus.value = 'error'
+  connectionStatus.value = ConnectionStatus.ERROR
   addMessage('system', `Connection failed: SuperCode server not responding on port ${currentPort.value}`)
 }
 
@@ -1590,7 +1590,7 @@ function handleSSEMessage(message: SSEMessage) {
               status: part.state?.status || 'pending',
               input: part.state?.input,
               output: part.state?.output,
-              title: part.state?.title,
+              error: part.state?.error,
               metadata: part.state?.metadata
             }
           }
@@ -2279,6 +2279,45 @@ onUnmounted(() => {
 .nav-pill.active {
   color: white;
   background: var(--accent-color, #0066ff);
+}
+
+/* Alpha badge styling */
+.alpha-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  height: 16px;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ff6b35, #ff8c42);
+  color: white;
+  border-radius: 3px;
+  vertical-align: middle;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  animation: pulse-glow 2s infinite;
+  position: relative;
+  top: -1px;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 1px 3px rgba(255, 107, 53, 0.3);
+  }
+  50% {
+    box-shadow: 0 1px 6px rgba(255, 107, 53, 0.5), 0 0 10px rgba(255, 107, 53, 0.2);
+  }
+}
+
+.nav-pill.active .alpha-badge {
+  background: linear-gradient(135deg, #ff4500, #ff6347);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: none;
 }
 
 .status-info {
