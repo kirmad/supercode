@@ -71,11 +71,6 @@ const cli = yargs(hideBin(process.argv))
       version: Installation.VERSION,
       args: process.argv.slice(2),
     })
-
-    // Install seeds on first run (runs in background)
-    SeedInstaller.installSeedsOnce().catch((error) => {
-      Log.Default.warn("seed installation failed", { error: error.message })
-    })
   })
   .usage("\n" + UI.logo())
   .command(McpCommand)
