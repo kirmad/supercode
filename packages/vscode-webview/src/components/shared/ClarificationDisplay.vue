@@ -2,7 +2,7 @@
   <div class="clarification-display-container" :class="{ 'expanded': expanded }">
     <div class="clarification-header" @click="$emit('toggle-expand')">
       <div class="header-left">
-        <div v-if="showPulse && !reviewMode" class="pulse-dot"></div>
+        <div class="pulse-dot" :class="{ 'active': showPulse && !reviewMode && isProcessing }"></div>
         <h3 class="section-title">{{ title }}</h3>
         <span v-if="questions.length > 0" class="badge minimal">
           {{ answeredCount }}/{{ questions.length }}
@@ -371,37 +371,28 @@ watch(() => props.expanded, (newVal) => {
 /* Container styling matching ResearchItemsList */
 .clarification-display-container {
   width: 100%;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  overflow: hidden;
   transition: all 0.3s ease;
 }
 
 .clarification-display-container.expanded {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  /* Remove shadow for cleaner look */
 }
 
-/* Header styling */
+/* Header styling - match Research section */
 .clarification-header {
-  padding: 0.875rem 1.25rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.clarification-header:hover {
-  background: rgba(0, 0, 0, 0.4);
+  user-select: none;
+  transition: all 0.2s ease;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .pulse-dot {
@@ -425,13 +416,13 @@ watch(() => props.expanded, (newVal) => {
 }
 
 .badge.minimal {
-  padding: 0.125rem 0.5rem;
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  padding: 0.125rem 0.375rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 10px;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: #a78bfa;
+  color: var(--text-secondary);
 }
 
 .status-badge {
@@ -451,63 +442,63 @@ watch(() => props.expanded, (newVal) => {
 }
 
 .expand-button {
-  width: 24px;
-  height: 24px;
   background: transparent;
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0.25rem;
   transition: all 0.3s ease;
 }
 
-.expand-button:hover {
-  color: var(--text-primary);
+.expand-button svg {
+  transition: transform 0.3s ease;
 }
 
-.expand-button.rotated {
-  transform: rotate(-90deg);
+.expand-button.rotated svg {
+  transform: rotate(180deg);
 }
 
 /* Content area */
 .clarification-content {
-  padding: 1.25rem;
+  padding: 1rem;
+  padding-top: 0.75rem;
 }
 
 /* Progress indicator */
 .progress-indicator {
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  gap: 0.375rem;
+  margin-bottom: 1.25rem;
 }
 
 .progress-dot {
-  width: 8px;
-  height: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  width: 6px;
+  height: 6px;
+  background: var(--glass-border);
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 6px;
+  font-size: 5px;
   color: white;
+  opacity: 0.5;
 }
 
 .progress-dot.active {
-  width: 24px;
-  background: rgba(139, 92, 246, 0.3);
-  border-radius: 12px;
+  width: 20px;
+  background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+  border-radius: 10px;
+  opacity: 1;
 }
 
 .progress-dot.completed {
   background: #8b5cf6;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
+  opacity: 0.8;
 }
 
 /* Questions carousel */
@@ -527,63 +518,80 @@ watch(() => props.expanded, (newVal) => {
 }
 
 .question-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 1.5rem;
-  min-height: 280px;
+  background: transparent;
+  border: none;
+  padding: 0.75rem 0;
+  min-height: 240px;
   display: flex;
   flex-direction: column;
 }
 
 .question-header {
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 }
 
 .question-number {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
 }
 
 .question-text {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.5;
   margin-bottom: 1.5rem;
-  font-weight: 500;
+  font-weight: 400;
+  opacity: 0.95;
 }
 
 /* Answer options */
 .answer-options {
   display: flex;
   flex-direction: column;
-  gap: 0.625rem;
+  gap: 0.75rem;
 }
 
 .option-button {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  gap: 1rem;
+  padding: 0.875rem 1.125rem;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-align: left;
   color: var(--text-primary);
+  position: relative;
+  overflow: hidden;
 }
 
 .option-button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(139, 92, 246, 0.3);
   transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .option-button.selected {
   background: rgba(139, 92, 246, 0.1);
-  border-color: rgba(139, 92, 246, 0.3);
+  border-color: rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.15) inset;
+}
+
+.option-button.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #8b5cf6, #a78bfa);
 }
 
 .option-button:disabled {
@@ -592,28 +600,35 @@ watch(() => props.expanded, (newVal) => {
 }
 
 .option-letter {
-  width: 24px;
-  height: 24px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  display: flex;
+  min-width: 28px;
+  padding: 0.25rem 0.5rem;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  color: #a78bfa;
   flex-shrink: 0;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .option-button.selected .option-letter {
-  background: #8b5cf6;
-  border-color: #8b5cf6;
-  color: white;
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
 }
 
 .option-label {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
   flex: 1;
+  line-height: 1.4;
+  opacity: 0.95;
 }
 
 /* Text answer */

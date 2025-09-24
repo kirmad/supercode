@@ -2,7 +2,7 @@
   <div class="research-items-container" :class="{ 'expanded': expanded }">
     <div class="research-header" @click="$emit('toggle-expand')">
       <div class="header-left">
-        <div v-if="showPulse" class="pulse-dot"></div>
+        <div class="pulse-dot" :class="{ 'active': showPulse }"></div>
         <h3 class="section-title">{{ title }}</h3>
         <span v-if="items.length > 0" class="badge minimal">{{ items.length }}</span>
       </div>
@@ -154,7 +154,7 @@ defineExpose({
 .header-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .pulse-dot {
@@ -162,6 +162,10 @@ defineExpose({
   height: 8px;
   background: #10b981;
   border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pulse-dot.active {
   animation: pulse 2s infinite;
 }
 

@@ -34,22 +34,25 @@
         @blur="$emit('blur', $event)"
       />
 
-      <div v-if="showCharacterCount || showProgress" class="input-footer">
-        <div v-if="showProgress" class="char-indicator">
-          <div
-            class="char-progress"
-            :class="progressClass"
-            :style="{ width: progressPercentage + '%' }"
-          ></div>
+      <div v-if="showCharacterCount || showProgress || $slots['footer-actions']" class="input-footer">
+        <div class="footer-left">
+          <div v-if="showProgress" class="char-indicator">
+            <div
+              class="char-progress"
+              :class="progressClass"
+              :style="{ width: progressPercentage + '%' }"
+            ></div>
+          </div>
+          <span v-if="showCharacterCount" class="input-hint">
+            <template v-if="characterCount > 0">
+              {{ characterCount }}{{ maxLength ? `/${maxLength}` : '' }} {{ characterLabel }}
+            </template>
+            <template v-else>
+              {{ emptyHint }}
+            </template>
+          </span>
         </div>
-        <span v-if="showCharacterCount" class="input-hint">
-          <template v-if="characterCount > 0">
-            {{ characterCount }}{{ maxLength ? `/${maxLength}` : '' }} {{ characterLabel }}
-          </template>
-          <template v-else>
-            {{ emptyHint }}
-          </template>
-        </span>
+        <slot name="footer-actions"></slot>
       </div>
     </div>
 
@@ -275,6 +278,14 @@ input.character-input {
   justify-content: space-between;
   align-items: center;
   margin-top: 0.5rem;
+  gap: 0.75rem;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
 }
 
 .char-indicator {

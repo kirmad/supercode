@@ -1,22 +1,17 @@
 <template>
   <div class="source-manager">
     <!-- Header -->
-    <div class="source-header" @click="toggleExpanded">
-      <div class="header-content">
-        <button class="expand-toggle" :class="{ expanded }">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
+    <div class="source-header clean" @click="toggleExpanded">
+      <div class="header-left">
         <div class="header-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" opacity="0.7"/>
           </svg>
         </div>
-        <label class="header-label">Context Sources</label>
-        <span v-if="sources.length > 0" class="source-count">{{ sources.length }}</span>
+        <h3 class="section-title">Context Sources</h3>
+        <span v-if="sources.length > 0" class="badge minimal">{{ sources.length }}</span>
       </div>
-      <div class="header-actions">
+      <div class="header-right">
         <button
           v-if="sources.length > 0 && expanded"
           @click.stop="clearAllSources"
@@ -24,6 +19,11 @@
           title="Clear all sources"
         >
           Clear All
+        </button>
+        <button class="expand-button" :class="{ 'rotated': !expanded }" @click.stop="toggleExpanded">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -501,80 +501,97 @@ onMounted(async () => {
   gap: 0.75rem;
 }
 
+/* Clean header style matching Research section */
 .source-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--glass-border);
+  padding: 0.5rem;
   cursor: pointer;
   user-select: none;
-  transition: all 0.2s ease;
 }
 
-.source-header:hover {
-  background: var(--glass-hover);
-  border-radius: 6px;
-  padding: 0.5rem;
-  margin: -0.5rem;
-  margin-bottom: 0;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.header-content {
+.header-right {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.expand-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-  color: var(--text-secondary);
-}
-
-.expand-toggle.expanded {
-  transform: rotate(90deg);
-}
-
-.expand-toggle:hover {
-  color: var(--text-primary);
-}
-
-.header-icon {
-  opacity: 0.7;
-}
-
-.header-label {
-  font-size: 0.8rem;
+.section-title {
+  font-size: 0.875rem;
   font-weight: 600;
+  margin: 0;
   color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
-.source-count {
+.badge.minimal {
   padding: 0.125rem 0.375rem;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: 10px;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.expand-button {
+  background: transparent;
+  border: none;
   color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: all 0.3s ease;
+}
+
+.expand-button svg {
+  transition: transform 0.3s ease;
+}
+
+.expand-button.rotated svg {
+  transform: rotate(180deg);
+}
+
+.expand-button:hover {
+  color: var(--text-primary);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pulse-dot.active {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
 }
 
 .clear-button {
-  padding: 0.25rem 0.5rem;
+  padding: 0.2rem 0.4rem;
   background: transparent;
   border: 1px solid var(--glass-border);
   border-radius: 4px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
 }

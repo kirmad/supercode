@@ -35,28 +35,64 @@
           </ActionButton>
         </div>
       </div>
-      <CharacterLimitInput
-        v-model="initialPrompt"
-        placeholder="What would you like to create today?"
-        :disabled="isEnhancing"
-        :multiline="true"
-        :rows="3"
-        :max-length="500"
-        :show-progress="true"
-        @meta-enter="handleEnhance"
-        @ctrl-enter="handleEnhance"
-      />
+      <div class="enhanced-input-wrapper" :class="{ 'is-processing': isEnhancing }">
+        <CharacterLimitInput
+          v-model="initialPrompt"
+          placeholder="What would you like to create today?"
+          :disabled="isEnhancing"
+          :multiline="true"
+          :rows="3"
+          :max-length="500"
+          :show-progress="true"
+          :show-character-count="true"
+          @meta-enter="handleEnhance"
+          @ctrl-enter="handleEnhance"
+        >
+          <!-- Custom footer content slot -->
+          <template #footer-actions>
+            <div class="input-footer-actions">
+              <!-- Enhancement Trigger Button -->
+              <transition name="fade">
+                <button
+                  v-if="initialPrompt && !isEnhancing && !enhancedPrompt"
+                  @click="handleEnhance"
+                  class="footer-enhance-trigger"
+                  :title="`Transform with ${selectedCommand?.name || 'AI'} (${isMac ? 'Cmd' : 'Ctrl'} + Enter)`"
+                  type="button"
+                >
+                  <span v-if="selectedCommand && selectedCommand.id !== 'default'" class="trigger-icon custom-icon">
+                    {{ selectedCommand.icon }}
+                  </span>
+                  <svg v-else class="trigger-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </transition>
+
+              <!-- Processing Indicator -->
+              <transition name="fade">
+                <div v-if="isEnhancing" class="footer-processing-indicator">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" class="processing-spinner">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" opacity="0.9"/>
+                  </svg>
+                  <span class="processing-text">Enhancing...</span>
+                </div>
+              </transition>
+            </div>
+          </template>
+        </CharacterLimitInput>
+      </div>
     </GlassCard>
 
     <!-- Source Management Section -->
-    <GlassCard hoverable custom-class="sources-card">
+    <div class="section-container sources-section">
       <SourceManager
         ref="sourceManagerRef"
         v-model="sources"
         :credentials="adoCredentials"
         @sources-changed="handleSourcesChanged"
       />
-    </GlassCard>
+    </div>
 
     <!-- Modern Research Section -->
     <transition name="slide-fade">
@@ -64,6 +100,7 @@
         v-if="researchItems.length > 0"
         :items="researchItems"
         :expanded="researchExpanded"
+        :show-pulse="isEnhancing"
         @toggle-expand="researchExpanded = !researchExpanded"
       />
     </transition>
@@ -84,24 +121,29 @@
 
     <!-- Modern Enhanced Prompt Section -->
     <transition name="scale-fade">
-      <GlassCard v-if="enhancedPrompt" variant="premium" custom-class="enhanced-card" data-testid="enhanced-section">
-        <div class="enhanced-header modern">
-          <div class="header-content">
-            <div class="success-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <h3 class="section-title modern">Enhanced Specification</h3>
-            <div v-if="selectedCommand && selectedCommand.id !== 'default'" class="enhancement-style-badge">
+      <div v-if="enhancedPrompt" class="section-container enhanced-section" data-testid="enhanced-section">
+        <div class="section-header">
+          <div class="header-left">
+            <div class="pulse-dot" :class="{ 'active': true }"></div>
+            <h3 class="section-title">Enhanced Specification</h3>
+            <div v-if="selectedCommand && selectedCommand.id !== 'default'" class="badge minimal style-badge">
               <span class="badge-icon">{{ selectedCommand.icon }}</span>
               <span class="badge-label">{{ selectedCommand.name }}</span>
             </div>
           </div>
+          <div class="header-actions">
+            <button class="expand-button" @click="enhancedExpanded = !enhancedExpanded" :class="{ 'rotated': !enhancedExpanded }">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <!-- Modern Quick Actions -->
-        <div class="quick-actions modern">
+        <transition name="expand">
+          <div v-show="enhancedExpanded">
+            <!-- Modern Quick Actions -->
+            <div class="quick-actions modern">
           <ActionButton
             @click="copyEnhancedPrompt"
             variant="pill"
@@ -166,23 +208,25 @@
           </div>
         </div>
 
-        <div class="enhanced-footer modern">
-          <MetricGroup
-            :metrics="[
-              { value: enhancementCount, label: 'enhancements', format: 'number' },
-              { value: researchSourceCount, label: 'sources', format: 'number' },
-              { value: `+${contextAddedPercentage}%`, label: 'context', format: 'text' }
-            ]"
-            compact
-            show-dividers
-          />
-        </div>
-      </GlassCard>
+            <div class="enhanced-footer modern">
+              <MetricGroup
+                :metrics="[
+                  { value: enhancementCount, label: 'enhancements', format: 'number' },
+                  { value: researchSourceCount, label: 'sources', format: 'number' },
+                  { value: `+${contextAddedPercentage}%`, label: 'context', format: 'text' }
+                ]"
+                compact
+                show-dividers
+              />
+            </div>
+          </div>
+        </transition>
+      </div>
     </transition>
 
     <!-- Follow-up Suggestions Section -->
     <transition name="slide-fade">
-      <GlassCard v-if="enhancedPrompt && !isEnhancing" custom-class="follow-up-section">
+      <div v-if="enhancedPrompt && !isEnhancing" class="section-container follow-up-section">
         <FollowUpInput
           v-model="followUpSuggestion"
           :suggestions="followUpSuggestions"
@@ -190,57 +234,26 @@
           header-title="Follow-up Options"
           @submit="handleFollowUp"
         />
-      </GlassCard>
+      </div>
     </transition>
 
-    <!-- Modern Action Section -->
-    <div class="action-section modern">
-      <ActionButton
-        v-if="!enhancedPrompt && !isEnhancing"
-        @click="handleEnhance"
-        :disabled="!initialPrompt"
-        variant="primary"
-        size="large"
-        has-glow
-        custom-class="enhance-button-modern"
-        data-testid="enhance-button"
-      >
-        <template #icon>
-          <span v-if="selectedCommand && selectedCommand.id !== 'default'" style="margin-right: 0.25rem;">
-            {{ selectedCommand.icon }}
-          </span>
-          <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" opacity="0.9"/>
-          </svg>
-        </template>
-        {{ selectedCommand && selectedCommand.id !== 'default' ? `Enhance as ${selectedCommand.name}` : 'Enhance with AI' }}
-      </ActionButton>
-
-      <ActionButton
-        v-if="isEnhancing"
-        variant="primary"
-        size="large"
-        disabled
-        loading
-        custom-class="enhance-button-modern"
-      >
-        Processing...
-      </ActionButton>
-
-      <ActionButton
-        v-if="enhancedPrompt && !isEnhancing"
-        @click="startNewPrompt"
-        variant="secondary"
-        size="medium"
-      >
-        <template #icon>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M12 4V20M4 12H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </template>
-        New Prompt
-      </ActionButton>
-    </div>
+    <!-- Streamlined Action Section -->
+    <transition name="fade">
+      <div v-if="enhancedPrompt && !isEnhancing" class="action-section modern streamlined">
+        <ActionButton
+          @click="startNewPrompt"
+          variant="secondary"
+          size="medium"
+        >
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M12 4V20M4 12H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </template>
+          New Prompt
+        </ActionButton>
+      </div>
+    </transition>
 
     <!-- Modern Progress Indicator -->
     <transition name="fade">
@@ -280,6 +293,9 @@ import { CommandDiscoveryService, type EnhancementCommand } from '../../services
 
 // Types are imported from '../../types/prompt-generation'
 
+// Computed for platform detection
+const isMac = computed(() => navigator.platform.toUpperCase().indexOf('MAC') >= 0)
+
 // Props
 const props = defineProps<{
   modelValue?: any
@@ -311,6 +327,7 @@ const clarificationQuestions = ref<ClarificationQuestion[]>([])
 const clarificationAnswers = ref<ClarificationQuestion[]>([])
 const clarificationExpanded = ref(true)
 const clarificationsSubmitted = ref(false)
+const enhancedExpanded = ref(true)
 const progressPercentage = ref(0)
 const currentPhase = ref('')
 const processingTime = ref(0)
@@ -1025,47 +1042,7 @@ watch(() => props.taskData, (newData) => {
   z-index: 5;
 }
 
-/* Header Section */
-.header-section.modern {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--glass-border);
-  margin-bottom: 0.5rem;
-}
-
-.header-content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.header-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 10px;
-  color: white;
-}
-
-.tab-title.modern {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.tab-subtitle {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin: 0;
-  opacity: 0.8;
-}
+/* Clean, consistent section styling */
 
 /* Input Section */
 .input-header.modern {
@@ -1110,11 +1087,25 @@ watch(() => props.taskData, (newData) => {
 }
 
 /* Enhanced Section */
-.enhanced-header.modern {
+.section-header.enhanced-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-header.enhanced-header .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.badge.style-badge {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(116, 75, 162, 0.1));
+  border-color: rgba(102, 126, 234, 0.2);
+  color: var(--primary-color);
 }
 
 .enhancement-style-badge {
@@ -1155,7 +1146,8 @@ watch(() => props.taskData, (newData) => {
 .quick-actions.modern {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .success-icon {
@@ -1231,6 +1223,11 @@ watch(() => props.taskData, (newData) => {
   padding-top: 1rem;
 }
 
+.action-section.streamlined {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+}
+
 /* Utility Classes */
 .inline-stats {
   display: inline-flex;
@@ -1293,10 +1290,241 @@ watch(() => props.taskData, (newData) => {
   opacity: 0;
 }
 
-/* Source Management Card */
-.sources-card {
-  margin-bottom: 0.5rem;
+/* Section Containers - Clean, minimal style matching Research */
+.section-container {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.badge.minimal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
   background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge-icon {
+  font-size: 0.75rem;
+}
+
+.badge-label {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.expand-button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  transition: all 0.3s ease;
+}
+
+.expand-button svg {
+  transition: transform 0.3s ease;
+}
+
+.expand-button.rotated svg {
+  transform: rotate(180deg);
+}
+
+.expand-button:hover {
+  color: var(--text-primary);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pulse-dot.active {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+/* Enhanced section specific */
+.enhanced-section {
+  position: relative;
+}
+
+.enhanced-section .expand {
+  padding: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.enhanced-content-wrapper {
+  padding: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+/* Source Management Section */
+.sources-section {
+  /* Inherits from section-container */
+}
+
+/* Follow-up Section */
+.follow-up-section {
+  /* Inherits from section-container */
+}
+
+/* Enhanced Input Wrapper */
+.enhanced-input-wrapper {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.enhanced-input-wrapper :deep(.input-footer) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.enhanced-input-wrapper.is-processing {
+  pointer-events: none;
+}
+
+.enhanced-input-wrapper.is-processing :deep(.character-input) {
+  opacity: 0.6;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--primary-color);
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+  50% {
+    border-color: rgba(102, 126, 234, 0.6);
+    box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.05);
+  }
+}
+
+/* Input Footer Actions */
+.input-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Footer Enhancement Trigger */
+.footer-enhance-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  animation: fadeIn 0.2s ease;
+}
+
+.footer-enhance-trigger:hover {
+  background: rgba(102, 126, 234, 0.15);
+  border-color: rgba(102, 126, 234, 0.3);
+  transform: translateY(-1px);
+}
+
+.footer-enhance-trigger:active {
+  transform: translateY(0);
+}
+
+.trigger-icon {
+  color: rgba(102, 126, 234, 0.7);
+  transition: color 0.15s ease;
+}
+
+.trigger-icon.custom-icon {
+  font-size: 0.875rem;
+}
+
+.footer-enhance-trigger:hover .trigger-icon {
+  color: rgba(102, 126, 234, 0.9);
+}
+
+/* Footer Processing Indicator */
+.footer-processing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 2px 0;
+  animation: fadeIn 0.2s ease;
+}
+
+.processing-spinner {
+  animation: spin 1.5s linear infinite;
+  color: rgba(102, 126, 234, 0.7);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.processing-text {
+  font-size: 0.7rem;
+  color: rgba(102, 126, 234, 0.7);
+  font-weight: 500;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Visual Enhancements */
