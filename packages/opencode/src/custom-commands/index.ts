@@ -115,24 +115,36 @@ async function scanCommandsDirectory(dir: string, namespace?: string): Promise<C
 }
 
 /**
- * Loads all custom commands from global and project-specific directories
+ * Loads all custom commands from built-in defaults, global, and project-specific directories
  */
 export async function loadCustomCommands(projectPath?: string): Promise<CustomCommand[]> {
-  const commands: CustomCommand[] = []
-  
-  // Global commands directory
+  const commandMap = new Map<string, CustomCommand>() // To handle overrides
+
+  // Built-in default commands directory
+  const builtinDir = join(__dirname, '..', 'commands', 'defaults')
+  const builtinCommands = await scanCommandsDirectory(builtinDir)
+  for (const cmd of builtinCommands) {
+    commandMap.set(cmd.fullName, cmd)
+  }
+
+  // Global commands directory (overrides built-in)
   const globalDir = join(homedir(), '.config', 'supercode', 'commands')
   const globalCommands = await scanCommandsDirectory(globalDir)
-  commands.push(...globalCommands)
-  
-  // Project-specific commands directory
+  for (const cmd of globalCommands) {
+    commandMap.set(cmd.fullName, cmd) // Overrides built-in if exists
+  }
+
+  // Project-specific commands directory (overrides built-in and global)
   if (projectPath) {
     const projectDir = join(projectPath, '.opencode', 'commands')
     const projectCommands = await scanCommandsDirectory(projectDir)
-    commands.push(...projectCommands)
+    for (const cmd of projectCommands) {
+      commandMap.set(cmd.fullName, cmd) // Overrides global and built-in if exists
+    }
   }
-  
-  return commands
+
+  // Convert map back to array
+  return Array.from(commandMap.values())
 }
 
 /**

@@ -1,6 +1,6 @@
 ---
 description: Transform prompts into comprehensive, production-ready specifications
-outputStyle: prompt-enhancer
+output-style: "prompt-enhancer"
 ---
 
 You are a prompt enhancement specialist. Transform the user's prompt into a comprehensive specification that ensures successful implementation.
