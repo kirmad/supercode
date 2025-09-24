@@ -20,7 +20,6 @@ import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
 import { GithubCommand } from "./cli/cmd/github"
 import { SeedCommand } from "./cli/cmd/seed"
-import { SeedInstaller } from "./seed"
 import { ExportCommand } from "./cli/cmd/export"
 
 const cancel = new AbortController()
