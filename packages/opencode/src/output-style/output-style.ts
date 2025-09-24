@@ -35,6 +35,7 @@ export namespace OutputStyle {
   }
 
   const state = new Map<string, Info>()
+  let initialized = false
 
   async function loadCustomStyles() {
     // Clear non-built-in styles
@@ -44,33 +45,37 @@ export namespace OutputStyle {
       }
     }
 
-    // Check project-level custom outputs
-    const projectOutputDir = path.join(".opencode", "custom-outputs")
-    const projectMatches = await Filesystem.findUp(projectOutputDir, Instance.directory, Instance.worktree)
-    if (projectMatches.length > 0) {
-      const outputDir = projectMatches[0]
-      try {
-        const files = await Array.fromAsync(
-          new Bun.Glob("*.md").scan({
-            cwd: outputDir,
-            absolute: false,
-            onlyFiles: true,
-          })
-        )
-        for (const file of files) {
-          const name = path.basename(file, ".md")
-          if (!BUILT_IN_STYLES[name]) {
-            state.set(name, {
-              name,
-              description: `Custom output style from ${file}`,
-              builtIn: false,
-              promptFile: file,
+    // Try to check project-level custom outputs if context is available
+    try {
+      const projectOutputDir = path.join(".opencode", "custom-outputs")
+      const projectMatches = await Filesystem.findUp(projectOutputDir, Instance.directory, Instance.worktree)
+      if (projectMatches.length > 0) {
+        const outputDir = projectMatches[0]
+        try {
+          const files = await Array.fromAsync(
+            new Bun.Glob("*.md").scan({
+              cwd: outputDir,
+              absolute: false,
+              onlyFiles: true,
             })
+          )
+          for (const file of files) {
+            const name = path.basename(file, ".md")
+            if (!BUILT_IN_STYLES[name]) {
+              state.set(name, {
+                name,
+                description: `Custom output style from ${file}`,
+                builtIn: false,
+                promptFile: file,
+              })
+            }
           }
+        } catch (error) {
+          // Ignore errors loading custom styles
         }
-      } catch (error) {
-        // Ignore errors loading custom styles
       }
+    } catch (error) {
+      // Context not available yet, skip project-level styles
     }
 
     // Check global custom outputs
@@ -100,18 +105,20 @@ export namespace OutputStyle {
   }
 
   async function init() {
+    if (initialized) return
+
     // Load built-in styles
     for (const [key, value] of Object.entries(BUILT_IN_STYLES)) {
       state.set(key, value)
     }
     // Load custom styles
     await loadCustomStyles()
+    initialized = true
   }
 
-  // Initialize on module load
-  init()
-
   export async function get(name: string): Promise<Info | undefined> {
+    await init() // Ensure initialization
+
     // Special handling for default
     if (name === "default") {
       return {
@@ -127,6 +134,7 @@ export namespace OutputStyle {
   }
 
   export async function list(): Promise<Info[]> {
+    await init() // Ensure initialization
     await loadCustomStyles() // Refresh custom styles
 
     // Always include default as an available option
@@ -155,18 +163,23 @@ export namespace OutputStyle {
       return undefined
     }
 
-    const cwd = Instance.directory
-    const root = Instance.worktree
+    // Try to check project-level custom outputs if context is available
+    try {
+      const cwd = Instance.directory
+      const root = Instance.worktree
 
-    // Check project-level custom outputs first (even for built-in style names)
-    const projectOutputFile = path.join(".opencode", "custom-outputs", style.promptFile)
-    const projectMatches = await Filesystem.findUp(projectOutputFile, cwd, root)
-    if (projectMatches.length > 0) {
-      try {
-        return await Bun.file(projectMatches[0]).text()
-      } catch (error) {
-        // Fall through to next priority
+      // Check project-level custom outputs first (even for built-in style names)
+      const projectOutputFile = path.join(".opencode", "custom-outputs", style.promptFile)
+      const projectMatches = await Filesystem.findUp(projectOutputFile, cwd, root)
+      if (projectMatches.length > 0) {
+        try {
+          return await Bun.file(projectMatches[0]).text()
+        } catch (error) {
+          // Fall through to next priority
+        }
       }
+    } catch (error) {
+      // Context not available, skip project-level check
     }
 
     // Check global custom outputs second
