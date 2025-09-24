@@ -946,12 +946,8 @@ export namespace Session {
       }
     }
 
-    // Add MCP instructions for all models via concatenation
-    const { MCPInstructions } = await import("./mcp-instructions")
-    const mcpInstructions = await MCPInstructions.loadMCPInstructions(toolResolution)
-    if (mcpInstructions) {
-      system.push(mcpInstructions)
-    }
+    // MCP instructions temporarily disabled to fix compilation issue
+    // TODO: Re-enable with proper initialization checks
 
     // Add environment info for all models via concatenation
     system.push(...(await SystemPrompt.environment()))
