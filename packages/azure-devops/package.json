@@ -1,6 +1,6 @@
 {
   "name": "@supercode/azure-devops",
-  "version": "1.0.0",
+  "version": "0.6.48",
   "description": "Azure DevOps integration package for work items and pull requests",
   "main": "src/index.ts",
   "type": "module",
