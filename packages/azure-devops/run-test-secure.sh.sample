@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Sample secure test runner script
+# Copy this file to run-test-secure.sh and add your credentials
+# NEVER commit run-test-secure.sh to source control!
+
+# Set your Azure DevOps credentials here
+export AZURE_DEVOPS_PAT="your-personal-access-token"
+export AZURE_DEVOPS_ORG="your-organization"
+export AZURE_DEVOPS_PROJECT="your-project"
+
+# Optional: Set specific test configuration
+export TEST_WORK_ITEMS="workitem1,workitem2,workitem3"
+
+# Run tests
+echo "🔒 Running tests with secure credentials..."
+echo "Organization: $AZURE_DEVOPS_ORG"
+echo "Project: $AZURE_DEVOPS_PROJECT"
+echo ""
+
+# Run all tests
+bun test/index.ts
+
+# Or run specific test
+# bun test/suites/test-pr-details.ts

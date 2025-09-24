@@ -100,15 +100,21 @@ func (p *CustomCommandsProvider) GetChildEntries(query string) ([]CompletionSugg
 
 func (p *CustomCommandsProvider) loadCommands() []CommandInfo {
 	var allCommands []CommandInfo
-	commandMap := make(map[string]CommandInfo) // To handle overrides (project over global)
+	commandMap := make(map[string]CommandInfo) // To handle overrides (project over global over defaults)
 
-	// Load global commands first
+	// Load built-in default commands first
+	defaultCommands := p.loadCommandsFromDir(getBuiltInDefaultsDir())
+	for _, cmd := range defaultCommands {
+		commandMap[cmd.Name] = cmd
+	}
+
+	// Load global commands (these override defaults)
 	globalCommands := p.loadCommandsFromDir(getGlobalCommandsDir())
 	for _, cmd := range globalCommands {
 		commandMap[cmd.Name] = cmd
 	}
 
-	// Load project commands (these override global ones)
+	// Load project commands (these override global and defaults)
 	projectCommands := p.loadCommandsFromDir(getProjectCommandsDir())
 	for _, cmd := range projectCommands {
 		commandMap[cmd.Name] = cmd
@@ -120,6 +126,40 @@ func (p *CustomCommandsProvider) loadCommands() []CommandInfo {
 	}
 
 	return allCommands
+}
+
+func getBuiltInDefaultsDir() string {
+	// Get the executable path to find built-in defaults
+	execPath, err := os.Executable()
+	if err != nil {
+		slog.Debug("Failed to get executable path", "error", err)
+		return ""
+	}
+
+	// For development mode, check relative to the executable's directory
+	// In production, this will be packaged alongside the binary
+	execDir := filepath.Dir(execPath)
+
+	// Try multiple possible locations
+	// 1. Development mode: relative to package location
+	devPath := filepath.Join(execDir, "..", "..", "packages", "opencode", "src", "commands", "defaults")
+	if _, err := os.Stat(devPath); err == nil {
+		return devPath
+	}
+
+	// 2. Production mode: packaged alongside binary
+	prodPath := filepath.Join(execDir, "commands", "defaults")
+	if _, err := os.Stat(prodPath); err == nil {
+		return prodPath
+	}
+
+	// 3. Alternative production mode: in share directory
+	sharePath := filepath.Join(execDir, "..", "share", "opencode", "commands", "defaults")
+	if _, err := os.Stat(sharePath); err == nil {
+		return sharePath
+	}
+
+	return ""
 }
 
 func getGlobalCommandsDir() string {

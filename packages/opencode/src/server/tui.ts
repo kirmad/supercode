@@ -22,6 +22,28 @@ export async function callTui(ctx: Context) {
   return response.next()
 }
 
+// Helper function to send notifications to TUI without HTTP context
+export async function sendToTUI(path: string, body: any = {}) {
+  request.push({
+    path,
+    body,
+  })
+  return response.next()
+}
+
+// Helper function to get the current output style from TUI
+export async function getTUIOutputStyle(): Promise<string | undefined> {
+  try {
+    const result = await sendToTUI("/tui/get-output-style")
+    if (result && typeof result === "object" && "styleName" in result) {
+      return result.styleName as string
+    }
+  } catch (err) {
+    // Silently fail if TUI is not available
+  }
+  return undefined
+}
+
 export const TuiRoute = new Hono()
   .get("/next", async (c) => {
     const req = await request.next()

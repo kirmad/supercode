@@ -67,11 +67,12 @@ func (r CommandRegistry) Sorted() []Command {
 	slices.SortFunc(commands, func(a, b Command) int {
 		// Priority order: session_new, session_share, model_list, agent_list, app_help first, app_exit last
 		priorityOrder := map[CommandName]int{
-			SessionNewCommand:   0,
-			AppHelpCommand:      1,
-			SessionShareCommand: 2,
-			ModelListCommand:    3,
-			AgentListCommand:    4,
+			SessionNewCommand:      0,
+			AppHelpCommand:         1,
+			SessionShareCommand:    2,
+			ModelListCommand:       3,
+			AgentListCommand:       4,
+			OutputStyleListCommand: 5,
 		}
 
 		aPriority, aHasPriority := priorityOrder[a.Name]
@@ -136,6 +137,7 @@ const (
 	ThinkingBlocksCommand           CommandName = "thinking_blocks"
 	ModelListCommand                CommandName = "model_list"
 	AgentListCommand                CommandName = "agent_list"
+	OutputStyleListCommand          CommandName = "output_style_list"
 	ModelCycleRecentCommand         CommandName = "model_cycle_recent"
 	ThemeListCommand                CommandName = "theme_list"
 	FileListCommand                 CommandName = "file_list"
@@ -277,6 +279,12 @@ func LoadFromConfig(config *opencode.Config, customCommands []opencode.Command) 
 			Description: "list models",
 			Keybindings: parseBindings("<leader>m"),
 			Trigger:     []string{"models"},
+		},
+		{
+			Name:        OutputStyleListCommand,
+			Description: "list output styles",
+			Keybindings: parseBindings("<leader>o"),
+			Trigger:     []string{"styles", "output"},
 		},
 		{
 			Name:        ModelCycleRecentCommand,

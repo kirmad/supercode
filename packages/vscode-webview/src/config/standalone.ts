@@ -2,7 +2,7 @@
 
 export function getServerPort(): number {
   // Check if we're in standalone mode
-  if (import.meta.env.VITE_STANDALONE === true || import.meta.env.VITE_STANDALONE === 'true') {
+  if (import.meta.env.VITE_STANDALONE === 'true') {
     // Use the configured server port for standalone mode
     const port = import.meta.env.VITE_SERVER_PORT
     return typeof port === 'string' ? parseInt(port, 10) : 8881
@@ -13,7 +13,7 @@ export function getServerPort(): number {
 }
 
 export function isStandaloneMode(): boolean {
-  return import.meta.env.VITE_STANDALONE === true || import.meta.env.VITE_STANDALONE === 'true'
+  return import.meta.env.VITE_STANDALONE === 'true'
 }
 
 export const standaloneConfig = {

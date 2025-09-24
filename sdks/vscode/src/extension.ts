@@ -3,6 +3,7 @@ import { registerOpenStaticWebviewCommand } from "./commands/openStaticWebview";
 import { tuiManager } from "./utils/tuiInstanceManager";
 import { SuperCodeInstanceStatic } from "./webview/SuperCodeInstanceStatic";
 import { scanDynamicCommands, watchDynamicCommands, DynamicCommand } from "./utils/dynamicCommands";
+import { ADOSettingsService } from "./services/adoSettingsService";
 
 const TERMINAL_NAME = "supercode";
 
@@ -181,9 +182,42 @@ export function activate(context: vscode.ExtensionContext) {
     await showDynamicCommandsPickerForFiles(selectedUris);
   });
 
+  // Register ADO workspace config commands
+  let createADOWorkspaceConfigDisposable = vscode.commands.registerCommand("supercode.createADOWorkspaceConfig", async () => {
+    try {
+      await ADOSettingsService.getInstance().createSampleWorkspaceConfig();
+    } catch (error) {
+      vscode.window.showErrorMessage(`Failed to create ADO config: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  });
+
+  let openADOWorkspaceConfigDisposable = vscode.commands.registerCommand("supercode.openADOWorkspaceConfig", async () => {
+    const configPath = ADOSettingsService.getInstance().getWorkspaceConfigPath();
+    if (!configPath) {
+      vscode.window.showErrorMessage('No workspace folder found');
+      return;
+    }
+
+    const fs = require('fs');
+    if (!fs.existsSync(configPath)) {
+      const create = await vscode.window.showInformationMessage(
+        'ADO workspace config file does not exist. Create it?',
+        'Create',
+        'Cancel'
+      );
+      if (create === 'Create') {
+        await vscode.commands.executeCommand('supercode.createADOWorkspaceConfig');
+      }
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(configPath);
+    await vscode.window.showTextDocument(document);
+  });
+
   context.subscriptions.push(
-    openTerminalDisposable, 
-    openNewTerminalDisposable, 
+    openTerminalDisposable,
+    openNewTerminalDisposable,
     addFilepathDisposable,
     explainSelectionDisposable,
     refactorSelectionDisposable,
@@ -207,7 +241,9 @@ export function activate(context: vscode.ExtensionContext) {
     reviewFileSecurityDisposable,
     reviewFileDesignDisposable,
     reviewFileDefensiveDisposable,
-    showDynamicCommandsForFileDisposable
+    showDynamicCommandsForFileDisposable,
+    createADOWorkspaceConfigDisposable,
+    openADOWorkspaceConfigDisposable
   );
 
   async function handleSelectionCommand(action: string) {

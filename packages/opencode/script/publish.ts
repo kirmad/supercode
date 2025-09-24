@@ -54,6 +54,8 @@ for (const [os, arch] of targets) {
   await $`cp -r ./src/server/templates ./dist/${name}/templates`
   // Copy static assets folder to platform package
   await $`cp -r ./src/server/static ./dist/${name}/static`
+  // Copy default commands folder to platform package
+  await $`cp -r ./src/commands/defaults ./dist/${name}/defaults`
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

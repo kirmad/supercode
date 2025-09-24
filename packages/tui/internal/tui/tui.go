@@ -731,6 +731,17 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.Provider.Name,
 			msg.Model.Name,
 		))
+	case app.OutputStyleSelectedMsg:
+		// Update the local app state
+		a.app.OutputStyle = msg.StyleName
+
+		// Save the output style via API
+		cmds = append(cmds, api.SetOutputStyle(
+			context.Background(),
+			a.app.Client,
+			msg.StyleName,
+		))
+		cmds = append(cmds, toast.NewSuccessToast(fmt.Sprintf("Output style set to %s", msg.StyleName)))
 	case app.AgentSelectedMsg:
 		updated, cmd := a.app.SwitchToAgent(msg.AgentName)
 		a.app = updated
@@ -834,6 +845,25 @@ func (a Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			updated, cmd := a.executeCommand(commands.Command(command))
 			a = updated.(Model)
 			cmds = append(cmds, cmd)
+		case "/tui/update-output-style":
+			var body struct {
+				StyleName string `json:"styleName"`
+			}
+			json.Unmarshal((msg.Body), &body)
+			// Update the output style in TUI
+			a.app.OutputStyle = body.StyleName
+			// Send the OutputStyleSelectedMsg to update UI components
+			cmd := util.CmdHandler(app.OutputStyleSelectedMsg{
+				StyleName: body.StyleName,
+			})
+			cmds = append(cmds, cmd)
+		case "/tui/get-output-style":
+			// Return the current output style
+			response = struct {
+				StyleName string `json:"styleName"`
+			}{
+				StyleName: a.app.OutputStyle,
+			}
 		case "/tui/show-toast":
 			var body struct {
 				Title   string `json:"title,omitempty"`
@@ -1588,6 +1618,10 @@ func (a Model) executeCommand(command commands.Command) (tea.Model, tea.Cmd) {
 	case commands.ModelListCommand:
 		modelDialog := dialog.NewModelDialog(a.app)
 		a.modal = modelDialog
+
+	case commands.OutputStyleListCommand:
+		outputStyleDialog := dialog.NewOutputStyleDialog(a.app)
+		a.modal = outputStyleDialog
 
 	case commands.MCPListCommand:
 		mcpDialog := dialog.NewMCPDialog(a.app)

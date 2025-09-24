@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig(({ mode }) => {
+  // Load environment variables with any prefix (not just VITE_)
   const env = loadEnv(mode, process.cwd(), '')
   const isStandalone = mode === 'standalone'
   
@@ -13,7 +14,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     server: isStandalone ? {
-      port: 3000,
+      port: 5000,
       open: true
     } : undefined,
     build: {
@@ -49,11 +50,19 @@ export default defineConfig(({ mode }) => {
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
       // Define process.env for webview compatibility
       'process.env.NODE_ENV': JSON.stringify('production'),
-      'process.env': JSON.stringify({}),
+      'process.env': JSON.stringify({
+        AZURE_DEVOPS_ORG: env.AZURE_DEVOPS_ORG || '',
+        AZURE_DEVOPS_PROJECT: env.AZURE_DEVOPS_PROJECT || '',
+        AZURE_DEVOPS_PAT: env.AZURE_DEVOPS_PAT || ''
+      }),
+      // Add Azure DevOps credentials as VITE_ prefixed variables
+      'import.meta.env.VITE_AZURE_DEVOPS_ORG': JSON.stringify(env.AZURE_DEVOPS_ORG || ''),
+      'import.meta.env.VITE_AZURE_DEVOPS_PROJECT': JSON.stringify(env.AZURE_DEVOPS_PROJECT || ''),
+      'import.meta.env.VITE_AZURE_DEVOPS_PAT': JSON.stringify(env.AZURE_DEVOPS_PAT || ''),
       // Add standalone mode variables
       ...(isStandalone ? {
         'import.meta.env.VITE_STANDALONE': JSON.stringify(true),
-        'import.meta.env.VITE_SERVER_PORT': JSON.stringify(8881)
+        'import.meta.env.VITE_SERVER_PORT': JSON.stringify(5000)
       } : {})
     }
   }

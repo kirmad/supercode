@@ -6,6 +6,7 @@ import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
 import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
+import { OutputStyleCommand } from "./cli/cmd/output-style"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
@@ -72,7 +73,7 @@ const cli = yargs(hideBin(process.argv))
     })
 
     // Install seeds on first run (runs in background)
-    SeedInstaller.installSeedsOnce().catch(error => {
+    SeedInstaller.installSeedsOnce().catch((error) => {
       Log.Default.warn("seed installation failed", { error: error.message })
     })
   })
@@ -84,6 +85,7 @@ const cli = yargs(hideBin(process.argv))
   .command(DebugCommand)
   .command(AuthCommand)
   .command(AgentCommand)
+  .command(OutputStyleCommand)
   .command(UpgradeCommand)
   .command(ServeCommand)
   .command(ModelsCommand)

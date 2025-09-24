@@ -1,0 +1,17 @@
+{
+  "$schema": "./ado-config.schema.json",
+  "organization": "your-organization",
+  "project": "your-project",
+  "repository": "your-repo-name",
+  "defaultPullRequestBuildId": null,
+  "workItemDefaults": {
+    "areaPath": null,
+    "iterationPath": null,
+    "assignedTo": null
+  },
+  "pullRequestDefaults": {
+    "targetBranch": "main",
+    "autoComplete": false,
+    "deleteSourceBranch": false
+  }
+}

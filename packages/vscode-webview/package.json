@@ -15,13 +15,22 @@
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "test:ws": "jest test/websocket-puppeteer.test.ts",
-    "test:ws:headless": "HEADLESS=true jest test/websocket-puppeteer.test.ts"
+    "test:ws:headless": "HEADLESS=true jest test/websocket-puppeteer.test.ts",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:prompt": "playwright test prompt-generation",
+    "test:report": "playwright show-report"
   },
   "dependencies": {
     "vue": "^3.5.0",
-    "@kirmad/supercode-sdk": "latest"
+    "vue-router": "^4.5.0",
+    "@kirmad/supercode-sdk": "latest",
+    "@supercode/azure-devops": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.40.0",
     "@types/jest": "^29.5.0",
     "@types/puppeteer": "^7.0.0",
     "@vitejs/plugin-vue": "^5.2.0",

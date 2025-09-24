@@ -9,6 +9,7 @@ export interface Message {
 export interface ModelInfo {
   name: string
   provider: string
+  modelId?: string
   version?: string
 }
 
@@ -57,6 +58,14 @@ export interface StatusConfig {
   dot: string
   text: string
   enabled: boolean
+}
+
+export interface SSEMessage {
+  type: string
+  content?: string
+  tool?: string
+  output?: any
+  [key: string]: any
 }
 
 declare global {

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Research Filtering</title>
+  <style>
+    body {
+      font-family: 'SF Pro Display', system-ui, -apple-system, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .test-section {
+      background: #242424;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .test-button {
+      background: #0066ff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    .test-button:hover {
+      background: #0052cc;
+    }
+    .result {
+      margin: 10px 0;
+      padding: 10px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .passed {
+      border-color: #22c55e;
+      color: #22c55e;
+    }
+    .failed {
+      border-color: #ff6666;
+      color: #ff6666;
+    }
+    .research-item {
+      padding: 8px;
+      margin: 5px 0;
+      background: #242424;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    .filtered-out {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔬 Test Research Filtering</h1>
+
+    <div class="test-section">
+      <h3>Test Cases</h3>
+      <button class="test-button" onclick="testInstructionFiltering()">Test Instruction Filtering</button>
+      <button class="test-button" onclick="testRealResearchPassing()">Test Real Research Passing</button>
+      <button class="test-button" onclick="testEdgeCases()">Test Edge Cases</button>
+      <button class="test-button" onclick="runAllTests()">Run All Tests</button>
+      <div id="testResults"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>Research Items (Live Test)</h3>
+      <div id="researchItems"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import the service
+    import { PromptEnhancementService } from '/src/services/PromptEnhancementService.ts';
+    import { SuperCodeWebSocketClient } from '/src/services/SuperCodeWebSocketClient.ts';
+
+    window.testInstructionFiltering = async function() {
+      const resultsDiv = document.getElementById('testResults');
+      resultsDiv.innerHTML = '<h4>Testing Instruction Filtering...</h4>';
+
+      // Test cases that should be filtered OUT
+      const instructionExamples = [
+        '<research-update type="analysis|pattern|requirement|best-practice" priority="high|medium|low">Example instruction</research-update>',
+        '<research-update type="analysis" priority="high">high|medium|low</research-update>',
+        '<research-update type="pattern" priority="medium">Send each finding immediately</research-update>',
+        '<research-update type="requirement" priority="low">Short</research-update>', // Less than 20 chars
+        '<research-update type="best-practice" priority="high">tags IMMEDIATELY</research-update>',
+      ];
+
+      const wsClient = new SuperCodeWebSocketClient();
+      const service = new PromptEnhancementService(wsClient);
+
+      let filtered = 0;
+      let total = instructionExamples.length;
+
+      service.onResearchUpdate = (items) => {
+        // Should not be called for instruction examples
+        filtered--;
+      };
+
+      for (const example of instructionExamples) {
+        const initialCount = service.researchItems.length;
+        service.processStreamingResearch(example);
+        if (service.researchItems.length === initialCount) {
+          filtered++;
+          resultsDiv.innerHTML += `<div class="result passed">✅ Filtered: ${example.substring(0, 50)}...</div>`;
+        } else {
+          resultsDiv.innerHTML += `<div class="result failed">❌ Not filtered: ${example.substring(0, 50)}...</div>`;
+        }
+      }
+
+      resultsDiv.innerHTML += `<div class="result ${filtered === total ? 'passed' : 'failed'}">
+        ${filtered === total ? '✅' : '❌'} Filtered ${filtered}/${total} instruction examples
+      </div>`;
+    };
+
+    window.testRealResearchPassing = async function() {
+      const resultsDiv = document.getElementById('testResults');
+      resultsDiv.innerHTML = '<h4>Testing Real Research Passing...</h4>';
+
+      // Test cases that should PASS through
+      const realResearch = [
+        '<research-update type="analysis" priority="high">Found comprehensive status management patterns in ImplementTab.vue</research-update>',
+        '<research-update type="pattern" priority="medium">Repository pattern would be suitable for data access layer implementation</research-update>',
+        '<research-update type="requirement" priority="high">Need to implement user authentication and authorization with proper session management</research-update>',
+        '<research-update type="best-practice" priority="low">Use connection pooling for WebSockets to improve performance</research-update>',
+      ];
+
+      const wsClient = new SuperCodeWebSocketClient();
+      const service = new PromptEnhancementService(wsClient);
+
+      let passed = 0;
+      let total = realResearch.length;
+
+      for (const example of realResearch) {
+        const initialCount = service.researchItems.length;
+        service.processStreamingResearch(example);
+        if (service.researchItems.length > initialCount) {
+          passed++;
+          resultsDiv.innerHTML += `<div class="result passed">✅ Passed: ${example.substring(0, 50)}...</div>`;
+        } else {
+          resultsDiv.innerHTML += `<div class="result failed">❌ Blocked: ${example.substring(0, 50)}...</div>`;
+        }
+      }
+
+      resultsDiv.innerHTML += `<div class="result ${passed === total ? 'passed' : 'failed'}">
+        ${passed === total ? '✅' : '❌'} Passed ${passed}/${total} real research items
+      </div>`;
+    };
+
+    window.testEdgeCases = async function() {
+      const resultsDiv = document.getElementById('testResults');
+      resultsDiv.innerHTML = '<h4>Testing Edge Cases...</h4>';
+
+      const wsClient = new SuperCodeWebSocketClient();
+      const service = new PromptEnhancementService(wsClient);
+
+      // Test duplicate handling
+      const duplicate = '<research-update type="analysis" priority="high">This is a duplicate test message for deduplication</research-update>';
+      service.processStreamingResearch(duplicate);
+      const count1 = service.researchItems.length;
+      service.processStreamingResearch(duplicate); // Send again
+      const count2 = service.researchItems.length;
+
+      if (count1 === count2) {
+        resultsDiv.innerHTML += '<div class="result passed">✅ Duplicate handling works</div>';
+      } else {
+        resultsDiv.innerHTML += '<div class="result failed">❌ Duplicate not filtered</div>';
+      }
+
+      // Test empty content
+      service.processStreamingResearch('');
+      resultsDiv.innerHTML += '<div class="result passed">✅ Empty content handled</div>';
+
+      // Test malformed XML
+      service.processStreamingResearch('<research-update>No attributes</research-update>');
+      resultsDiv.innerHTML += '<div class="result passed">✅ Malformed XML handled</div>';
+    };
+
+    window.runAllTests = async function() {
+      await window.testInstructionFiltering();
+      await window.testRealResearchPassing();
+      await window.testEdgeCases();
+    };
+
+    // Auto-run tests on load
+    window.addEventListener('load', () => {
+      window.runAllTests();
+    });
+  </script>
+</body>
+</html>

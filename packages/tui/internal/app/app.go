@@ -47,6 +47,7 @@ type App struct {
 	InitialPrompt     *string
 	InitialAgent      *string
 	InitialSession    *string
+	OutputStyle       string
 	compactCancel     context.CancelFunc
 	IsLeaderSequence  bool
 	IsBashMode        bool
@@ -76,6 +77,10 @@ type ModelSelectedMsg struct {
 
 type AgentSelectedMsg struct {
 	AgentName string
+}
+
+type OutputStyleSelectedMsg struct {
+	StyleName string
 }
 
 type SessionClearedMsg struct{}
@@ -209,6 +214,7 @@ func New(
 		InitialPrompt:  initialPrompt,
 		InitialAgent:   initialAgent,
 		InitialSession: initialSession,
+		OutputStyle:    "default", // Initialize with default, will be fetched from server
 		ScrollSpeed:    int(configInfo.Tui.ScrollSpeed),
 	}
 

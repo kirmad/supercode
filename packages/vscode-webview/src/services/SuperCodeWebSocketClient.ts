@@ -442,25 +442,29 @@ export class SuperCodeWebSocketClient {
   /**
    * Get current model/provider information
    */
-  async getCurrentModel(): Promise<{ name: string; provider: string; version?: string }> {
+  async getCurrentModel(): Promise<{ name: string; provider: string; modelId?: string; version?: string }> {
     try {
       await this.ensureConnected();
       const modelData = await this.wsClient.request('GET', '/tui/get-model');
-      
+
       if (modelData && ((modelData as any).modelName || (modelData as any).modelID)) {
         const modelName = (modelData as any).modelName || (modelData as any).modelID || 'Unknown Model';
         const providerName = (modelData as any).providerName || (modelData as any).providerID || 'Unknown Provider';
-        
+        const modelId = (modelData as any).modelID || undefined;
+        const providerId = (modelData as any).providerID || undefined;
+
         return {
           name: modelName,
-          provider: providerName,
+          provider: providerId || providerName,
+          modelId: modelId,
           version: ''
         };
       }
-      
+
       return {
         name: 'Model Unavailable',
         provider: '',
+        modelId: undefined,
         version: ''
       };
     } catch (error) {
@@ -468,6 +472,7 @@ export class SuperCodeWebSocketClient {
       return {
         name: 'Model Unavailable',
         provider: '',
+        modelId: undefined,
         version: ''
       };
     }
@@ -573,6 +578,115 @@ export class SuperCodeWebSocketClient {
     } catch (error) {
       console.error('Failed to set agent:', error);
       throw new Error(`Failed to set agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get current output style
+   */
+  async getCurrentOutputStyle(): Promise<{ name: string; description?: string }> {
+    try {
+      await this.ensureConnected();
+      console.log('🎨 Fetching current output style via WebSocket...');
+
+      const styleData = await this.wsClient.request('GET', '/tui/get-output-style');
+      console.log('📋 Output style data from WebSocket:', styleData);
+
+      if (styleData && (styleData as any).styleName) {
+        const styleName = (styleData as any).styleName || 'default';
+
+        // Map style names to descriptions
+        const styleDescriptions: Record<string, string> = {
+          'default': 'Concise and direct responses',
+          'explanatory': 'Educational insights with helpful explanations',
+          'learning': 'Learning-focused with detailed explanations'
+        };
+
+        const result = {
+          name: styleName,
+          description: styleDescriptions[styleName] || ''
+        };
+
+        console.log('✅ Output style info retrieved:', result);
+        return result;
+      }
+
+      console.warn('⚠️ No valid output style found in response:', styleData);
+      return {
+        name: 'default',
+        description: 'Concise and direct responses'
+      };
+    } catch (error) {
+      console.error('❌ Failed to get current output style:', error);
+      return {
+        name: 'default',
+        description: 'Concise and direct responses'
+      };
+    }
+  }
+
+  /**
+   * Set current output style
+   */
+  async setOutputStyle(styleName: string): Promise<boolean> {
+    try {
+      await this.ensureConnected();
+      console.log('🎨 Setting output style via WebSocket:', styleName);
+
+      const result = await this.wsClient.request('POST', '/tui/update-output-style', {
+        body: {
+          styleName,
+        }
+      });
+
+      console.log('📋 Set output style result:', result);
+      return result === true || (result as any).success === true;
+    } catch (error) {
+      console.error('Failed to set output style:', error);
+      throw new Error(`Failed to set output style: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get available output styles
+   */
+  async getAvailableOutputStyles(): Promise<Array<{ id: string; name: string; description: string }>> {
+    try {
+      await this.ensureConnected();
+      console.log('🎨 Fetching available output styles...');
+
+      // Since there's no dedicated endpoint for available styles, return the hardcoded list
+      // This matches the styles available in the OpenCode system
+      const styles = [
+        {
+          id: 'default',
+          name: 'Default',
+          description: 'Concise and direct responses'
+        },
+        {
+          id: 'explanatory',
+          name: 'Explanatory',
+          description: 'Educational insights with helpful explanations'
+        },
+        {
+          id: 'learning',
+          name: 'Learning',
+          description: 'Learning-focused with detailed explanations'
+        }
+      ];
+
+      console.log('✅ Available output styles:', styles);
+      return styles;
+    } catch (error) {
+      console.error('❌ Failed to get available output styles:', error);
+      // Return default styles even on error
+      return [
+        {
+          id: 'default',
+          name: 'Default',
+          description: 'Concise and direct responses'
+        }
+      ];
     }
   }
 

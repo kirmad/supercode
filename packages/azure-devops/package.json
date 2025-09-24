@@ -1,0 +1,23 @@
+{
+  "name": "@supercode/azure-devops",
+  "version": "1.0.0",
+  "description": "Azure DevOps integration package for work items and pull requests",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test/index.ts",
+    "test:pr": "bun test/index.ts pr-details",
+    "test:context": "bun test/index.ts work-item-context",
+    "test:prompts": "bun test/index.ts generate-prompts",
+    "test:build": "bun test/index.ts build-client",
+    "test:clean": "rm -rf test-artifacts/*",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

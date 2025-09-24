@@ -1,4 +1,3 @@
-import { Ripgrep } from "../file/ripgrep"
 import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
 import { Config } from "../config/config"
@@ -6,8 +5,10 @@ import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import path from "path"
 import os from "os"
+import { $ } from "bun"
 
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
+import PROMPT_ANTHROPIC_STYLED from "./prompt/anthropic-styled.txt"
 import PROMPT_ANTHROPIC_WITHOUT_TODO from "./prompt/qwen.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
@@ -27,6 +28,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 // Built-in prompt mapping
 const BUILT_IN_PROMPTS = {
   "anthropic.txt": PROMPT_ANTHROPIC,
+  "anthropic-styled.txt": PROMPT_ANTHROPIC_STYLED,
   "qwen.txt": PROMPT_ANTHROPIC_WITHOUT_TODO,
   "beast.txt": PROMPT_BEAST,
   "gemini.txt": PROMPT_GEMINI,
@@ -89,43 +91,140 @@ export namespace SystemPrompt {
     throw new Error(`Unknown prompt file: ${filename}`)
   }
 
-  export async function header(providerID: string) {
-    if (providerID.includes("anthropic")) {
+  export async function header(modelID: string) {
+    // Check for specific Anthropic models (Sonnet or Opus)
+    if (modelID.includes("sonnet") || modelID.includes("opus")) {
       const prompt = await SystemPrompt.loadPrompt("anthropic_spoof.txt")
       return [prompt.trim()]
     }
     return []
   }
 
-  export async function provider(modelID: string) {
-    if (modelID.includes("gpt-5")) return [await SystemPrompt.loadPrompt("codex.txt")]
-    if (modelID.includes("gpt-") || modelID.includes("o1") || modelID.includes("o3")) return [await SystemPrompt.loadPrompt("beast.txt")]
-    if (modelID.includes("gemini-")) return [await SystemPrompt.loadPrompt("gemini.txt")]
-    if (modelID.includes("claude")) return [await SystemPrompt.loadPrompt("anthropic.txt")]
-    return [await SystemPrompt.loadPrompt("qwen.txt")]
+  /**
+   * Replace template placeholders in prompt text
+   */
+  async function processTemplate(prompt: string): Promise<string> {
+    // Currently no template processing needed
+    // All dynamic content is added via concatenation
+    return prompt
+  }
+
+  export async function provider(modelID: string, outputStyle?: string) {
+    let promptFile = "qwen.txt"
+
+    // Choose the appropriate base prompt based on model
+    if (modelID.includes("gpt-5")) promptFile = "codex.txt"
+    else if (modelID.includes("gpt-") || modelID.includes("o1") || modelID.includes("o3")) promptFile = "beast.txt"
+    else if (modelID.includes("gemini-")) promptFile = "gemini.txt"
+    else if (modelID.includes("claude")) {
+      // For Anthropic models, use the styled prompt if output style is active
+      if (outputStyle && outputStyle !== "default") {
+        promptFile = "anthropic-styled.txt"
+      } else {
+        promptFile = "anthropic.txt"
+      }
+    }
+
+    let prompt = await SystemPrompt.loadPrompt(promptFile)
+    const processedPrompt = await processTemplate(prompt)
+
+    return [processedPrompt]
+  }
+
+  export async function getGitStatus() {
+    try {
+      const cwd = Instance.directory
+      const project = Instance.project
+
+      if (project.vcs !== "git") {
+        return ""
+      }
+
+      // Get current branch
+      const currentBranch = await $`git branch --show-current`
+        .quiet()
+        .nothrow()
+        .cwd(cwd)
+        .text()
+        .then((x) => x.trim())
+        .catch(() => "")
+
+      // Get main/master branch
+      const mainBranch = await $`git symbolic-ref refs/remotes/origin/HEAD`
+        .quiet()
+        .nothrow()
+        .cwd(cwd)
+        .text()
+        .then((x) => x.replace("refs/remotes/origin/", "").trim())
+        .catch(async () => {
+          // Fallback to checking if main or master exists
+          const branches = await $`git branch -a`
+            .quiet()
+            .nothrow()
+            .cwd(cwd)
+            .text()
+            .then((x) => x.trim())
+            .catch(() => "")
+
+          if (branches.includes("main")) return "main"
+          if (branches.includes("master")) return "master"
+          return "main"
+        })
+
+      // Get status
+      const status = await $`git status --porcelain`
+        .quiet()
+        .nothrow()
+        .cwd(cwd)
+        .text()
+        .then((x) => x.trim())
+        .catch(() => "")
+
+      // Get recent commits
+      const commits = await $`git log --oneline -5`
+        .quiet()
+        .nothrow()
+        .cwd(cwd)
+        .text()
+        .then((x) => x.trim())
+        .catch(() => "")
+
+      const statusLines = status ? status.split("\n").filter(Boolean) : []
+
+      return [
+        ``,
+        ``,
+        `gitStatus: This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.`,
+        `Current branch: ${currentBranch || "unknown"}`,
+        ``,
+        `Main branch (you will usually use this for PRs): ${mainBranch}`,
+        ``,
+        `Status:`,
+        statusLines.length > 0 ? statusLines.join("\n") : "(clean)",
+        ``,
+        `Recent commits:`,
+        commits || "(no commits)"
+      ].join("\n")
+    } catch (error) {
+      return ""
+    }
   }
 
   export async function environment() {
     const project = Instance.project
+    const gitStatus = await getGitStatus()
+
     return [
       [
-        `Here is some useful information about the environment you are running in:`,
+        `Here is useful information about the environment you are running in:`,
         `<env>`,
-        `  Working directory: ${Instance.directory}`,
-        `  Is directory a git repo: ${project.vcs === "git" ? "yes" : "no"}`,
-        `  Platform: ${process.platform}`,
-        `  Today's date: ${new Date().toDateString()}`,
+        `Working directory: ${Instance.directory}`,
+        `Is directory a git repo: ${project.vcs === "git" ? "Yes" : "No"}`,
+        `Platform: ${process.platform}`,
+        `OS Version: ${os.type()} ${os.release()}`,
+        `Today's date: ${new Date().toISOString().slice(0, 10)}`,
         `</env>`,
-        `<project>`,
-        `  ${
-          project.vcs === "git"
-            ? await Ripgrep.tree({
-                cwd: Instance.directory,
-                limit: 200,
-              })
-            : ""
-        }`,
-        `</project>`,
+        gitStatus,
       ].join("\n"),
     ]
   }

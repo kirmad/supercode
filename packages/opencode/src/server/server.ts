@@ -1,6 +1,8 @@
 import { Log } from "../util/log"
 import { Bus } from "../bus"
 import { describeRoute, generateSpecs, openAPISpecs } from "hono-openapi"
+import path from "node:path"
+import fs from "node:fs/promises"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
@@ -65,6 +67,10 @@ export namespace Server {
     AgentChanged: Bus.event("tui.agent.changed", z.object({
       agentName: z.string(),
       displayName: z.string().optional(),
+    })),
+    OutputStyleChanged: Bus.event("tui.output.style.changed", z.object({
+      styleName: z.string(),
+      description: z.string().optional(),
     })),
   }
 
@@ -206,6 +212,94 @@ export namespace Server {
       },
     )
     .get(
+      "/output-styles",
+      describeRoute({
+        description: "Get available output styles",
+        operationId: "outputStyles.list",
+        responses: {
+          200: {
+            description: "List of output styles",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z
+                    .object({
+                      styles: z.array(
+                        z.object({
+                          name: z.string(),
+                          description: z.string().optional(),
+                          builtIn: z.boolean(),
+                        })
+                      ),
+                    })
+                    .openapi({
+                      ref: "OutputStylesList",
+                    }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const { OutputStyle } = await import("../output-style/output-style")
+        const styles = await OutputStyle.list()
+        return c.json({ styles })
+      },
+    )
+    .post(
+      "/output-style/set",
+      describeRoute({
+        description: "Set output style",
+        operationId: "outputStyle.set",
+        responses: {
+          200: {
+            description: "Output style updated",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    success: z.boolean(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          outputStyle: z.string(),
+        }),
+      ),
+      async (c) => {
+        const { outputStyle } = c.req.valid("json")
+        const config = await Config.get()
+        config.outputStyle = outputStyle
+
+        // Save to config file
+        const configPath = path.join(Global.Path.config, "opencode.jsonc")
+        await fs.mkdir(path.dirname(configPath), { recursive: true })
+        await fs.writeFile(
+          configPath,
+          JSON.stringify(config, null, 2),
+          "utf-8"
+        )
+
+        // Emit output style changed event for external listeners
+        const { OutputStyle } = await import("../output-style/output-style")
+        const styles = await OutputStyle.list()
+        const selectedStyle = styles.find(s => s.name === outputStyle)
+        await Bus.publish(Server.Event.OutputStyleChanged, {
+          styleName: outputStyle,
+          description: selectedStyle?.description
+        })
+
+        return c.json({ success: true })
+      },
+    )
+    .get(
       "/path",
       describeRoute({
         description: "Get the current path",
@@ -342,12 +436,19 @@ export namespace Server {
           .object({
             parentID: z.string().optional(),
             title: z.string().optional(),
+            outputStyle: z.string().optional(),
           })
           .optional(),
       ),
       async (c) => {
         const body = c.req.valid("json") ?? {}
         const session = await Session.create(body.parentID, body.title)
+
+        // Note: outputStyle is not stored in the session itself,
+        // but can be passed when sending messages to the session
+        // This allows clients to specify a preferred outputStyle at session creation
+        // which they can then use when sending the first message
+
         return c.json(session)
       },
     )
@@ -447,6 +548,7 @@ export namespace Server {
           messageID: z.string(),
           providerID: z.string(),
           modelID: z.string(),
+          outputStyle: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -567,6 +669,7 @@ export namespace Server {
         z.object({
           providerID: z.string(),
           modelID: z.string(),
+          outputStyle: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -1755,6 +1858,52 @@ export namespace Server {
         
         return c.json(true)
       },
+    )
+    .post(
+      "/tui/update-output-style",
+      describeRoute({
+        description: "Update the output style in TUI",
+        operationId: "tui.updateOutputStyle",
+        responses: {
+          200: {
+            description: "Output style updated successfully",
+            content: {
+              "application/json": {
+                schema: resolver(z.boolean()),
+              },
+            },
+          },
+        },
+      }),
+      zValidator(
+        "json",
+        z.object({
+          styleName: z.string(),
+        }),
+      ),
+      async (c) => c.json(await callTui(c)),
+    )
+    .get(
+      "/tui/get-output-style",
+      describeRoute({
+        description: "Get the current output style from TUI",
+        operationId: "tui.getOutputStyle",
+        responses: {
+          200: {
+            description: "Current output style retrieved",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    styleName: z.string(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => c.json(await callTui(c)),
     )
     .post(
       "/tui/show-toast",

@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Azure DevOps Configuration",
+  "description": "Repository-specific Azure DevOps configuration for SuperCode",
+  "type": "object",
+  "properties": {
+    "organization": {
+      "type": "string",
+      "description": "Azure DevOps organization name (from https://dev.azure.com/{organization})"
+    },
+    "project": {
+      "type": "string",
+      "description": "Azure DevOps project name"
+    },
+    "repository": {
+      "type": "string",
+      "description": "Repository name in Azure DevOps"
+    },
+    "defaultPullRequestBuildId": {
+      "type": ["string", "null"],
+      "description": "Default build definition ID for pull requests"
+    },
+    "workItemDefaults": {
+      "type": "object",
+      "description": "Default values for work items",
+      "properties": {
+        "areaPath": {
+          "type": ["string", "null"],
+          "description": "Default area path for new work items"
+        },
+        "iterationPath": {
+          "type": ["string", "null"],
+          "description": "Default iteration path for new work items"
+        },
+        "assignedTo": {
+          "type": ["string", "null"],
+          "description": "Default assignee email for new work items"
+        }
+      }
+    },
+    "pullRequestDefaults": {
+      "type": "object",
+      "description": "Default values for pull requests",
+      "properties": {
+        "targetBranch": {
+          "type": "string",
+          "description": "Default target branch for pull requests",
+          "default": "main"
+        },
+        "autoComplete": {
+          "type": "boolean",
+          "description": "Auto-complete pull requests after approval",
+          "default": false
+        },
+        "deleteSourceBranch": {
+          "type": "boolean",
+          "description": "Delete source branch after merge",
+          "default": false
+        }
+      }
+    }
+  },
+  "required": ["organization", "project"]
+}

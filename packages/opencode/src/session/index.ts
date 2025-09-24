@@ -22,6 +22,7 @@ import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 
 import { Bus } from "../bus"
 import { Config } from "../config/config"
+import { OutputStyle } from "../output-style/output-style"
 import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
@@ -70,6 +71,38 @@ export namespace Session {
     if (!httpFileLoggerInitialized) {
       await HttpFileLogger.init()
       httpFileLoggerInitialized = true
+    }
+  }
+
+  // Helper function to notify TUI about output style changes
+  async function notifyTUIOutputStyle(outputStyle: string | undefined, sessionID: string, logger: typeof log) {
+    if (!outputStyle) return
+
+    try {
+      const { sendToTUI } = await import("../server/tui")
+
+      // First check if this session is the active TUI session
+      const activeSession = await sendToTUI("/tui/active-session", {}).catch(() => null)
+
+      // Only notify TUI if this is the active session
+      if (activeSession && activeSession.sessionID === sessionID) {
+        // Send notification to TUI about output style change
+        // Fire and forget - don't block on TUI response
+        sendToTUI("/tui/update-output-style", {
+          styleName: outputStyle,
+        }).catch((err) => {
+          // Silently ignore errors - TUI might not be running
+          logger.debug("Failed to notify TUI about output style", { error: err })
+        })
+      } else {
+        logger.debug("Skipping TUI notification - not the active session", {
+          currentSession: sessionID,
+          activeSession: activeSession?.sessionID
+        })
+      }
+    } catch (err) {
+      // Module import might fail if server is not initialized
+      logger.debug("Could not send output style to TUI", { error: err })
     }
   }
 
@@ -438,6 +471,7 @@ export namespace Session {
       allowedTools: z.array(z.string()).optional(),
       denyTools: z.array(z.string()).optional(),
     }).optional(),
+    outputStyle: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -553,6 +587,11 @@ export namespace Session {
             allowedTools: commandResult.allowedTools,
             denyTools: commandResult.denyTools,
           }
+        }
+
+        // Add output style from command to input
+        if (commandResult.outputStyle) {
+          input.outputStyle = commandResult.outputStyle
         }
       }
     }
@@ -860,17 +899,109 @@ export namespace Session {
         synthetic: true,
       })
     }
-    let system = await SystemPrompt.header(model.providerID)
+    // Build tool configuration for MCP instruction loading
+    const toolConfig: ToolFilter.ToolConfig = {
+      agent: {
+        tools: agent.tools,
+        allowedTools: agent.allowedTools,
+        denyTools: agent.denyTools,
+      },
+      command: input.commandTools,
+      flags: input.flagTools,
+      input: input.tools,
+    }
+
+    // Merge tools from registry with agent permissions
+    const registryTools = await ToolRegistry.enabled(model.providerID, model.modelID, agent)
+    if (Object.keys(registryTools).length > 0) {
+      toolConfig.agent = toolConfig.agent || {}
+      toolConfig.agent.tools = mergeDeep(toolConfig.agent.tools || {}, registryTools)
+    }
+
+    // Resolve tool configuration
+    const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
+
+    let system = await SystemPrompt.header(model.modelID)
+
+    // Get the output style from command, or fall back to config
+    const config = await Config.get()
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
+    // Notify TUI about custom command output style only if this is the active TUI session
+    await notifyTUIOutputStyle(input.outputStyle, input.sessionID, l)
+
     system.push(
       ...(await (async () => {
         if (input.system) return [input.system]
         if (agent.prompt) return [agent.prompt]
-        return await SystemPrompt.provider(model.modelID)
+        return await SystemPrompt.provider(model.modelID, outputStyle)
       })())
     )
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        system.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
+
+    // Add MCP instructions for all models via concatenation
+    const { MCPInstructions } = await import("./mcp-instructions")
+    const mcpInstructions = await MCPInstructions.loadMCPInstructions(toolResolution)
+    if (mcpInstructions) {
+      system.push(mcpInstructions)
+    }
+
+    // Add environment info for all models via concatenation
     system.push(...(await SystemPrompt.environment()))
-    system.push(...(await SystemPrompt.custom()))
-    system.push(...(await SystemPrompt.instructions()))
+
+    // Get custom and instructions for later use in user message
+    const customContent = await SystemPrompt.custom()
+    const instructionsContent = await SystemPrompt.instructions()
+
+    // Add output style reminder as separate message if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleName = outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)
+      msgs.at(-1)?.parts.unshift({
+        id: Identifier.ascending("part"),
+        messageID: userMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: `<system-reminder>\n${styleName} output style is active. Remember to follow the specific guidelines for this style.\n</system-reminder>`,
+        synthetic: true,
+      })
+    }
+
+    // Add custom and instructions as system-reminder in user message
+    if (customContent.length > 0 || instructionsContent.length > 0) {
+      const contextParts: string[] = []
+
+      if (customContent.length > 0) {
+        contextParts.push("# claudeMd")
+        contextParts.push(...customContent)
+      }
+
+      if (instructionsContent.length > 0) {
+        if (contextParts.length > 0) contextParts.push("")  // Add separator
+        contextParts.push(...instructionsContent)
+      }
+
+      if (contextParts.length > 0) {
+        msgs.at(-1)?.parts.unshift({
+          id: Identifier.ascending("part"),
+          messageID: userMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          text: `<system-reminder>
+As you answer the user's questions, you can use the following context:
+${contextParts.join("\n")}
+</system-reminder>`,
+          synthetic: true,
+        })
+      }
+    }
+
     // max 2 system prompt messages for caching purposes
     const [first, ...rest] = system
     system = [first, rest.join("\n")]
@@ -914,28 +1045,6 @@ export namespace Session {
     const tools: Record<string, AITool> = {}
 
     const processor = createProcessor(assistantMsg, model.info)
-
-    // Build tool configuration with proper precedence
-    const toolConfig: ToolFilter.ToolConfig = {
-      agent: {
-        tools: agent.tools,
-        allowedTools: agent.allowedTools,
-        denyTools: agent.denyTools,
-      },
-      command: input.commandTools,
-      flags: input.flagTools,
-      input: input.tools,
-    }
-    
-    // Merge tools from registry with agent permissions
-    const registryTools = await ToolRegistry.enabled(model.providerID, model.modelID, agent)
-    if (Object.keys(registryTools).length > 0) {
-      toolConfig.agent = toolConfig.agent || {}
-      toolConfig.agent.tools = mergeDeep(toolConfig.agent.tools || {}, registryTools)
-    }
-    
-    // Resolve tool configuration without merging
-    const toolResolution = ToolFilter.resolveToolConfig(toolConfig)
     
     for (const item of await ToolRegistry.tools(model.providerID, model.modelID)) {
       if (!ToolFilter.isToolEnabled(item.id, toolResolution)) continue
@@ -1473,6 +1582,7 @@ export namespace Session {
     sessionID: Identifier.schema("session"),
     agent: z.string().optional(),
     model: z.string().optional(),
+    outputStyle: z.string().optional(),
     arguments: z.string(),
     command: z.string(),
   })
@@ -1558,6 +1668,7 @@ export namespace Session {
         return undefined
       })(),
       agent,
+      outputStyle: input.outputStyle,
       commandTools: {
         allowedTools: command.allowedTools,
         denyTools: command.denyTools,
@@ -2025,7 +2136,7 @@ export namespace Session {
     return next
   }
 
-  export async function summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+  export async function summarize(input: { sessionID: string; providerID: string; modelID: string; outputStyle?: string; }, skipLock: boolean = false) {
     using abort = skipLock ? {
       signal: new AbortController().signal,
       async [Symbol.dispose]() {
@@ -2036,12 +2147,25 @@ export namespace Session {
     const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
     const filtered = msgs.filter((msg) => !lastSummary || msg.info.id >= lastSummary.info.id)
     const model = await Provider.getModel(input.providerID, input.modelID)
+
+    // Get the output style from input, or fall back to config
+    const config = await Config.get()
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
     const system = [
       ...(await SystemPrompt.summarize(model.providerID)),
       ...(await SystemPrompt.environment()),
       ...(await SystemPrompt.custom()),
       ...(await SystemPrompt.instructions()),
     ]
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        system.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
 
     const next: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2102,7 +2226,7 @@ export namespace Session {
    * Enhanced summarize function that follows the compaction logic from how-to.md
    * This creates a continuation prompt for when approaching context limits
    */
-  export async function enhanced_summarize(input: { sessionID: string; providerID: string; modelID: string; }, skipLock: boolean = false) {
+  export async function enhanced_summarize(input: { sessionID: string; providerID: string; modelID: string; outputStyle?: string; }, skipLock: boolean = false) {
     using abort = skipLock ? {
       signal: new AbortController().signal,
       async [Symbol.dispose]() {
@@ -2236,6 +2360,10 @@ export namespace Session {
       log.info("Could not read todos during compaction", { error })
     }
     
+    // Get the output style from input, or fall back to config
+    const config = await Config.get()
+    const outputStyle = input.outputStyle || config.outputStyle || "default"
+
     // Create the final summary message with proper system prompts
     const summarySystem = [
       ...(await SystemPrompt.header(input.providerID)),
@@ -2243,6 +2371,14 @@ export namespace Session {
       ...(await SystemPrompt.custom()),
       ...(await SystemPrompt.instructions()),
     ]
+
+    // Add output style content if not default
+    if (outputStyle && outputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+      if (styleContent) {
+        summarySystem.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+      }
+    }
     
     const finalSummaryMsg: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2379,6 +2515,7 @@ Continue on with the tasks at hand if applicable.
     modelID: string
     providerID: string
     messageID: string
+    outputStyle?: string
   }) {
     await Session.prompt({
       sessionID: input.sessionID,
@@ -2387,6 +2524,7 @@ Continue on with the tasks at hand if applicable.
         providerID: input.providerID,
         modelID: input.modelID,
       },
+      outputStyle: input.outputStyle,
       parts: [
         {
           id: Identifier.ascending("part"),

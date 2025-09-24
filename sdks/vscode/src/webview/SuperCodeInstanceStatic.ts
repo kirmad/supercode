@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { StaticWebviewManager } from './StaticWebviewManager';
 import { ConnectionStatus } from './ConnectionStatus';
 import { tuiManager } from '../utils/tuiInstanceManager';
+import { ADOSettingsService } from '../services/adoSettingsService';
 
 /**
  * SuperCode instance that uses static files approach (HTML + CSS + JS files)
@@ -177,11 +178,15 @@ export class SuperCodeInstanceStatic {
       }
     );
 
+    // Get ADO settings to pass to webview
+    const adoSettings = ADOSettingsService.getInstance().getSettingsForWebview();
+
     // Set HTML content using static files (much cleaner!)
     this.panel.webview.html = StaticWebviewManager.getWebviewContent(
-      this.port, 
-      this.context, 
-      this.panel.webview
+      this.port,
+      this.context,
+      this.panel.webview,
+      adoSettings
     );
 
     // Handle messages from webview
@@ -303,6 +308,25 @@ export class SuperCodeInstanceStatic {
       case 'restart':
         this.sendMessageToWebview('system', 'Restarting SuperCode...');
         await this.restartProcess();
+        break;
+
+      case 'requestADOSettings':
+        // Send ADO settings to webview
+        const adoSettings = ADOSettingsService.getInstance().getSettingsForWebview();
+        if (this.panel) {
+          this.panel.webview.postMessage({
+            command: 'adoSettingsUpdate',
+            settings: adoSettings.adoCredentials
+          });
+        }
+        break;
+
+      case 'updateADOSettings':
+        // Update ADO settings from webview
+        if (message.settings) {
+          await ADOSettingsService.getInstance().updateSettings(message.settings);
+          this.sendMessageToWebview('system', 'ADO settings updated successfully');
+        }
         break;
     }
   }
