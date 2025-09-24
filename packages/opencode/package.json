@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.6.48",
+  "version": "0.6.49",
   "name": "@kirmad/supercode",
   "type": "module",
   "private": false,
