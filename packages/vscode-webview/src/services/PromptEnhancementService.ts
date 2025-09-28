@@ -8,6 +8,7 @@ import { SuperCodeWebSocketClient } from './SuperCodeWebSocketClient';
 import type { ADOSource } from './ADOSourceService';
 import { ADOSourceService } from './ADOSourceService';
 import { ADOContentService, type SelectedItems } from './ADOContentService';
+import { XMLParser } from '../utils/XMLUtils';
 
 export interface ResearchItem {
   id: string;
@@ -69,12 +70,13 @@ export class PromptEnhancementService {
   private onResearchUpdate?: (items: ResearchItem[]) => void;
   private onClarificationNeeded?: (questions: ClarificationQuestion[]) => void;
   private isProcessing: boolean = false;
-  // Global set to track all processed research content across the entire session
-  private globalProcessedResearch: Set<string> = new Set();
   // Track the current active session ID for filtering messages
   private currentSessionId: string | null = null;
+  // XML parser instance with deduplication support
+  private xmlParser: XMLParser;
 
   constructor(wsClient?: SuperCodeWebSocketClient) {
+    this.xmlParser = new XMLParser();
     if (wsClient) {
       this.wsClient = wsClient;
       this.setupWebSocketListeners();
@@ -124,8 +126,16 @@ export class PromptEnhancementService {
 
     if (textContent && typeof textContent === 'string') {
       // Process research updates immediately from the part
-      const processedContent = new Set<string>();
-      this.processStreamingResearch(textContent, processedContent);
+      const result = this.xmlParser.processStreamingResearch(textContent);
+      // Add new research items
+      for (const item of result.items) {
+        this.researchItems.push(item);
+        // Trigger real-time update callback
+        if (this.onResearchUpdate) {
+          console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+          this.onResearchUpdate([...this.researchItems]); // Send copy of array
+        }
+      }
     }
   }
 
@@ -143,270 +153,40 @@ export class PromptEnhancementService {
     this.onClarificationNeeded = callback;
   }
 
-  /**
-   * Parse XML content from the response
-   */
-  private parseXMLContent(content: string, tag: string): string[] {
-    const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g');
-    const matches: string[] = [];
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      matches.push(match[1].trim());
-    }
-
-    return matches;
-  }
-
-  /**
-   * Parse research updates from XML
-   */
-  private parseResearchUpdates(content: string): ResearchItem[] {
-    const items: ResearchItem[] = [];
-    const regex = /<research-update\s+type="([^"]+)"\s+priority="([^"]+)">([^<]+)<\/research-update>/g;
-    let match;
-
-    while ((match = regex.exec(content)) !== null) {
-      items.push({
-        id: `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        type: match[1] as ResearchItem['type'],
-        priority: match[2] as ResearchItem['priority'],
-        content: match[3].trim(),
-        timestamp: Date.now(),
-        status: 'completed'
-      });
-    }
-
-    return items;
-  }
-
-  /**
-   * Parse clarification questions from XML
-   */
-  private parseClarificationQuestions(content: string): ClarificationQuestion[] {
-    const questions: ClarificationQuestion[] = [];
-    const clarificationBlocks = this.parseXMLContent(content, 'clarification-needed');
-
-    for (const block of clarificationBlocks) {
-      // Updated regex to handle multiline question blocks
-      const questionRegex = /<question\s+id="([^"]+)">\s*<text>([^<]+)<\/text>\s*<options>([\s\S]*?)<\/options>\s*<\/question>/g;
-      let match;
-
-      while ((match = questionRegex.exec(block)) !== null) {
-        const optionRegex = /<option\s+value="([^"]+)">([^<]+)<\/option>/g;
-        const options: Array<{ value: string; label: string }> = [];
-        let optionMatch;
-
-        while ((optionMatch = optionRegex.exec(match[3])) !== null) {
-          options.push({
-            value: optionMatch[1],
-            label: optionMatch[2].trim()
-          });
-        }
-
-        questions.push({
-          id: match[1],
-          text: match[2].trim(),
-          options
-        });
-      }
-    }
-
-    return questions;
-  }
 
   /**
    * Process streaming clarification questions from text content
    */
   public processStreamingClarifications(textContent: string): void {
-    // Extract clarification-needed blocks
-    const clarificationRegex = /<clarification-needed>([\s\S]*?)<\/clarification-needed>/g;
-    let match;
+    const result = this.xmlParser.processStreamingClarifications(textContent, this.clarificationQuestions);
 
-    while ((match = clarificationRegex.exec(textContent)) !== null) {
-      const block = match[1];
+    // Update our questions list
+    this.clarificationQuestions = result.questions;
 
-      // Parse individual questions
-      const questionRegex = /<question\s+id="([^"]+)">\s*<text>([^<]+)<\/text>\s*<options>([\s\S]*?)<\/options>\s*<\/question>/g;
-      let qMatch;
-
-      while ((qMatch = questionRegex.exec(block)) !== null) {
-        const questionId = qMatch[1];
-
-        // Check if we already have this question
-        if (!this.clarificationQuestions.some(q => q.id === questionId)) {
-          const optionRegex = /<option\s+value="([^"]+)">([^<]+)<\/option>/g;
-          const options: Array<{ value: string; label: string }> = [];
-          let optionMatch;
-
-          while ((optionMatch = optionRegex.exec(qMatch[3])) !== null) {
-            options.push({
-              value: optionMatch[1],
-              label: optionMatch[2].trim()
-            });
-          }
-
-          const question: ClarificationQuestion = {
-            id: questionId,
-            text: qMatch[2].trim(),
-            options
-          };
-
-          this.clarificationQuestions.push(question);
-
-          // Trigger real-time update callback
-          if (this.onClarificationNeeded) {
-            console.log('[PromptEnhancementService] Real-time clarification:', question.text);
-            this.onClarificationNeeded([...this.clarificationQuestions]);
-          }
-        }
+    // Trigger callback for new questions
+    if (result.newQuestions.length > 0 && this.onClarificationNeeded) {
+      for (const question of result.newQuestions) {
+        console.log('[PromptEnhancementService] Real-time clarification:', question.text);
       }
+      this.onClarificationNeeded([...this.clarificationQuestions]);
     }
   }
 
-  /**
-   * Parse enhanced prompt and metadata from XML
-   */
-  private parseEnhancedPrompt(content: string): { prompt: string; metadata: EnhancedPromptMetadata } | null {
-    const enhancedBlocks = this.parseXMLContent(content, 'enhanced-prompt');
-
-    if (enhancedBlocks.length === 0) {
-      console.warn('[PromptEnhancementService] No <enhanced-prompt> XML tags found in response');
-      console.warn('[PromptEnhancementService] Response preview:', content.substring(0, 500));
-      return null;
-    }
-
-    const block = enhancedBlocks[0];
-
-    // Parse metadata
-    const metadataMatch = /<metadata>([^<]+)<\/metadata>/s.exec(block);
-    let metadata: EnhancedPromptMetadata = {
-      complexity: 'moderate',
-      domains: [],
-      technologies: [],
-      patterns: []
-    };
-
-    if (metadataMatch) {
-      const metadataContent = metadataMatch[1];
-
-      // Parse complexity
-      const complexityMatch = /<complexity>([^<]+)<\/complexity>/.exec(metadataContent);
-      if (complexityMatch) {
-        metadata.complexity = complexityMatch[1] as EnhancedPromptMetadata['complexity'];
-      }
-
-      // Parse domains
-      const domainsMatch = /<domains>([^<]+)<\/domains>/.exec(metadataContent);
-      if (domainsMatch) {
-        metadata.domains = domainsMatch[1].split(',').map(d => d.trim());
-      }
-
-      // Parse technologies
-      const techMatch = /<technologies>([^<]+)<\/technologies>/.exec(metadataContent);
-      if (techMatch) {
-        metadata.technologies = techMatch[1].split(',').map(t => t.trim());
-      }
-
-      // Parse patterns
-      const patternsMatch = /<patterns>([^<]+)<\/patterns>/.exec(metadataContent);
-      if (patternsMatch) {
-        metadata.patterns = patternsMatch[1].split(',').map(p => p.trim());
-      }
-    }
-
-    // Parse content - try nested <content> tag first, then fallback to direct content
-    const contentMatch = /<content>([\s\S]*?)<\/content>/.exec(block);
-    let prompt = '';
-
-    if (contentMatch) {
-      // Content is nested in <content> tag
-      prompt = contentMatch[1].trim();
-    } else {
-      // Content might be directly in the enhanced-prompt block
-      // Remove metadata section and get the remaining content
-      const cleanedBlock = block.replace(/<metadata>[\s\S]*?<\/metadata>/g, '').trim();
-      prompt = cleanedBlock;
-    }
-
-    console.log('[PromptEnhancementService] Parsed enhanced prompt length:', prompt.length);
-    console.log('[PromptEnhancementService] First 200 chars of prompt:', prompt.substring(0, 200));
-
-    return { prompt, metadata };
-  }
 
   /**
    * Process streaming research updates from text content
    * Made public to allow external components to feed streaming content
    */
   public processStreamingResearch(textContent: string, processedContent?: Set<string>): void {
-    // Use global set for deduplication across all streaming updates
-    // This prevents the same research item from appearing multiple times
-    // when message.part.updated events contain accumulating text
+    const result = this.xmlParser.processStreamingResearch(textContent, processedContent);
 
-    // Extract all research-update tags
-    const researchRegex = /<research-update[^>]*>([\s\S]*?)<\/research-update>/g;
-    let match;
-
-    while ((match = researchRegex.exec(textContent)) !== null) {
-      const fullMatch = match[0];
-      const content = match[1].trim();
-
-      // Filter out instruction examples from the prompt
-      // These are not real research items but examples in the instructions
-      const isInstructionExample =
-        content.includes('analysis|pattern|requirement|best-practice') ||
-        content.includes('high|medium|low') ||
-        content.includes('Send each finding immediately') ||
-        content.includes('don\'t wait until the end') ||
-        content.includes('IMMEDIATELY as you discover') ||
-        content.includes('tags IMMEDIATELY') ||
-        content.includes('discovering insights as I analyze') ||
-        content.includes('Stream research findings in real-time') ||
-        content.length < 20; // Very short content is likely not real research
-
-      if (isInstructionExample) {
-        console.log('[PromptEnhancementService] Skipping instruction example:', content.substring(0, 50) + '...');
-        continue;
-      }
-
-      // Create a unique key for this research item based on its content
-      // Using the full content ensures proper deduplication
-      const contentKey = content;
-
-      // Check against global processed set
-      if (this.globalProcessedResearch.has(contentKey)) {
-        console.log('[PromptEnhancementService] Skipping duplicate research:', content.substring(0, 50) + '...');
-        continue; // Skip already processed
-      }
-
-      // Parse attributes
-      const typeMatch = /type="([^"]+)"/.exec(fullMatch);
-      const priorityMatch = /priority="([^"]+)"/.exec(fullMatch);
-
-      const researchItem: ResearchItem = {
-        id: `research-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-        type: (typeMatch?.[1] || 'analysis') as ResearchItem['type'],
-        priority: (priorityMatch?.[1] || 'medium') as ResearchItem['priority'],
-        content: content,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-
-      // Mark as processed in global set to prevent duplicates
-      this.globalProcessedResearch.add(contentKey);
-
-      // Also add to local set if provided (for compatibility)
-      if (processedContent) {
-        processedContent.add(contentKey);
-      }
-
-      // Add to research items
-      this.researchItems.push(researchItem);
+    // Add new research items
+    for (const item of result.items) {
+      this.researchItems.push(item);
 
       // Trigger real-time update callback
       if (this.onResearchUpdate) {
-        console.log('[PromptEnhancementService] Real-time research:', researchItem.type, '-', content.substring(0, 80) + '...');
+        console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
         this.onResearchUpdate([...this.researchItems]); // Send copy of array
       }
     }
@@ -419,7 +199,7 @@ export class PromptEnhancementService {
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
-    const processedResearchContent = new Set<string>(); // Track processed research to avoid duplicates
+    let processedResearchContent = new Set<string>(); // Track processed research to avoid duplicates
 
     if (!reader) {
       throw new Error('No response body available');
@@ -440,7 +220,15 @@ export class PromptEnhancementService {
 
         // Try to process research updates from the chunk immediately
         // This handles both raw text and JSON-wrapped text
-        this.processStreamingResearch(chunk, processedResearchContent);
+        const chunkResult = this.xmlParser.processStreamingResearch(chunk, processedResearchContent);
+        for (const item of chunkResult.items) {
+          this.researchItems.push(item);
+          if (this.onResearchUpdate) {
+            console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+            this.onResearchUpdate([...this.researchItems]);
+          }
+        }
+        processedResearchContent = chunkResult.updatedProcessedContent;
 
         // Also process streaming clarification questions
         this.processStreamingClarifications(chunk);
@@ -456,7 +244,15 @@ export class PromptEnhancementService {
                   for (const part of jsonResponse.parts) {
                     if (part.type === 'text' && part.text) {
                       // Process streaming research updates immediately
-                      this.processStreamingResearch(part.text, processedResearchContent);
+                      const partResult = this.xmlParser.processStreamingResearch(part.text, processedResearchContent);
+                      for (const item of partResult.items) {
+                        this.researchItems.push(item);
+                        if (this.onResearchUpdate) {
+                          console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+                          this.onResearchUpdate([...this.researchItems]);
+                        }
+                      }
+                      processedResearchContent = partResult.updatedProcessedContent;
                     }
                   }
                 }
@@ -489,7 +285,7 @@ export class PromptEnhancementService {
       }
 
       // Parse research updates from the text content
-      const newResearchItems = this.parseResearchUpdates(textContent);
+      const newResearchItems = this.xmlParser.parseResearchUpdates(textContent);
       if (newResearchItems.length > 0) {
         this.researchItems.push(...newResearchItems);
         if (this.onResearchUpdate) {
@@ -498,7 +294,7 @@ export class PromptEnhancementService {
       }
 
       // Parse clarification questions
-      const newQuestions = this.parseClarificationQuestions(textContent);
+      const newQuestions = this.xmlParser.parseClarificationQuestions(textContent);
       if (newQuestions.length > 0) {
         this.clarificationQuestions = newQuestions;
         if (this.onClarificationNeeded) {
@@ -507,7 +303,7 @@ export class PromptEnhancementService {
       }
 
       // Parse the final enhanced prompt
-      const enhancedResult = this.parseEnhancedPrompt(textContent);
+      const enhancedResult = this.xmlParser.parseEnhancedPrompt(textContent);
 
       if (enhancedResult) {
         this.enhancedPrompt = enhancedResult.prompt;
@@ -577,7 +373,7 @@ export class PromptEnhancementService {
     });
 
     // Clear global processed set for new enhancement session
-    this.globalProcessedResearch.clear();
+    this.xmlParser.clearDuplicationTracking();
     this.researchItems = []; // Clear previous research items
     this.currentSessionId = null; // Clear previous session ID to start fresh
     console.log('[PromptEnhancementService] Cleared duplicate tracking and session data for new enhancement');
@@ -760,7 +556,7 @@ export class PromptEnhancementService {
     this.enhancedPrompt = '';
     this.metadata = null;
     // Clear the global processed research set for new sessions
-    this.globalProcessedResearch.clear();
+    this.xmlParser.clearDuplicationTracking();
     this.currentSessionId = null; // Clear session tracking
   }
 
@@ -991,7 +787,7 @@ ${context.followUpSuggestion}
       const reader = messageResponse.body?.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
-      const processedResearchContent = new Set<string>();
+      let processedResearchContent = new Set<string>();
 
       if (reader) {
         try {
@@ -1003,7 +799,15 @@ ${context.followUpSuggestion}
             fullContent += chunk;
 
             // Process streaming research from the chunk immediately
-            this.processStreamingResearch(chunk, processedResearchContent);
+            const followUpResult = this.xmlParser.processStreamingResearch(chunk, processedResearchContent);
+            for (const item of followUpResult.items) {
+              this.researchItems.push(item);
+              if (this.onResearchUpdate) {
+                console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+                this.onResearchUpdate([...this.researchItems]);
+              }
+            }
+            processedResearchContent = followUpResult.updatedProcessedContent;
 
             // Try to parse as JSON for structured responses
             const lines = chunk.split('\n');
@@ -1015,10 +819,26 @@ ${context.followUpSuggestion}
                   // Process different message types
                   if (data.type === 'content' && data.text) {
                     // Extract and process any inline research updates
-                    this.processStreamingResearch(data.text, processedResearchContent);
+                    const dataResult = this.xmlParser.processStreamingResearch(data.text, processedResearchContent);
+                    for (const item of dataResult.items) {
+                      this.researchItems.push(item);
+                      if (this.onResearchUpdate) {
+                        console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+                        this.onResearchUpdate([...this.researchItems]);
+                      }
+                    }
+                    processedResearchContent = dataResult.updatedProcessedContent;
                   } else if (data.type === 'message.part.updated' && data.text) {
                     // Handle accumulated text updates
-                    this.processStreamingResearch(data.text, processedResearchContent);
+                    const accumResult = this.xmlParser.processStreamingResearch(data.text, processedResearchContent);
+                    for (const item of accumResult.items) {
+                      this.researchItems.push(item);
+                      if (this.onResearchUpdate) {
+                        console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+                        this.onResearchUpdate([...this.researchItems]);
+                      }
+                    }
+                    processedResearchContent = accumResult.updatedProcessedContent;
                   }
                 } catch (e) {
                   // Skip invalid JSON
@@ -1095,7 +915,7 @@ ${context.followUpSuggestion}
       console.log('[PromptEnhancementService] Follow-up: Contains content tag?', textContent.includes('<content>'));
 
       // Process the enhanced prompt - parse the XML response
-      const enhancedResult = this.parseEnhancedPrompt(textContent.trim());
+      const enhancedResult = this.xmlParser.parseEnhancedPrompt(textContent.trim());
 
       if (enhancedResult) {
         this.enhancedPrompt = enhancedResult.prompt;
