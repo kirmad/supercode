@@ -9,6 +9,12 @@ import type { ADOSource } from './ADOSourceService';
 import { ADOSourceService } from './ADOSourceService';
 import { ADOContentService, type SelectedItems } from './ADOContentService';
 import { XMLParser } from '../utils/XMLUtils';
+import {
+  SessionManager,
+  type SessionConfig,
+  type MessagePayload,
+  type StreamingCallbacks
+} from './SessionManager';
 
 export interface ResearchItem {
   id: string;
@@ -70,13 +76,14 @@ export class PromptEnhancementService {
   private onResearchUpdate?: (items: ResearchItem[]) => void;
   private onClarificationNeeded?: (questions: ClarificationQuestion[]) => void;
   private isProcessing: boolean = false;
-  // Track the current active session ID for filtering messages
-  private currentSessionId: string | null = null;
+  // Session manager for handling session lifecycle
+  private sessionManager: SessionManager;
   // XML parser instance with deduplication support
   private xmlParser: XMLParser;
 
   constructor(wsClient?: SuperCodeWebSocketClient) {
     this.xmlParser = new XMLParser();
+    this.sessionManager = new SessionManager(this.port);
     if (wsClient) {
       this.wsClient = wsClient;
       this.setupWebSocketListeners();
@@ -112,13 +119,14 @@ export class PromptEnhancementService {
    * Handle WebSocket message parts for real-time updates
    */
   private handleWebSocketMessagePart(part: any) {
-    // Filter out messages from other sessions (check both sessionId and sessionID for compatibility)
-    const partSessionId = part.sessionId || part.sessionID;
-    if (this.currentSessionId && partSessionId !== this.currentSessionId) {
-      console.log('[PromptEnhancementService] Ignoring message from different session:', partSessionId, '!==', this.currentSessionId);
+    // Use SessionManager to check if message should be processed
+    if (!this.sessionManager.shouldProcessMessage(part)) {
+      const partSessionId = part.sessionId || part.sessionID;
+      console.log('[PromptEnhancementService] Ignoring message from different session:', partSessionId, '!==', this.sessionManager.getCurrentSessionId());
       return;
     }
 
+    const partSessionId = part.sessionId || part.sessionID;
     console.log('[PromptEnhancementService] Received WebSocket message part for current session:', partSessionId);
 
     // Extract text content from various possible locations
@@ -196,30 +204,15 @@ export class PromptEnhancementService {
    * Process streaming response from SuperCode
    */
   private async processStreamingResponse(response: Response, sources?: ADOSource[]): Promise<EnhancementResult> {
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    let fullContent = '';
-    let processedResearchContent = new Set<string>(); // Track processed research to avoid duplicates
-
-    if (!reader) {
-      throw new Error('No response body available');
-    }
-
     const startTime = Date.now();
     this.researchItems = [];
     this.clarificationQuestions = [];
+    let processedResearchContent = new Set<string>(); // Track processed research to avoid duplicates
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        fullContent += chunk;
-
-        // Try to process research updates from the chunk immediately
-        // This handles both raw text and JSON-wrapped text
+    // Setup streaming callbacks to process content in real-time
+    const streamingCallbacks: StreamingCallbacks = {
+      onChunk: (chunk: string) => {
+        // Process research updates from the chunk immediately
         const chunkResult = this.xmlParser.processStreamingResearch(chunk, processedResearchContent);
         for (const item of chunkResult.items) {
           this.researchItems.push(item);
@@ -232,118 +225,127 @@ export class PromptEnhancementService {
 
         // Also process streaming clarification questions
         this.processStreamingClarifications(chunk);
-
-        // Also try to parse as JSON for structured responses
-        try {
-          const lines = fullContent.split('\n');
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const jsonResponse = JSON.parse(line);
-                if (jsonResponse.parts && Array.isArray(jsonResponse.parts)) {
-                  for (const part of jsonResponse.parts) {
-                    if (part.type === 'text' && part.text) {
-                      // Process streaming research updates immediately
-                      const partResult = this.xmlParser.processStreamingResearch(part.text, processedResearchContent);
-                      for (const item of partResult.items) {
-                        this.researchItems.push(item);
-                        if (this.onResearchUpdate) {
-                          console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
-                          this.onResearchUpdate([...this.researchItems]);
-                        }
-                      }
-                      processedResearchContent = partResult.updatedProcessedContent;
-                    }
-                  }
-                }
-              } catch {
-                // Not valid JSON line, continue
-              }
+      },
+      onMessagePart: (part: any) => {
+        // Process structured message parts
+        if (part && part.text && typeof part.text === 'string') {
+          const partResult = this.xmlParser.processStreamingResearch(part.text, processedResearchContent);
+          for (const item of partResult.items) {
+            this.researchItems.push(item);
+            if (this.onResearchUpdate) {
+              console.log('[PromptEnhancementService] Real-time research from part:', item.type, '-', item.content.substring(0, 80) + '...');
+              this.onResearchUpdate([...this.researchItems]);
             }
           }
-        } catch (e) {
-          // Continue accumulating
+          processedResearchContent = partResult.updatedProcessedContent;
+
+          // Process clarifications from message parts
+          this.processStreamingClarifications(part.text);
+        }
+      },
+      onComplete: (fullContent: string) => {
+        console.log('[PromptEnhancementService] Streaming complete, received', fullContent.length, 'characters');
+      },
+      onError: (error: Error) => {
+        console.error('[PromptEnhancementService] Streaming error:', error);
+      }
+    };
+
+    // Use SessionManager to process the streaming response
+    const fullContent = await this.sessionManager.processStreamingResponse(response, {
+      includeSessionFilter: true,
+      callbacks: streamingCallbacks
+    });
+
+    // Final processing of complete response
+    let textContent = fullContent;
+
+    // Try to extract text from JSON structure if present
+    try {
+      // Check if the full content is a complete JSON response
+      const jsonResponse = JSON.parse(fullContent);
+      textContent = '';
+
+      // Extract the text content from the message parts
+      if (jsonResponse.parts && Array.isArray(jsonResponse.parts)) {
+        for (const part of jsonResponse.parts) {
+          if (part.type === 'text' && part.text) {
+            textContent += part.text;
+          }
         }
       }
 
-      // Final processing of complete response
-      let textContent = '';
-      try {
-        const jsonResponse = JSON.parse(fullContent);
-
-        // Extract the text content from the message parts
-        if (jsonResponse.parts && Array.isArray(jsonResponse.parts)) {
-          for (const part of jsonResponse.parts) {
-            if (part.type === 'text' && part.text) {
-              textContent += part.text;
-            }
-          }
-        }
-      } catch (parseError) {
-        console.warn('Failed to parse as JSON, treating as text:', parseError);
+      // If no text extracted from parts, use original content
+      if (!textContent) {
         textContent = fullContent;
       }
-
-      // Parse research updates from the text content
-      const newResearchItems = this.xmlParser.parseResearchUpdates(textContent);
-      if (newResearchItems.length > 0) {
-        this.researchItems.push(...newResearchItems);
-        if (this.onResearchUpdate) {
-          this.onResearchUpdate(this.researchItems);
-        }
-      }
-
-      // Parse clarification questions
-      const newQuestions = this.xmlParser.parseClarificationQuestions(textContent);
-      if (newQuestions.length > 0) {
-        this.clarificationQuestions = newQuestions;
-        if (this.onClarificationNeeded) {
-          this.onClarificationNeeded(this.clarificationQuestions);
-        }
-      }
-
-      // Parse the final enhanced prompt
-      const enhancedResult = this.xmlParser.parseEnhancedPrompt(textContent);
-
-      if (enhancedResult) {
-        this.enhancedPrompt = enhancedResult.prompt;
-        this.metadata = enhancedResult.metadata;
-        console.log('[PromptEnhancementService] Successfully parsed enhanced prompt:', this.enhancedPrompt.length, 'chars');
-      } else {
-        console.error('[PromptEnhancementService] Failed to parse enhanced prompt from response');
-        console.log('[PromptEnhancementService] Text content length:', textContent.length);
-        console.log('[PromptEnhancementService] Contains <enhanced-prompt>?', textContent.includes('<enhanced-prompt>'));
-        console.log('[PromptEnhancementService] Contains backtick XML?', textContent.includes('`<enhanced-prompt>`'));
-
-        // If no XML was generated, use the original prompt as fallback
-        if (!this.enhancedPrompt && textContent.length > 0) {
-          console.warn('[PromptEnhancementService] Using fallback: AI response as enhanced prompt');
-          this.enhancedPrompt = textContent;
-        }
-      }
-
-      // Add sources to metadata if provided
-      const finalMetadata = this.metadata || {
-        complexity: 'moderate',
-        domains: [],
-        technologies: [],
-        patterns: []
-      };
-
-      if (sources && sources.length > 0) {
-        finalMetadata.sources = sources.map(s => s.title);
-      }
-
-      return {
-        enhancedPrompt: this.enhancedPrompt,
-        metadata: finalMetadata,
-        researchItems: this.researchItems,
-        clarificationQuestions: this.clarificationQuestions.length > 0 ? this.clarificationQuestions : undefined,
-        processingTime: Date.now() - startTime
-      };
-    } finally {
-      reader.releaseLock();
+    } catch (parseError) {
+      // Not JSON, use as-is
+      console.log('[PromptEnhancementService] Response is not JSON, processing as text');
     }
+
+    // Parse any remaining research updates from the complete text
+    const newResearchItems = this.xmlParser.parseResearchUpdates(textContent);
+    if (newResearchItems.length > 0) {
+      // Only add items not already present
+      for (const item of newResearchItems) {
+        if (!this.researchItems.some(existing => existing.id === item.id)) {
+          this.researchItems.push(item);
+        }
+      }
+      if (this.onResearchUpdate) {
+        this.onResearchUpdate(this.researchItems);
+      }
+    }
+
+    // Parse clarification questions from complete response
+    const newQuestions = this.xmlParser.parseClarificationQuestions(textContent);
+    if (newQuestions.length > 0) {
+      this.clarificationQuestions = newQuestions;
+      if (this.onClarificationNeeded) {
+        this.onClarificationNeeded(this.clarificationQuestions);
+      }
+    }
+
+    // Parse the final enhanced prompt
+    const enhancedResult = this.xmlParser.parseEnhancedPrompt(textContent);
+
+    if (enhancedResult) {
+      this.enhancedPrompt = enhancedResult.prompt;
+      this.metadata = enhancedResult.metadata;
+      console.log('[PromptEnhancementService] Successfully parsed enhanced prompt:', this.enhancedPrompt.length, 'chars');
+    } else {
+      console.error('[PromptEnhancementService] Failed to parse enhanced prompt from response');
+      console.log('[PromptEnhancementService] Text content length:', textContent.length);
+      console.log('[PromptEnhancementService] Contains <enhanced-prompt>?', textContent.includes('<enhanced-prompt>'));
+      console.log('[PromptEnhancementService] Contains backtick XML?', textContent.includes('`<enhanced-prompt>`'));
+
+      // If no XML was generated, use the original prompt as fallback
+      if (!this.enhancedPrompt && textContent.length > 0) {
+        console.warn('[PromptEnhancementService] Using fallback: AI response as enhanced prompt');
+        this.enhancedPrompt = textContent;
+      }
+    }
+
+    // Add sources to metadata if provided
+    const finalMetadata = this.metadata || {
+      complexity: 'moderate',
+      domains: [],
+      technologies: [],
+      patterns: []
+    };
+
+    if (sources && sources.length > 0) {
+      finalMetadata.sources = sources.map(s => s.title);
+    }
+
+    return {
+      enhancedPrompt: this.enhancedPrompt,
+      metadata: finalMetadata,
+      researchItems: this.researchItems,
+      clarificationQuestions: this.clarificationQuestions.length > 0 ? this.clarificationQuestions : undefined,
+      processingTime: Date.now() - startTime
+    };
   }
 
   /**
@@ -375,7 +377,7 @@ export class PromptEnhancementService {
     // Clear global processed set for new enhancement session
     this.xmlParser.clearDuplicationTracking();
     this.researchItems = []; // Clear previous research items
-    this.currentSessionId = null; // Clear previous session ID to start fresh
+    this.sessionManager.clearSession(); // Clear previous session ID to start fresh
     console.log('[PromptEnhancementService] Cleared duplicate tracking and session data for new enhancement');
 
     try {
@@ -481,26 +483,15 @@ export class PromptEnhancementService {
 
       if (!clarificationAnswers || clarificationAnswers.length === 0) {
         console.log('[PromptEnhancementService] Creating new session with provider:', providerId, 'model:', modelId);
-        const newSessionResponse = await fetch(`http://localhost:${this.port}/session`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            directory: '.',  // Use current directory since we're in browser context
-            projectID: 'vscode-webview',
-            providerID: providerId,
-            modelID: modelId
-          })
-        });
 
-        if (!newSessionResponse.ok) {
-          throw new Error(`Failed to create session: ${newSessionResponse.statusText}`);
-        }
+        const sessionConfig: SessionConfig = {
+          directory: '.',  // Use current directory since we're in browser context
+          projectID: 'vscode-webview',
+          providerID: providerId,
+          modelID: modelId
+        };
 
-        const newSession = await newSessionResponse.json();
-        sessionId = newSession.id;
-        this.currentSessionId = sessionId; // Track the current session
+        sessionId = await this.sessionManager.createSession(sessionConfig);
         console.log('[PromptEnhancementService] Created new session and set as current:', sessionId);
         console.log('[PromptEnhancementService] Session tracking initialized - will only accept events with sessionID:', sessionId);
       } else {
@@ -510,7 +501,7 @@ export class PromptEnhancementService {
       }
 
       // Create the request payload using the custom command as a message
-      const requestPayload = {
+      const requestPayload: MessagePayload = {
         parts: [
           {
             type: 'text',
@@ -523,17 +514,7 @@ export class PromptEnhancementService {
       };
 
       // Send request to SuperCode session's message endpoint
-      const response = await fetch(`http://localhost:${this.port}/session/${sessionId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`SuperCode request failed: ${response.statusText}`);
-      }
+      const response = await this.sessionManager.sendMessageToSession(sessionId, requestPayload);
 
       // Process the streaming response
       return await this.processStreamingResponse(response, sources);
@@ -557,14 +538,14 @@ export class PromptEnhancementService {
     this.metadata = null;
     // Clear the global processed research set for new sessions
     this.xmlParser.clearDuplicationTracking();
-    this.currentSessionId = null; // Clear session tracking
+    this.sessionManager.clearSession(); // Clear session tracking
   }
 
   /**
    * Get the current session ID
    */
   public getCurrentSessionId(): string | null {
-    return this.currentSessionId;
+    return this.sessionManager.getCurrentSessionId();
   }
 
   /**
@@ -573,11 +554,12 @@ export class PromptEnhancementService {
   public async sendClarificationAnswers(
     clarificationAnswers: ClarificationQuestion[]
   ): Promise<EnhancementResult> {
-    if (!this.currentSessionId) {
+    if (!this.sessionManager.hasActiveSession()) {
       throw new Error('No active session to send clarification answers to');
     }
 
-    console.log('[PromptEnhancementService] Sending clarification answers to session:', this.currentSessionId);
+    const currentSessionId = this.sessionManager.getCurrentSessionId();
+    console.log('[PromptEnhancementService] Sending clarification answers to session:', currentSessionId);
     console.log('[PromptEnhancementService] Answers:', JSON.stringify(clarificationAnswers, null, 2));
 
     try {
@@ -599,7 +581,7 @@ export class PromptEnhancementService {
       }
 
       // Send the answers as a message to the existing session
-      const requestPayload = {
+      const requestPayload: MessagePayload = {
         parts: [
           {
             type: 'text',
@@ -609,17 +591,7 @@ export class PromptEnhancementService {
       };
 
       // Send request to the existing session's message endpoint
-      const response = await fetch(`http://localhost:${this.port}/session/${this.currentSessionId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send clarification answers: ${response.statusText}`);
-      }
+      const response = await this.sessionManager.sendMessage(requestPayload);
 
       // Process the streaming response
       return await this.processStreamingResponse(response);
@@ -636,16 +608,17 @@ export class PromptEnhancementService {
   public async sendFollowUpSuggestion(
     followUpSuggestion: string
   ): Promise<EnhancementResult> {
-    if (!this.currentSessionId) {
+    if (!this.sessionManager.hasActiveSession()) {
       throw new Error('No active session to send follow-up suggestion to');
     }
 
-    console.log('[PromptEnhancementService] Sending follow-up suggestion to session:', this.currentSessionId);
+    const currentSessionId = this.sessionManager.getCurrentSessionId();
+    console.log('[PromptEnhancementService] Sending follow-up suggestion to session:', currentSessionId);
     console.log('[PromptEnhancementService] Follow-up:', followUpSuggestion);
 
     try {
       // Send the follow-up suggestion as a message to the existing session
-      const requestPayload = {
+      const requestPayload: MessagePayload = {
         parts: [
           {
             type: 'text',
@@ -655,17 +628,7 @@ export class PromptEnhancementService {
       };
 
       // Send request to the existing session's message endpoint
-      const response = await fetch(`http://localhost:${this.port}/session/${this.currentSessionId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestPayload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send follow-up suggestion: ${response.statusText}`);
-      }
+      const response = await this.sessionManager.sendMessage(requestPayload);
 
       // Process the streaming response
       return await this.processStreamingResponse(response);
@@ -705,41 +668,21 @@ export class PromptEnhancementService {
 
     try {
       // Clear session tracking for new follow-up session
-      this.currentSessionId = null;
+      this.sessionManager.clearSession();
       // Don't clear existing research - we want to append to it
       this.isProcessing = true;
 
       // Create a new session for the follow-up enhancement
       console.log('[PromptEnhancementService] Creating new session for follow-up with provider:', providerId, 'model:', modelId);
-      const sessionResponse = await fetch(`http://localhost:${this.port}/session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          directory: '.',  // Use current directory since we're in browser context
-          projectID: 'vscode-webview',
-          providerID: providerId,
-          modelID: modelId
-        })
-      });
 
-      if (!sessionResponse.ok) {
-        throw new Error(`Failed to create session: ${sessionResponse.statusText}`);
-      }
+      const sessionConfig: SessionConfig = {
+        directory: '.',  // Use current directory since we're in browser context
+        projectID: 'vscode-webview',
+        providerID: providerId,
+        modelID: modelId
+      };
 
-      const sessionData = await sessionResponse.json();
-      console.log('[PromptEnhancementService] Session creation response:', sessionData);
-
-      // The API returns 'id' not 'sessionId'
-      const sessionId = sessionData.id || sessionData.sessionId;
-
-      if (!sessionId) {
-        console.error('[PromptEnhancementService] Session creation response missing ID:', sessionData);
-        throw new Error('Session creation response missing ID');
-      }
-
-      this.currentSessionId = sessionId; // Track the current session for follow-up
+      const sessionId = await this.sessionManager.createSession(sessionConfig);
       console.log('[PromptEnhancementService] Follow-up session created and set as current:', sessionId);
 
       // Use the custom command for follow-up enhancement
@@ -762,94 +705,60 @@ ${context.followUpSuggestion}
 - Add any new research insights needed for the additional requirements`;
 
       // Send the follow-up enhancement request
-      const messageResponse = await fetch(`http://localhost:${this.port}/session/${sessionId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          parts: [
-            {
-              type: 'text',
-              text: followUpPrompt
-            }
-          ],
-          providerID: providerId,
-          modelID: modelId
-        })
-      });
+      const messagePayload: MessagePayload = {
+        parts: [
+          {
+            type: 'text',
+            text: followUpPrompt
+          }
+        ],
+        providerID: providerId,
+        modelID: modelId
+      };
 
-      if (!messageResponse.ok) {
-        throw new Error(`Failed to send follow-up message: ${messageResponse.statusText}`);
-      }
-
-      // Process the streaming response - similar to processStreamingResponse
-      const reader = messageResponse.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = '';
+      // Process streaming response using SessionManager with real-time callbacks
       let processedResearchContent = new Set<string>();
 
-      if (reader) {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            fullContent += chunk;
-
-            // Process streaming research from the chunk immediately
-            const followUpResult = this.xmlParser.processStreamingResearch(chunk, processedResearchContent);
-            for (const item of followUpResult.items) {
+      const streamingCallbacks: StreamingCallbacks = {
+        onChunk: (chunk: string) => {
+          // Process streaming research from the chunk immediately
+          const followUpResult = this.xmlParser.processStreamingResearch(chunk, processedResearchContent);
+          for (const item of followUpResult.items) {
+            this.researchItems.push(item);
+            if (this.onResearchUpdate) {
+              console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+              this.onResearchUpdate([...this.researchItems]);
+            }
+          }
+          processedResearchContent = followUpResult.updatedProcessedContent;
+        },
+        onMessagePart: (part: any) => {
+          // Process structured message parts
+          if (part && part.text && typeof part.text === 'string') {
+            const partResult = this.xmlParser.processStreamingResearch(part.text, processedResearchContent);
+            for (const item of partResult.items) {
               this.researchItems.push(item);
               if (this.onResearchUpdate) {
-                console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
+                console.log('[PromptEnhancementService] Follow-up real-time research from part:', item.type, '-', item.content.substring(0, 80) + '...');
                 this.onResearchUpdate([...this.researchItems]);
               }
             }
-            processedResearchContent = followUpResult.updatedProcessedContent;
-
-            // Try to parse as JSON for structured responses
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-
-                  // Process different message types
-                  if (data.type === 'content' && data.text) {
-                    // Extract and process any inline research updates
-                    const dataResult = this.xmlParser.processStreamingResearch(data.text, processedResearchContent);
-                    for (const item of dataResult.items) {
-                      this.researchItems.push(item);
-                      if (this.onResearchUpdate) {
-                        console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
-                        this.onResearchUpdate([...this.researchItems]);
-                      }
-                    }
-                    processedResearchContent = dataResult.updatedProcessedContent;
-                  } else if (data.type === 'message.part.updated' && data.text) {
-                    // Handle accumulated text updates
-                    const accumResult = this.xmlParser.processStreamingResearch(data.text, processedResearchContent);
-                    for (const item of accumResult.items) {
-                      this.researchItems.push(item);
-                      if (this.onResearchUpdate) {
-                        console.log('[PromptEnhancementService] Real-time research:', item.type, '-', item.content.substring(0, 80) + '...');
-                        this.onResearchUpdate([...this.researchItems]);
-                      }
-                    }
-                    processedResearchContent = accumResult.updatedProcessedContent;
-                  }
-                } catch (e) {
-                  // Skip invalid JSON
-                }
-              }
-            }
+            processedResearchContent = partResult.updatedProcessedContent;
           }
-        } finally {
-          reader.releaseLock();
+        },
+        onComplete: (fullContent: string) => {
+          console.log('[PromptEnhancementService] Follow-up streaming complete, received', fullContent.length, 'characters');
+        },
+        onError: (error: Error) => {
+          console.error('[PromptEnhancementService] Follow-up streaming error:', error);
         }
-      }
+      };
+
+      const fullContent = await this.sessionManager.sendMessageWithStreaming(messagePayload, {
+        sessionId,
+        includeSessionFilter: true,
+        callbacks: streamingCallbacks
+      });
 
       // Process the complete response exactly like the initial enhancement
       let textContent = '';
