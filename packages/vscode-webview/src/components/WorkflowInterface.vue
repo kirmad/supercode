@@ -185,8 +185,8 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue"
 import PlanTab from "./tabs/PlanTab.vue"
 import ImplementTab from "./tabs/ImplementTab.vue"
-import ReviewTab from "./tabs/ReviewTab.vue"
 import PromptGenerationTab from "./tabs/PromptGenerationTab.vue"
+import PlanGenerationTab from "./tabs/PlanGenerationTab.vue"
 import ComingSoonTab from "./tabs/ComingSoonTab.vue"
 import FooterBar from "./shared/FooterBar.vue"
 import ModelSelector from "./shared/ModelSelector.vue"
@@ -234,7 +234,7 @@ interface AvailableAgent {
 // Tab configuration
 const tabs = [
   { id: "prompt", name: "Prompt Generation", component: PromptGenerationTab },
-  { id: "plan", name: "Plan", component: ComingSoonTab }, // Temporarily using ComingSoonTab, original PlanTab still imported
+  { id: "plan", name: "Plan", component: PlanGenerationTab }, // Updated to use PlanGenerationTab
   { id: "implement", name: "Implement", component: ComingSoonTab },
   { id: "review", name: "Review", component: ComingSoonTab },
   { id: "validate", name: "Validate", component: ComingSoonTab },
@@ -622,6 +622,16 @@ function handleSSEMessage(message: SSEMessage) {
         // Forward to PromptEnhancementService if on the prompt tab
         if (activeTab.value === "prompt") {
           // Emit an event that the PromptGenerationTab can listen to
+          currentTaskData.value.streamingUpdate = {
+            type: 'message.part.updated',
+            content: partContent,
+            timestamp: Date.now()
+          }
+        }
+
+        // Forward to PlanGenerationService if on the plan tab
+        if (activeTab.value === "plan") {
+          // Emit an event that the PlanGenerationTab can listen to
           currentTaskData.value.streamingUpdate = {
             type: 'message.part.updated',
             content: partContent,
