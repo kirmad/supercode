@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug XML Parsing</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .warning { color: #fbbf24; }
+        pre {
+            background: #0a0a0a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug Review Result Parsing</h1>
+    <div id="output"></div>
+
+    <script>
+        const reviewXML = `<review-result>
+
+<hunks>
+
+<hunk file="packages/vscode-webview/src/components/shared/MarkdownRenderer.vue" start="53" end="72">
+<category>feature</category>
+<risk>low</risk>
+<description>Adds MermaidZoomModal component integration to MarkdownRenderer with modal state management</description>
+<needs-attention>no</needs-attention>
+</hunk>
+
+<hunk file="packages/vscode-webview/src/components/shared/MermaidZoomModal.vue" start="1" end="896">
+<category>feature</category>
+<risk>low</risk>
+<description>Creates comprehensive zoom modal component with pan, zoom, fullscreen, and download functionality</description>
+<needs-attention>no</needs-attention>
+</hunk>
+
+</hunks>
+
+<comments>
+
+<comment>
+<file>packages/vscode-webview/src/components/shared/MermaidZoomModal.vue</file>
+<lines start="30" end="35"/>
+<type>suggestion</type>
+<severity>low</severity>
+<message>Consider extracting these magic numbers (minScale: 0.1, maxScale: 5, zoomStep: 0.25) into component props or constants for better maintainability.</message>
+<fix-code></fix-code>
+</comment>
+
+<comment>
+<file>packages/vscode-webview/src/components/shared/MermaidZoomModal.vue</file>
+<lines start="180" end="185"/>
+<type>suggestion</type>
+<severity>medium</severity>
+<message>The zoom calculation logic could benefit from bounds checking to prevent zooming beyond container limits. Consider adding viewport constraints.</message>
+<fix-code></fix-code>
+</comment>
+
+</comments>
+
+</review-result>`;
+
+        const output = document.getElementById('output');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = message;
+            output.appendChild(div);
+        }
+
+        function logPre(content) {
+            const pre = document.createElement('pre');
+            pre.textContent = content;
+            output.appendChild(pre);
+        }
+
+        // Test 1: Check if we can find the hunks section
+        log('=== Test 1: Finding hunks section ===');
+        const hunksMatch = reviewXML.match(/<hunks>([\s\S]*?)<\/hunks>/s);
+        if (hunksMatch) {
+            log('✓ Found hunks section', 'success');
+            log('Hunks content length: ' + hunksMatch[1].length);
+            logPre(hunksMatch[1].substring(0, 200) + '...');
+        } else {
+            log('✗ Failed to find hunks section', 'error');
+        }
+
+        // Test 2: Finding individual hunks
+        log('\n=== Test 2: Finding individual hunks ===');
+        if (hunksMatch) {
+            const hunkMatches = [...hunksMatch[1].matchAll(/<hunk[^>]*>([\s\S]*?)<\/hunk>/gs)];
+            log('Found ' + hunkMatches.length + ' hunks', hunkMatches.length > 0 ? 'success' : 'error');
+
+            for (let i = 0; i < hunkMatches.length; i++) {
+                log('\n--- Hunk ' + (i + 1) + ' ---');
+                const hunkXML = hunkMatches[i][0];
+
+                // Parse attributes
+                const fileMatch = hunkXML.match(/file="([^"]+)"/);
+                const startMatch = hunkXML.match(/start="([^"]+)"/);
+                const endMatch = hunkXML.match(/end="([^"]+)"/);
+
+                log('File: ' + (fileMatch ? fileMatch[1] : 'NOT FOUND'), fileMatch ? 'success' : 'error');
+                log('Start: ' + (startMatch ? startMatch[1] : 'NOT FOUND'), startMatch ? 'success' : 'error');
+                log('End: ' + (endMatch ? endMatch[1] : 'NOT FOUND'), endMatch ? 'success' : 'error');
+
+                // Parse inner elements
+                const categoryMatch = hunkXML.match(/<category>([^<]+)<\/category>/);
+                const riskMatch = hunkXML.match(/<risk>([^<]+)<\/risk>/);
+                const descMatch = hunkXML.match(/<description>([^<]+)<\/description>/);
+
+                log('Category: ' + (categoryMatch ? categoryMatch[1] : 'NOT FOUND'), categoryMatch ? 'success' : 'error');
+                log('Risk: ' + (riskMatch ? riskMatch[1] : 'NOT FOUND'), riskMatch ? 'success' : 'error');
+                log('Description: ' + (descMatch ? (descMatch[1].substring(0, 50) + '...') : 'NOT FOUND'), descMatch ? 'success' : 'error');
+            }
+        }
+
+        // Test 3: Check if we can find the comments section
+        log('\n=== Test 3: Finding comments section ===');
+        const commentsMatch = reviewXML.match(/<comments>([\s\S]*?)<\/comments>/s);
+        if (commentsMatch) {
+            log('✓ Found comments section', 'success');
+            log('Comments content length: ' + commentsMatch[1].length);
+        } else {
+            log('✗ Failed to find comments section', 'error');
+        }
+
+        // Test 4: Finding individual comments
+        log('\n=== Test 4: Finding individual comments ===');
+        if (commentsMatch) {
+            const commentMatches = [...commentsMatch[1].matchAll(/<comment>([\s\S]*?)<\/comment>/gs)];
+            log('Found ' + commentMatches.length + ' comments', commentMatches.length > 0 ? 'success' : 'error');
+
+            for (let i = 0; i < commentMatches.length; i++) {
+                log('\n--- Comment ' + (i + 1) + ' ---');
+                const commentXML = commentMatches[i][1];
+
+                // Parse elements
+                const fileMatch = commentXML.match(/<file>([^<]+)<\/file>/);
+                const linesMatch = commentXML.match(/<lines\s+start="(\d+)"\s+end="(\d+)"/);
+                const typeMatch = commentXML.match(/<type>([^<]+)<\/type>/);
+                const severityMatch = commentXML.match(/<severity>([^<]+)<\/severity>/);
+                const messageMatch = commentXML.match(/<message>([\s\S]*?)<\/message>/);
+
+                log('File: ' + (fileMatch ? fileMatch[1].substring(0, 50) : 'NOT FOUND'), fileMatch ? 'success' : 'error');
+                log('Lines: ' + (linesMatch ? `${linesMatch[1]}-${linesMatch[2]}` : 'NOT FOUND'), linesMatch ? 'success' : 'error');
+                log('Type: ' + (typeMatch ? typeMatch[1] : 'NOT FOUND'), typeMatch ? 'success' : 'error');
+                log('Severity: ' + (severityMatch ? severityMatch[1] : 'NOT FOUND'), severityMatch ? 'success' : 'error');
+                log('Message: ' + (messageMatch ? 'Found' : 'NOT FOUND'), messageMatch ? 'success' : 'error');
+            }
+        }
+
+        // Test 5: Simulate the actual parsing function
+        log('\n=== Test 5: Simulating actual parsing function ===');
+
+        function parseReviewResult(xml) {
+            try {
+                const hunks = [];
+                const comments = [];
+
+                // Parse hunks
+                const hunksSection = xml.match(/<hunks>([\s\S]*?)<\/hunks>/s)?.[1] || '';
+                const hunkMatches = hunksSection.matchAll(/<hunk[^>]*>([\s\S]*?)<\/hunk>/gs);
+
+                for (const match of hunkMatches) {
+                    const hunkXML = match[0];
+                    const fileMatch = hunkXML.match(/file="([^"]+)"/);
+                    const startMatch = hunkXML.match(/start="([^"]+)"/);
+                    const endMatch = hunkXML.match(/end="([^"]+)"/);
+                    const categoryMatch = hunkXML.match(/<category>([^<]+)<\/category>/);
+                    const riskMatch = hunkXML.match(/<risk>([^<]+)<\/risk>/);
+                    const descriptionMatch = hunkXML.match(/<description>([^<]+)<\/description>/);
+                    const needsAttentionMatch = hunkXML.match(/<needs-attention>([^<]+)<\/needs-attention>/);
+
+                    if (fileMatch && startMatch && endMatch && categoryMatch && riskMatch && descriptionMatch) {
+                        hunks.push({
+                            file: fileMatch[1],
+                            start: parseInt(startMatch[1]),
+                            end: parseInt(endMatch[1]),
+                            category: categoryMatch[1],
+                            risk: riskMatch[1],
+                            description: descriptionMatch[1],
+                            needsAttention: needsAttentionMatch?.[1] === 'yes'
+                        });
+                    }
+                }
+
+                // Parse comments
+                const commentsSection = xml.match(/<comments>([\s\S]*?)<\/comments>/s)?.[1] || '';
+                const commentMatches = commentsSection.matchAll(/<comment>([\s\S]*?)<\/comment>/gs);
+
+                for (const match of commentMatches) {
+                    const commentXML = match[1];
+                    const fileMatch = commentXML.match(/<file>([^<]+)<\/file>/);
+                    const linesMatch = commentXML.match(/<lines\s+start="(\d+)"\s+end="(\d+)"/);
+                    const typeMatch = commentXML.match(/<type>([^<]+)<\/type>/);
+                    const severityMatch = commentXML.match(/<severity>([^<]+)<\/severity>/);
+                    const messageMatch = commentXML.match(/<message>([\s\S]*?)<\/message>/);
+
+                    if (fileMatch && linesMatch && typeMatch && severityMatch && messageMatch) {
+                        comments.push({
+                            file: fileMatch[1],
+                            lines: {
+                                start: parseInt(linesMatch[1]),
+                                end: parseInt(linesMatch[2])
+                            },
+                            type: typeMatch[1],
+                            severity: severityMatch[1],
+                            message: messageMatch[1].trim()
+                        });
+                    }
+                }
+
+                return { hunks, comments };
+            } catch (error) {
+                log('Error in parseReviewResult: ' + error.message, 'error');
+                return { hunks: [], comments: [] };
+            }
+        }
+
+        const result = parseReviewResult(reviewXML);
+        log('Parsed ' + result.hunks.length + ' hunks and ' + result.comments.length + ' comments',
+            (result.hunks.length > 0 && result.comments.length > 0) ? 'success' : 'warning');
+
+        log('\n=== Final Result ===');
+        logPre(JSON.stringify(result, null, 2));
+    </script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Review Trigger</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        button {
+            background: #9b87f5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #8b76e5;
+        }
+        #status {
+            padding: 10px;
+            background: rgba(34, 197, 94, 0.1);
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Review Trigger</h1>
+
+    <button onclick="testWithSampleDiff()">Test with Sample Diff</button>
+    <button onclick="openReviewUI()">Open Review UI</button>
+
+    <div id="status"></div>
+
+    <h2>Console Output</h2>
+    <pre id="console-output"></pre>
+
+    <script>
+        // Redirect console.log to display in page
+        const consoleOutput = document.getElementById('console-output');
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg
+            ).join(' ');
+            consoleOutput.textContent += message + '\n';
+        };
+
+        async function testWithSampleDiff() {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = 'Starting test review...';
+            statusEl.className = '';
+
+            try {
+                // Sample diff content for testing
+                const sampleDiff = `diff --git a/test.js b/test.js
+index 1234567..abcdefg 100644
+--- a/test.js
++++ b/test.js
+@@ -1,5 +1,8 @@
+ function hello() {
+-  console.log("Hello");
++  console.log("Hello World");
++  // New comment
++  const x = 10;
++  return x;
+ }
+
+ hello();`;
+
+                // Direct test of the review service
+                console.log('📤 Sending review request to simulate actual flow');
+
+                // Open the browser console to see all logs
+                console.log('💡 Check browser console (F12) for full output');
+
+                statusEl.textContent = '✅ Test initiated - check browser console for detailed output';
+            } catch (error) {
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                statusEl.className = 'error';
+                console.error(error);
+            }
+        }
+
+        function openReviewUI() {
+            window.location.href = 'http://localhost:5173/workflow';
+        }
+    </script>
+</body>
+</html>

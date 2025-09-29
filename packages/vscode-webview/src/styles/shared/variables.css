@@ -83,4 +83,40 @@
   --z-modal: 1050;
   --z-popover: 1060;
   --z-tooltip: 1070;
+
+  /* Additional Colors for Code Review */
+  --text-tertiary: rgba(255, 255, 255, 0.4);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --glass-bg-darker: rgba(0, 0, 0, 0.2);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --primary-alpha-10: rgba(102, 126, 234, 0.1);
+
+  /* Status Colors */
+  --info-bg: rgba(59, 130, 246, 0.1);
+  --info-color: #3b82f6;
+  --success-bg: rgba(34, 197, 94, 0.1);
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --error-bg: rgba(239, 68, 68, 0.1);
+
+  /* Alpha Colors */
+  --success-alpha-5: rgba(34, 197, 94, 0.05);
+  --success-alpha-10: rgba(34, 197, 94, 0.1);
+  --warning-alpha-5: rgba(245, 158, 11, 0.05);
+  --warning-alpha-10: rgba(245, 158, 11, 0.1);
+  --error-alpha-5: rgba(239, 68, 68, 0.05);
+  --error-alpha-10: rgba(239, 68, 68, 0.1);
+  --error-shadow: rgba(239, 68, 68, 0.3);
+  --error-gradient: linear-gradient(135deg, #ef4444, #dc2626);
+
+  /* Code Colors */
+  --code-bg: rgba(30, 30, 30, 0.5);
+  --syntax-keyword: #569cd6;
+  --syntax-string: #ce9178;
+  --syntax-comment: #6a9955;
+  --syntax-selector: #d7ba7d;
+  --syntax-property: #9cdcfe;
+  --syntax-value: #ce9178;
+  --syntax-tag: #569cd6;
+  --syntax-attribute: #9cdcfe;
+  --syntax-key: #9cdcfe;
 }

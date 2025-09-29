@@ -187,6 +187,7 @@ import PlanTab from "./tabs/PlanTab.vue"
 import ImplementTab from "./tabs/ImplementTab.vue"
 import PromptGenerationTab from "./tabs/PromptGenerationTab.vue"
 import PlanGenerationTab from "./tabs/PlanGenerationTab.vue"
+import CodeReviewTab from "./tabs/CodeReviewTab.vue"
 import ComingSoonTab from "./tabs/ComingSoonTab.vue"
 import FooterBar from "./shared/FooterBar.vue"
 import ModelSelector from "./shared/ModelSelector.vue"
@@ -236,7 +237,7 @@ const tabs = [
   { id: "prompt", name: "Prompt Generation", component: PromptGenerationTab },
   { id: "plan", name: "Plan", component: PlanGenerationTab }, // Updated to use PlanGenerationTab
   { id: "implement", name: "Implement", component: ComingSoonTab },
-  { id: "review", name: "Review", component: ComingSoonTab },
+  { id: "review", name: "Review", component: CodeReviewTab },
   { id: "validate", name: "Validate", component: ComingSoonTab },
   { id: "enhance", name: "Enhance", component: ComingSoonTab },
   { id: "build", name: "Build", component: ComingSoonTab },

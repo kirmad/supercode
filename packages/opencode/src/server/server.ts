@@ -27,6 +27,7 @@ import { createMCPRoutes } from "./mcp-api"
 import { createWebRoutes } from "./web-routes"
 import { createDebugLogsRoutes } from "./debug-logs-routes"
 import { createHttpLogsRoutes } from "./http-logs-routes"
+import { createGitRoutes } from "./git-routes"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
@@ -1933,6 +1934,7 @@ export namespace Server {
     )
     .route("/tui/control", TuiRoute)
     .route("/web", createWebRoutes())
+    .route("/git", createGitRoutes())
     .route("/", createMCPRoutes())
     .route("/", createDebugLogsRoutes())
     .route("/", createHttpLogsRoutes())
@@ -2210,7 +2212,7 @@ export namespace Server {
       idleTimeout: 0,
       fetch: (req, server) => {
         // Check if this is a WebSocket upgrade request
-        if (server.upgrade(req, {
+        if (server && server.upgrade && server.upgrade(req, {
           data: {
             connectionId: "", // Will be set in open handler
             directory: new URL(req.url).searchParams.get("directory") || process.cwd(),
@@ -2219,7 +2221,7 @@ export namespace Server {
         })) {
           return // Return nothing if upgrade was successful
         }
-        
+
         // Otherwise handle as normal HTTP request
         return App.fetch(req)
       },

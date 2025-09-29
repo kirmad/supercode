@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Review Parsing</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            margin-bottom: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        h2 {
+            color: #9b87f5;
+            margin-top: 0;
+        }
+        .insight {
+            background: rgba(155, 135, 245, 0.1);
+            border-left: 3px solid #9b87f5;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .hunk {
+            background: rgba(34, 197, 94, 0.1);
+            border-left: 3px solid #22c55e;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .comment {
+            background: rgba(251, 191, 36, 0.1);
+            border-left: 3px solid #fbbf24;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .severity-high { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+        .severity-medium { border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.1); }
+        .severity-low { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        code {
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        button {
+            background: #9b87f5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #8b76e5;
+        }
+        .status {
+            padding: 10px;
+            background: rgba(34, 197, 94, 0.1);
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <h1>Review Parsing Test</h1>
+
+    <button onclick="parseReview()">Parse Review Response</button>
+
+    <div id="status" class="status"></div>
+
+    <div class="section">
+        <h2>Insights</h2>
+        <div id="insights"></div>
+    </div>
+
+    <div class="section">
+        <h2>Hunks</h2>
+        <div id="hunks"></div>
+    </div>
+
+    <div class="section">
+        <h2>Comments</h2>
+        <div id="comments"></div>
+    </div>
+
+    <script>
+        const reviewResponse = `<review-insight type="feature" severity="low">
+New mermaid diagram zoom functionality with modal overlay and interactive controls added to the webview component
+</review-insight>
+
+<review-insight type="pattern" severity="low">
+Good separation of concerns with dedicated MermaidZoomModal component and proper event handling
+</review-insight>
+
+<review-insight type="quality" severity="medium">
+Comprehensive feature implementation includes keyboard shortcuts, touch gestures, and accessibility considerations
+</review-insight>
+
+<review-result>
+<hunks>
+<hunk file="packages/vscode-webview/src/components/shared/MarkdownRenderer.vue" start="53" end="72">
+<category>feature</category>
+<risk>low</risk>
+<description>Adds MermaidZoomModal component integration to MarkdownRenderer with modal state management</description>
+<needs-attention>no</needs-attention>
+</hunk>
+
+<hunk file="packages/vscode-webview/src/components/shared/MermaidZoomModal.vue" start="1" end="896">
+<category>feature</category>
+<risk>low</risk>
+<description>Creates comprehensive zoom modal component with pan, zoom, fullscreen, and download functionality</description>
+<needs-attention>no</needs-attention>
+</hunk>
+</hunks>
+
+<comments>
+<comment>
+<file>packages/vscode-webview/src/components/shared/MermaidZoomModal.vue</file>
+<lines start="30" end="35"/>
+<type>suggestion</type>
+<severity>low</severity>
+<message>Consider extracting these magic numbers (minScale: 0.1, maxScale: 5, zoomStep: 0.25) into component props or constants for better maintainability.</message>
+<fix-code></fix-code>
+</comment>
+
+<comment>
+<file>packages/vscode-webview/src/components/shared/MermaidZoomModal.vue</file>
+<lines start="180" end="185"/>
+<type>suggestion</type>
+<severity>medium</severity>
+<message>The zoom calculation logic could benefit from bounds checking to prevent zooming beyond container limits. Consider adding viewport constraints.</message>
+<fix-code></fix-code>
+</comment>
+
+<comment>
+<file>packages/vscode-webview/src/components/shared/MarkdownRenderer.vue</file>
+<lines start="480" end="485"/>
+<type>suggestion</type>
+<severity>low</severity>
+<message>The title extraction regex could be more robust. Consider handling edge cases where the diagram has no title or malformed syntax.</message>
+<fix-code></fix-code>
+</comment>
+</comments>
+</review-result>`;
+
+        function parseInsight(xml) {
+            const typeMatch = xml.match(/type="([^"]+)"/);
+            const severityMatch = xml.match(/severity="([^"]+)"/);
+            const messageMatch = xml.match(/<review-insight[^>]*>([\s\S]*?)<\/review-insight>/s);
+
+            if (typeMatch && severityMatch && messageMatch) {
+                return {
+                    type: typeMatch[1],
+                    severity: severityMatch[1],
+                    message: messageMatch[1].trim()
+                };
+            }
+            return null;
+        }
+
+        function parseHunk(xml) {
+            const fileMatch = xml.match(/file="([^"]+)"/);
+            const startMatch = xml.match(/start="([^"]+)"/);
+            const endMatch = xml.match(/end="([^"]+)"/);
+            const categoryMatch = xml.match(/<category>([^<]+)<\/category>/);
+            const riskMatch = xml.match(/<risk>([^<]+)<\/risk>/);
+            const descriptionMatch = xml.match(/<description>([^<]+)<\/description>/);
+            const needsAttentionMatch = xml.match(/<needs-attention>([^<]+)<\/needs-attention>/);
+
+            if (fileMatch && startMatch && endMatch) {
+                return {
+                    file: fileMatch[1],
+                    start: parseInt(startMatch[1]),
+                    end: parseInt(endMatch[1]),
+                    category: categoryMatch ? categoryMatch[1] : '',
+                    risk: riskMatch ? riskMatch[1] : '',
+                    description: descriptionMatch ? descriptionMatch[1] : '',
+                    needsAttention: needsAttentionMatch ? needsAttentionMatch[1] === 'yes' : false
+                };
+            }
+            return null;
+        }
+
+        function parseComment(xml) {
+            const fileMatch = xml.match(/<file>([^<]+)<\/file>/);
+            const linesMatch = xml.match(/<lines\s+start="(\d+)"\s+end="(\d+)"/);
+            const typeMatch = xml.match(/<type>([^<]+)<\/type>/);
+            const severityMatch = xml.match(/<severity>([^<]+)<\/severity>/);
+            const messageMatch = xml.match(/<message>([\s\S]*?)<\/message>/);
+
+            if (fileMatch && linesMatch && typeMatch && severityMatch && messageMatch) {
+                return {
+                    file: fileMatch[1],
+                    lines: {
+                        start: parseInt(linesMatch[1]),
+                        end: parseInt(linesMatch[2])
+                    },
+                    type: typeMatch[1],
+                    severity: severityMatch[1],
+                    message: messageMatch[1].trim()
+                };
+            }
+            return null;
+        }
+
+        function parseReview() {
+            const statusEl = document.getElementById('status');
+            const insightsEl = document.getElementById('insights');
+            const hunksEl = document.getElementById('hunks');
+            const commentsEl = document.getElementById('comments');
+
+            try {
+                // Parse insights
+                const insights = [];
+                const insightMatches = reviewResponse.matchAll(/<review-insight[^>]*>([\s\S]*?)<\/review-insight>/g);
+                for (const match of insightMatches) {
+                    const insight = parseInsight(match[0]);
+                    if (insight) insights.push(insight);
+                }
+
+                // Parse hunks
+                const hunks = [];
+                const resultMatch = reviewResponse.match(/<review-result>([\s\S]*?)<\/review-result>/s);
+                if (resultMatch) {
+                    const hunksSection = resultMatch[1].match(/<hunks>([\s\S]*?)<\/hunks>/s);
+                    if (hunksSection) {
+                        const hunkMatches = hunksSection[1].matchAll(/<hunk[^>]*>([\s\S]*?)<\/hunk>/gs);
+                        for (const match of hunkMatches) {
+                            const hunk = parseHunk(match[0]);
+                            if (hunk) hunks.push(hunk);
+                        }
+                    }
+                }
+
+                // Parse comments
+                const comments = [];
+                if (resultMatch) {
+                    const commentsSection = resultMatch[1].match(/<comments>([\s\S]*?)<\/comments>/s);
+                    if (commentsSection) {
+                        const commentMatches = commentsSection[1].matchAll(/<comment>([\s\S]*?)<\/comment>/gs);
+                        for (const match of commentMatches) {
+                            const comment = parseComment(match[1]);
+                            if (comment) comments.push(comment);
+                        }
+                    }
+                }
+
+                // Display results
+                statusEl.innerHTML = `✅ Parsed: ${insights.length} insights, ${hunks.length} hunks, ${comments.length} comments`;
+                statusEl.className = 'status';
+
+                // Display insights
+                insightsEl.innerHTML = insights.map(i =>
+                    `<div class="insight severity-${i.severity}">
+                        <strong>${i.type}</strong> (${i.severity})<br>
+                        ${i.message}
+                    </div>`
+                ).join('');
+
+                // Display hunks
+                hunksEl.innerHTML = hunks.map(h =>
+                    `<div class="hunk">
+                        <strong>${h.file}</strong> (lines ${h.start}-${h.end})<br>
+                        <em>${h.category} - ${h.risk} risk</em><br>
+                        ${h.description}
+                        ${h.needsAttention ? '<br><strong>⚠️ Needs Attention</strong>' : ''}
+                    </div>`
+                ).join('');
+
+                // Display comments
+                commentsEl.innerHTML = comments.map(c =>
+                    `<div class="comment severity-${c.severity}">
+                        <strong>${c.file}</strong> (lines ${c.lines.start}-${c.lines.end})<br>
+                        <em>${c.type} - ${c.severity}</em><br>
+                        ${c.message}
+                    </div>`
+                ).join('');
+
+            } catch (error) {
+                statusEl.innerHTML = `❌ Error: ${error.message}`;
+                statusEl.className = 'status error';
+                console.error(error);
+            }
+        }
+
+        // Auto-parse on load
+        window.addEventListener('load', parseReview);
+    </script>
+</body>
+</html>

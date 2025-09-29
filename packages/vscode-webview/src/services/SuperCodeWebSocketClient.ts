@@ -251,6 +251,9 @@ export class SuperCodeWebSocketClient {
       // We manually add to the eventListeners map without triggering the subscription logic
       const handleAllEvents = (eventData: { event: string; data: any }) => {
         try {
+          // Log all events to see what we're getting
+          console.log('🔔 WebSocket raw event received:', eventData.event, eventData.data);
+
           // Convert WebSocket event to SSE message format
           // Map 'data' to 'properties' to match the expected SSE format
           const sseMessage: SSEMessage = {
@@ -259,7 +262,7 @@ export class SuperCodeWebSocketClient {
             data: eventData.data,  // Keep data as well for compatibility
             timestamp: Date.now()
           };
-          
+
           // Notify all message handlers
           this.handlers.message.forEach(handler => {
             try {
@@ -268,7 +271,7 @@ export class SuperCodeWebSocketClient {
               console.error('Error in message handler:', error);
             }
           });
-          
+
           console.log('📨 WebSocket event converted to SSE:', sseMessage.type);
         } catch (error) {
           console.error('Failed to process WebSocket event:', error);
