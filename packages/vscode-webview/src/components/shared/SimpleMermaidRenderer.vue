@@ -15,17 +15,32 @@ graph LR
     </div>
 
     <button @click="renderDiagram">Render Diagram</button>
+    <button v-if="diagramRendered" @click="openZoomModal" class="zoom-button">
+      Open in Zoom Modal
+    </button>
     <div v-if="error" class="error">{{ error }}</div>
+
+    <!-- Mermaid Zoom Modal -->
+    <MermaidZoomModal
+      :isOpen="isModalOpen"
+      :svgContent="svgContent"
+      title="Simple Mermaid Test Diagram"
+      @close="closeModal"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import MermaidZoomModal from './MermaidZoomModal.vue'
 
 const mermaidLoaded = ref(false)
 const mermaidVersion = ref('unknown')
 const error = ref('')
 const containerRef = ref<HTMLElement | null>(null)
+const diagramRendered = ref(false)
+const isModalOpen = ref(false)
+const svgContent = ref('')
 
 declare global {
   interface Window {
@@ -108,11 +123,23 @@ async function renderDiagram() {
     const { svg } = await window.mermaid.render(id, graphDef)
     mermaidEl.innerHTML = svg
     console.log('[SimpleMermaid] Diagram rendered successfully')
+
+    // Store the SVG content for the modal
+    svgContent.value = svg
+    diagramRendered.value = true
     error.value = ''
   } catch (e: any) {
     console.error('[SimpleMermaid] Error rendering diagram:', e)
     error.value = `Render error: ${e.message}`
   }
+}
+
+function openZoomModal() {
+  isModalOpen.value = true
+}
+
+function closeModal() {
+  isModalOpen.value = false
 }
 </script>
 
@@ -174,9 +201,41 @@ button {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
+  margin-right: 10px;
+  transition: all 0.2s ease;
 }
 
 button:hover {
   background: #7c3aed;
+  transform: translateY(-1px);
+}
+
+.zoom-button {
+  background: linear-gradient(135deg, #10b981, #059669);
+  position: relative;
+  overflow: hidden;
+}
+
+.zoom-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.5s, height 0.5s;
+}
+
+.zoom-button:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.zoom-button:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
 }
 </style>

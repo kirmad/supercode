@@ -53,12 +53,21 @@
       </svg>
       <span class="copy-text">{{ copied ? 'Copied!' : 'Copy' }}</span>
     </button>
+
+    <!-- Mermaid Zoom Modal -->
+    <MermaidZoomModal
+      :isOpen="isMermaidModalOpen"
+      :svgContent="selectedMermaidSvg"
+      :title="selectedMermaidTitle"
+      @close="closeMermaidModal"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { loadMermaid, renderMermaidDiagram } from '../../utils/mermaid-loader'
+import MermaidZoomModal from './MermaidZoomModal.vue'
 
 // Type definitions for external libraries
 declare global {
@@ -97,6 +106,11 @@ const copied = ref(false)
 const isLoading = ref(false)
 const librariesLoaded = ref(false)
 const md = ref<any>(null)
+
+// Mermaid modal state
+const isMermaidModalOpen = ref(false)
+const selectedMermaidSvg = ref('')
+const selectedMermaidTitle = ref('')
 
 // Load external libraries dynamically
 async function loadLibraries() {
@@ -448,6 +462,49 @@ async function renderMermaidDiagrams() {
 
       // Use the new renderMermaidDiagram function
       await renderMermaidDiagram(element as HTMLElement, graphDefinition)
+
+      // Add click handler and visual indicators for zoom functionality
+      const svgElement = element.querySelector('svg')
+      if (svgElement) {
+        // Create wrapper for better interaction
+        const wrapper = document.createElement('div')
+        wrapper.className = 'mermaid-clickable-wrapper'
+
+        // Add zoom icon overlay
+        const zoomIcon = document.createElement('div')
+        zoomIcon.className = 'mermaid-zoom-icon'
+        zoomIcon.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+            <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M11 8V14M8 11H14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Click to zoom</span>
+        `
+
+        // Wrap the element
+        element.parentNode?.insertBefore(wrapper, element)
+        wrapper.appendChild(element)
+        wrapper.appendChild(zoomIcon)
+
+        // Add click handler
+        wrapper.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+
+          // Get the SVG content as string
+          const svgContent = svgElement.outerHTML
+
+          // Try to extract a title from the diagram
+          const titleMatch = graphDefinition.match(/^(?:graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph)(?:\s+\w+)?\s*\n\s*(?:title\s+)?([^\n]+)?/i)
+          const title = titleMatch?.[1]?.trim() || 'Mermaid Diagram'
+
+          openMermaidModal(svgContent, title)
+        })
+
+        // Add hover effect
+        wrapper.style.cursor = 'pointer'
+      }
     } catch (error: any) {
       console.error('Error rendering Mermaid diagram:', error)
       element.innerHTML = `<div class="mermaid-error">Failed to render diagram: ${error.message || error}</div>`
@@ -484,6 +541,17 @@ async function copyToClipboard() {
   } catch (err) {
     console.error('Failed to copy:', err)
   }
+}
+
+// Mermaid modal methods
+function openMermaidModal(svgContent: string, title?: string) {
+  selectedMermaidSvg.value = svgContent
+  selectedMermaidTitle.value = title || 'Mermaid Diagram'
+  isMermaidModalOpen.value = true
+}
+
+function closeMermaidModal() {
+  isMermaidModalOpen.value = false
 }
 
 // Watch for content changes
@@ -831,6 +899,63 @@ onMounted(() => {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 4px;
+}
+
+/* Mermaid clickable wrapper */
+.markdown-content :deep(.mermaid-clickable-wrapper) {
+  position: relative;
+  display: inline-block;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.markdown-content :deep(.mermaid-clickable-wrapper:hover) {
+  transform: scale(1.02);
+  filter: brightness(1.1);
+}
+
+.markdown-content :deep(.mermaid-clickable-wrapper:hover .mermaid-zoom-icon) {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* Mermaid zoom icon overlay */
+.markdown-content :deep(.mermaid-zoom-icon) {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  border: 2px solid rgba(139, 92, 246, 0.5);
+  border-radius: 12px;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: 10;
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.5),
+    0 0 50px rgba(139, 92, 246, 0.2),
+    inset 0 0 30px rgba(139, 92, 246, 0.05);
+}
+
+.markdown-content :deep(.mermaid-zoom-icon svg) {
+  width: 24px;
+  height: 24px;
+  color: #a78bfa;
+  filter: drop-shadow(0 2px 4px rgba(139, 92, 246, 0.3));
+}
+
+.markdown-content :deep(.mermaid-zoom-icon span) {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
 }
 
 /* Expand button */

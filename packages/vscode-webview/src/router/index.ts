@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 import SimpleInterface from '../components/SimpleInterface.vue'
 import WorkflowInterface from '../components/WorkflowInterface.vue'
+import MermaidZoomTest from '../components/tabs/MermaidZoomTest.vue'
 
 // Define routes
 const routes: RouteRecordRaw[] = [
@@ -26,6 +27,14 @@ const routes: RouteRecordRaw[] = [
     component: SimpleInterface,
     meta: {
       title: 'SuperCode Simple'
+    }
+  },
+  {
+    path: '/mermaid-test',
+    name: 'mermaid-test',
+    component: MermaidZoomTest,
+    meta: {
+      title: 'Mermaid Zoom Test'
     }
   }
 ]
