@@ -68,6 +68,9 @@ export interface SSEMessage {
   [key: string]: any
 }
 
+// Export code review types
+export * from './CodeReview'
+
 declare global {
   interface Window {
     vscode: VsCodeApi

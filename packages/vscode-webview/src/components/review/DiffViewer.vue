@@ -54,9 +54,39 @@
               </div>
               <div
                 v-show="!isHunkCollapsed(getHunkForLine(line.newNumber || line.oldNumber || 0))"
-                class="hunk-description-text"
+                class="hunk-description-content"
               >
-                {{ getHunkForLine(line.newNumber || line.oldNumber || 0)?.description }}
+                <div class="hunk-description-text">
+                  {{ getHunkForLine(line.newNumber || line.oldNumber || 0)?.description }}
+                </div>
+                <div class="hunk-actions">
+                  <button
+                    class="ask-hunk-button"
+                    @click="toggleHunkThread(getHunkForLine(line.newNumber || line.oldNumber || 0))"
+                  >
+                    <Icon name="help-circle" :size="14" />
+                    Ask about this change
+                  </button>
+                </div>
+
+                <!-- Hunk Thread -->
+                <transition name="slide-down">
+                  <div
+                    v-if="isHunkThreadExpanded(getHunkForLine(line.newNumber || line.oldNumber || 0))"
+                    class="hunk-thread-container"
+                  >
+                    <HunkReplyCard
+                      v-if="getHunkForLine(line.newNumber || line.oldNumber || 0)"
+                      :hunk="getHunkForLine(line.newNumber || line.oldNumber || 0)!"
+                      :threading-service="threadingService"
+                      :thread="getHunkThread(getHunkForLine(line.newNumber || line.oldNumber || 0))"
+                      :is-a-i-typing="props.isHunkAiTyping?.(getHunkForLine(line.newNumber || line.oldNumber || 0)!) || false"
+                      :streaming-response="props.getHunkStreamingResponse?.(getHunkForLine(line.newNumber || line.oldNumber || 0)!) || ''"
+                      @thread-created="onHunkThreadCreated"
+                      @user-question="onHunkQuestionSubmitted"
+                    />
+                  </div>
+                </transition>
               </div>
             </div>
 
@@ -79,28 +109,58 @@
                 <code v-html="highlightSyntax(line.content, currentFile.path)"></code>
 
                 <!-- Inline Comments (only on first line) -->
-                <button
-                  v-if="hasComment(line.newNumber || line.oldNumber)"
-                  :class="['comment-indicator', getCommentTypeClass(line.newNumber || line.oldNumber)]"
-                  @click="toggleComment(line.newNumber || line.oldNumber)"
-                >
-                  <Icon :name="getCommentTypeIcon(line.newNumber || line.oldNumber)" :size="14" />
-                  <span class="comment-count">{{ getCommentCount(line.newNumber || line.oldNumber) }}</span>
-                </button>
+                <div v-if="hasComment(line.newNumber || line.oldNumber || 0)" class="line-indicators">
+                  <button
+                    :class="['comment-indicator', getCommentTypeClass(line.newNumber || line.oldNumber || 0)]"
+                    @click="toggleComment(line.newNumber || line.oldNumber || 0)"
+                  >
+                    <Icon :name="getCommentTypeIcon(line.newNumber || line.oldNumber || 0)" :size="14" />
+                    <span class="comment-count">{{ getCommentCount(line.newNumber || line.oldNumber || 0) }}</span>
+                  </button>
+
+                  <button
+                    class="thread-indicator"
+                    @click="toggleInlineThread(line.newNumber || line.oldNumber || 0)"
+                    title="Reply inline"
+                  >
+                    <Icon name="message-circle" :size="14" />
+                  </button>
+                </div>
               </div>
 
               <!-- Expandable Comment -->
               <transition name="slide-down">
                 <div
-                  v-if="expandedComments[line.newNumber || line.oldNumber]"
+                  v-if="expandedComments[line.newNumber || line.oldNumber || 0]"
                   class="inline-comment-container"
                 >
                   <CommentCard
-                    v-for="comment in getLineComments(line.newNumber || line.oldNumber)"
+                    v-for="comment in getLineComments(line.newNumber || line.oldNumber || 0)"
                     :key="`${comment.file}-${comment.lines.start}`"
                     :comment="comment"
                     :inline="true"
                     @apply-fix="$emit('apply-fix', comment)"
+                  />
+                </div>
+              </transition>
+
+              <!-- Inline Thread for Comments -->
+              <transition name="slide-down">
+                <div
+                  v-if="expandedInlineThreads[line.newNumber || line.oldNumber || 0]"
+                  class="inline-thread-container"
+                >
+                  <InlineCommentThread
+                    v-for="comment in getLineComments(line.newNumber || line.oldNumber || 0)"
+                    :key="`thread-${comment.file}-${comment.lines.start}`"
+                    context-type="comment"
+                    :original-message="comment.message"
+                    :file-name="comment.file"
+                    :lines="comment.lines"
+                    :threading-service="threadingService"
+                    :thread="getCommentThread(comment)"
+                    @thread-created="onInlineThreadCreated"
+                    @reply-submitted="onCommentReplySubmitted"
                   />
                 </div>
               </transition>
@@ -151,22 +211,22 @@
 
                   <!-- Comments in split view -->
                   <button
-                    v-if="hasComment(line.number)"
-                    :class="['comment-indicator', getCommentTypeClass(line.number)]"
-                    @click="toggleComment(line.number)"
+                    v-if="hasComment(line.number || 0)"
+                    :class="['comment-indicator', getCommentTypeClass(line.number || 0)]"
+                    @click="toggleComment(line.number || 0)"
                   >
-                    <Icon :name="getCommentTypeIcon(line.number)" :size="14" />
+                    <Icon :name="getCommentTypeIcon(line.number || 0)" :size="14" />
                   </button>
                 </div>
 
                 <!-- Expandable Comment -->
                 <transition name="slide-down">
                   <div
-                    v-if="expandedComments[line.number]"
+                    v-if="expandedComments[line.number || 0]"
                     class="inline-comment-container"
                   >
                     <CommentCard
-                      v-for="comment in getLineComments(line.number)"
+                      v-for="comment in getLineComments(line.number || 0)"
                       :key="`${comment.file}-${comment.lines.start}`"
                       :comment="comment"
                       :inline="true"
@@ -193,13 +253,21 @@
 import { ref, computed, watch } from 'vue'
 import Icon from '../Icon.vue'
 import CommentCard from './CommentCard.vue'
+import HunkReplyCard from './HunkReplyCard.vue'
+import InlineCommentThread from './InlineCommentThread.vue'
 import type { DiffFile, Comment, Hunk } from '../../services/CodeReviewService'
+import type { CommentThreadingService } from '../../services/CommentThreadingService'
+import type { ThreadInfo } from '../../types/CodeReview'
 
 interface Props {
   files: DiffFile[]
   comments: Comment[]
   hunks: Hunk[]
   viewMode: 'unified' | 'split'
+  threadingService?: CommentThreadingService
+  threads?: ThreadInfo[]
+  isHunkAiTyping?: (hunk: any) => boolean
+  getHunkStreamingResponse?: (hunk: any) => string
 }
 
 interface ProcessedLine {
@@ -218,11 +286,15 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'comment-click': [comment: Comment]
   'apply-fix': [comment: Comment]
+  'hunk-question': [hunk: Hunk, question: string]
+  'comment-reply': [comment: Comment, reply: string]
 }>()
 
 const selectedFileIndex = ref(0)
 const expandedComments = ref<Record<number, boolean>>({})
 const collapsedHunks = ref<Record<string, boolean>>({})
+const expandedHunkThreads = ref<Record<string, boolean>>({})
+const expandedInlineThreads = ref<Record<string, boolean>>({})
 
 const currentFile = computed(() => props.files[selectedFileIndex.value])
 
@@ -467,7 +539,7 @@ function getHunkForLine(lineNumber: number): Hunk | undefined {
   )
 }
 
-function highlightSyntax(code: string, filepath: string): string {
+function highlightSyntax(code: string, _filepath: string): string {
   // For now, just escape HTML and return plain text to avoid rendering issues
   // TODO: Fix syntax highlighting to properly handle all cases
 
@@ -478,10 +550,65 @@ function highlightSyntax(code: string, filepath: string): string {
     .replace(/>/g, '&gt;')
 }
 
+// Hunk threading functions
+function toggleHunkThread(hunk: Hunk | undefined) {
+  if (!hunk) return
+  const hunkId = getHunkId(hunk)
+  expandedHunkThreads.value[hunkId] = !expandedHunkThreads.value[hunkId]
+}
+
+function isHunkThreadExpanded(hunk: Hunk | undefined): boolean {
+  if (!hunk) return false
+  return expandedHunkThreads.value[getHunkId(hunk)] || false
+}
+
+function getHunkThread(hunk: Hunk | undefined): ThreadInfo | undefined {
+  if (!hunk || !props.threads) {
+    console.log('[DiffViewer] getHunkThread: no hunk or threads', hunk?.id, props.threads?.length)
+    return undefined
+  }
+  const threadId = `${hunk.file}-hunk-${hunk.start}-${hunk.end}`
+  const thread = props.threads.find(t => t.threadId === threadId)
+  console.log('[DiffViewer] getHunkThread: looking for', threadId, 'found:', !!thread, 'total threads:', props.threads.length)
+  return thread
+}
+
+// Inline comment threading functions
+function toggleInlineThread(lineNumber: number) {
+  expandedInlineThreads.value[lineNumber] = !expandedInlineThreads.value[lineNumber]
+}
+
+function getCommentThread(comment: Comment): ThreadInfo | undefined {
+  if (!props.threads) return undefined
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  return props.threads.find(t => t.threadId === threadId)
+}
+
+// Event handlers
+function onHunkThreadCreated(_thread: ThreadInfo) {
+  emit('hunk-question', {} as Hunk, 'Thread created')
+}
+
+function onHunkQuestionSubmitted(hunk: Hunk, question: string) {
+  console.log('[DiffViewer] Received hunk question:', question, 'for hunk:', hunk)
+  emit('hunk-question', hunk, question)
+}
+
+function onInlineThreadCreated(_thread: ThreadInfo) {
+  // Handle inline thread creation
+  console.log('Inline thread created')
+}
+
+function onCommentReplySubmitted(comment: Comment, reply: string) {
+  emit('comment-reply', comment, reply)
+}
+
 // Watch for file changes
 watch(() => props.files, () => {
   selectedFileIndex.value = 0
   expandedComments.value = {}
+  expandedHunkThreads.value = {}
+  expandedInlineThreads.value = {}
 })
 </script>
 
@@ -646,9 +773,16 @@ code {
   background: transparent;
 }
 
+/* Line Indicators */
+.line-indicators {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* Comment Indicator */
 .comment-indicator {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -661,6 +795,29 @@ code {
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
+}
+
+/* Thread Indicator */
+.thread-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.thread-indicator:hover {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+  transform: scale(1.1);
 }
 
 .comment-indicator:hover {
@@ -762,6 +919,14 @@ code {
   margin-top: 0.5rem;
 }
 
+.inline-thread-container {
+  grid-column: 1 / -1;
+  background: var(--glass-bg-darker);
+  border-left: 3px solid var(--primary-color);
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+}
+
 /* Hunk Description Styles */
 .hunk-description {
   grid-column: 1 / -1;
@@ -840,10 +1005,48 @@ code {
   font-weight: 500;
 }
 
+.hunk-description-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .hunk-description-text {
   color: var(--text-secondary);
   font-size: 0.9rem;
   line-height: 1.5;
+}
+
+.hunk-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ask-hunk-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ask-hunk-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(155, 135, 245, 0.3);
+}
+
+.hunk-thread-container {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* Split View */

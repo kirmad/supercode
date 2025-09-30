@@ -1,0 +1,953 @@
+<template>
+  <div
+    :class="[
+      'hunk-reply-card',
+      `status-${status}`,
+      { collapsed: isCollapsed, inline: inline }
+    ]"
+  >
+    <!-- Hunk Header -->
+    <div class="hunk-header" @click="toggleCollapsed">
+      <div class="hunk-meta">
+        <Icon name="git-branch" :size="16" />
+        <span class="hunk-title">{{ hunkTitle }}</span>
+        <span :class="['category-badge', hunk.category]">
+          {{ hunk.category }}
+        </span>
+        <span :class="['risk-badge', hunk.risk]">
+          {{ hunk.risk }} risk
+        </span>
+        <span v-if="hunk.needsAttention" class="needs-attention">
+          <Icon name="alert-circle" :size="12" />
+          Attention
+        </span>
+        <span class="response-count">{{ responses.length }} response{{ responses.length !== 1 ? 's' : '' }}</span>
+      </div>
+
+      <div class="hunk-actions">
+        <button
+          v-if="status === 'open'"
+          @click.stop="resolveThread"
+          class="action-button resolve"
+          title="Mark as resolved"
+        >
+          <Icon name="check" :size="14" />
+        </button>
+        <button
+          v-if="status === 'resolved'"
+          @click.stop="reopenThread"
+          class="action-button reopen"
+          title="Reopen discussion"
+        >
+          <Icon name="rotate-ccw" :size="14" />
+        </button>
+        <button
+          @click.stop="dismissThread"
+          class="action-button dismiss"
+          title="Dismiss discussion"
+        >
+          <Icon name="x" :size="14" />
+        </button>
+        <button
+          @click.stop="toggleCollapsed"
+          class="action-button collapse"
+          :title="isCollapsed ? 'Expand discussion' : 'Collapse discussion'"
+        >
+          <Icon :name="isCollapsed ? 'chevron-down' : 'chevron-up'" :size="14" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Hunk Context -->
+    <div v-if="!isCollapsed" class="hunk-context">
+      <div class="context-info">
+        <Icon name="file-code" :size="14" />
+        <span class="file-path">{{ getFileName(hunk.file) }}</span>
+        <span class="line-range">L{{ hunk.start }}-{{ hunk.end }}</span>
+      </div>
+
+      <div class="hunk-description">
+        <Icon name="info" :size="16" />
+        <div class="description-content">
+          <div class="description-header">
+            <span class="description-label">Code Change</span>
+          </div>
+          <div class="description-text">{{ hunk.description }}</div>
+        </div>
+      </div>
+
+      <!-- Code Context (if available) -->
+      <div v-if="codeContext" class="code-context">
+        <div class="code-header">
+          <Icon name="code" :size="14" />
+          <span>Code Changes</span>
+        </div>
+        <pre class="code-snippet"><code>{{ codeContext }}</code></pre>
+      </div>
+    </div>
+
+    <!-- Thread Responses -->
+    <div v-if="!isCollapsed" class="thread-responses">
+      <TransitionGroup name="response-slide">
+        <div
+          v-for="response in responses"
+          :key="response.id"
+          :class="['response-item', `author-${response.author.type}`]"
+        >
+          <div class="response-header">
+            <div class="author-info">
+              <Icon :name="response.author.type === 'ai' ? 'bot' : 'user'" :size="16" />
+              <span class="author-name">{{ response.author.name }}</span>
+              <span class="response-time">{{ formatTime(response.createdAt) }}</span>
+            </div>
+          </div>
+
+          <div class="response-content">
+            {{ response.content }}
+          </div>
+        </div>
+      </TransitionGroup>
+
+      <!-- AI Typing Indicator -->
+      <div v-if="isAITyping" class="ai-typing">
+        <div class="typing-header">
+          <Icon name="bot" :size="16" />
+          <span class="author-name">AI Assistant</span>
+          <span class="typing-indicator">is explaining...</span>
+        </div>
+        <div class="typing-animation">
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Streaming AI Response -->
+      <div v-if="streamingResponse" class="streaming-response">
+        <div class="response-header">
+          <div class="author-info">
+            <Icon name="bot" :size="16" />
+            <span class="author-name">AI Assistant</span>
+            <span class="response-time">now</span>
+          </div>
+        </div>
+        <div class="response-content streaming">
+          {{ streamingResponse }}
+          <span class="cursor">|</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Input Section -->
+    <div v-if="!isCollapsed && status !== 'dismissed'" class="user-input-section">
+      <div class="input-container">
+        <div class="input-header">
+          <Icon name="user" :size="16" />
+          <span class="input-label">Ask about this change:</span>
+        </div>
+
+        <div class="input-field-container">
+          <textarea
+            v-model="userInput"
+            ref="inputRef"
+            class="input-field"
+            placeholder="What does this change do? Why was it made? Any concerns?"
+            rows="3"
+            @keydown.ctrl.enter="submitQuestion"
+            @keydown.meta.enter="submitQuestion"
+            @input="adjustTextareaHeight"
+            :disabled="isSubmitting || status === 'dismissed'"
+          />
+
+          <div class="input-actions">
+            <span v-if="userInput" class="char-count">{{ userInput.length }}</span>
+            <ActionButton
+              @click="submitQuestion"
+              :disabled="!userInput.trim() || isSubmitting || status === 'dismissed'"
+              :loading="isSubmitting"
+              variant="primary"
+              size="small"
+              class="submit-button"
+            >
+              <Icon v-if="!isSubmitting" name="help-circle" />
+              {{ isSubmitting ? 'Asking...' : 'Ask' }}
+            </ActionButton>
+          </div>
+        </div>
+
+        <div class="input-hint">
+          <Icon name="info" :size="12" />
+          <span>Press Ctrl+Enter to ask • Get AI explanations of code changes</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions (for resolved/dismissed threads) -->
+    <div v-if="!isCollapsed && (status === 'resolved' || status === 'dismissed')" class="quick-actions">
+      <ActionButton
+        v-if="status === 'resolved'"
+        @click="reopenThread"
+        variant="ghost"
+        size="small"
+      >
+        <Icon name="rotate-ccw" />
+        Reopen Discussion
+      </ActionButton>
+      <ActionButton
+        v-if="status === 'dismissed'"
+        @click="reopenThread"
+        variant="ghost"
+        size="small"
+      >
+        <Icon name="refresh-cw" />
+        Restore Discussion
+      </ActionButton>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { type CommentResponse, type ThreadInfo } from '../../types/CodeReview'
+import { type Hunk } from '../../services/CodeReviewService'
+import Icon from '../Icon.vue'
+import ActionButton from '../shared/ActionButton.vue'
+
+// Component props
+interface Props {
+  hunk: Hunk
+  thread?: ThreadInfo | null
+  responses?: CommentResponse[]
+  status?: 'open' | 'resolved' | 'dismissed'
+  isAITyping?: boolean
+  streamingResponse?: string
+  codeContext?: string
+  inline?: boolean
+  collapsed?: boolean
+  userName?: string
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  responses: () => [],
+  status: 'open',
+  isAITyping: false,
+  streamingResponse: '',
+  codeContext: '',
+  inline: false,
+  collapsed: false,
+  userName: 'User'
+})
+
+// Component emits
+const emit = defineEmits<{
+  'user-question': [hunk: Hunk, content: string]
+  'status-change': [status: 'open' | 'resolved' | 'dismissed']
+  'toggle-collapsed': [collapsed: boolean]
+}>()
+
+// Local state
+const userInput = ref('')
+const isSubmitting = ref(false)
+const isCollapsed = ref(props.collapsed)
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+
+// Computed properties
+const hunkTitle = computed(() => {
+  const fileName = getFileName(props.hunk.file)
+  return `${props.hunk.category} in ${fileName}`
+})
+
+const responses = computed(() => {
+  // Extract responses from thread if available, otherwise use props.responses
+  if (props.thread) {
+    console.log('[HunkReplyCard] Thread responses:', props.thread.responses?.length || 0, 'responses for thread:', props.thread.threadId)
+    return props.thread.responses || []
+  }
+  console.log('[HunkReplyCard] Using prop responses:', props.responses?.length || 0)
+  return props.responses || []
+})
+
+// Methods
+function getFileName(path: string): string {
+  return path.split('/').pop() || path
+}
+
+function formatTime(timestamp: string): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMinutes = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMinutes / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffMinutes < 1) {
+    return 'now'
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`
+  } else if (diffHours < 24) {
+    return `${diffHours}h ago`
+  } else if (diffDays < 7) {
+    return `${diffDays}d ago`
+  } else {
+    return date.toLocaleDateString()
+  }
+}
+
+function toggleCollapsed(): void {
+  isCollapsed.value = !isCollapsed.value
+  emit('toggle-collapsed', isCollapsed.value)
+}
+
+function resolveThread(): void {
+  emit('status-change', 'resolved')
+}
+
+function reopenThread(): void {
+  emit('status-change', 'open')
+}
+
+function dismissThread(): void {
+  emit('status-change', 'dismissed')
+}
+
+async function submitQuestion(): Promise<void> {
+  if (!userInput.value.trim() || isSubmitting.value) return
+
+  isSubmitting.value = true
+  try {
+    console.log('[HunkReplyCard] Submitting question:', userInput.value.trim(), 'for hunk:', props.hunk)
+    emit('user-question', props.hunk, userInput.value.trim())
+    userInput.value = ''
+
+    // Reset textarea height
+    await nextTick()
+    adjustTextareaHeight()
+  } catch (error) {
+    console.error('Failed to submit question:', error)
+  } finally {
+    isSubmitting.value = false
+  }
+}
+
+function adjustTextareaHeight(): void {
+  if (inputRef.value) {
+    inputRef.value.style.height = 'auto'
+    inputRef.value.style.height = `${Math.max(inputRef.value.scrollHeight, 60)}px`
+  }
+}
+
+// Watchers
+watch(() => props.collapsed, (newValue) => {
+  isCollapsed.value = newValue
+})
+
+// Focus input when thread is opened
+watch(() => props.status, (newStatus, oldStatus) => {
+  if (oldStatus !== 'open' && newStatus === 'open') {
+    nextTick(() => {
+      if (inputRef.value && !isCollapsed.value) {
+        inputRef.value.focus()
+      }
+    })
+  }
+})
+
+// Auto-expand when AI starts typing
+watch(() => props.isAITyping, (isTyping) => {
+  if (isTyping && isCollapsed.value) {
+    isCollapsed.value = false
+    emit('toggle-collapsed', false)
+  }
+})
+
+// Auto-expand when streaming response starts
+watch(() => props.streamingResponse, (response) => {
+  if (response && isCollapsed.value) {
+    isCollapsed.value = false
+    emit('toggle-collapsed', false)
+  }
+})
+
+// Lifecycle
+onMounted(() => {
+  if (inputRef.value) {
+    adjustTextareaHeight()
+  }
+})
+
+// Keyboard shortcuts
+function handleKeyDown(event: KeyboardEvent): void {
+  // Escape to collapse thread
+  if (event.key === 'Escape' && !isCollapsed.value) {
+    toggleCollapsed()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
+</script>
+
+<style scoped>
+.hunk-reply-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.hunk-reply-card.inline {
+  margin: 0.5rem 0;
+  border-radius: 0.5rem;
+}
+
+.hunk-reply-card.collapsed {
+  border-radius: 0.5rem;
+}
+
+/* Status-specific styling */
+.hunk-reply-card.status-open {
+  border-left: 3px solid var(--primary-color);
+}
+
+.hunk-reply-card.status-resolved {
+  border-left: 3px solid var(--success-color);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.03) 0%, transparent 100%);
+}
+
+.hunk-reply-card.status-dismissed {
+  border-left: 3px solid var(--text-tertiary);
+  background: linear-gradient(135deg, rgba(100, 116, 139, 0.03) 0%, transparent 100%);
+  opacity: 0.7;
+}
+
+/* Hunk Header */
+.hunk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.hunk-header:hover {
+  background: var(--glass-bg-hover);
+}
+
+.hunk-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.hunk-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.category-badge {
+  padding: 0.125rem 0.375rem;
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.category-badge.feature {
+  background: var(--primary-bg);
+  color: var(--primary-color);
+}
+
+.category-badge.bugfix {
+  background: var(--error-bg);
+  color: var(--error-color);
+}
+
+.category-badge.refactor {
+  background: var(--warning-bg);
+  color: var(--warning-color);
+}
+
+.category-badge.security-fix {
+  background: var(--error-bg);
+  color: var(--error-color);
+}
+
+.category-badge.performance {
+  background: var(--success-bg);
+  color: var(--success-color);
+}
+
+.category-badge.test {
+  background: var(--info-bg);
+  color: var(--info-color);
+}
+
+.risk-badge {
+  padding: 0.125rem 0.375rem;
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.risk-badge.high {
+  background: var(--error-bg);
+  color: var(--error-color);
+}
+
+.risk-badge.medium {
+  background: var(--warning-bg);
+  color: var(--warning-color);
+}
+
+.risk-badge.low {
+  background: var(--success-bg);
+  color: var(--success-color);
+}
+
+.needs-attention {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  background: var(--warning-bg);
+  color: var(--warning-color);
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.response-count {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  background: var(--glass-bg-darker);
+  padding: 0.25rem 0.5rem;
+  border-radius: 1rem;
+}
+
+.hunk-actions {
+  display: flex;
+  gap: 0.375rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.hunk-header:hover .hunk-actions {
+  opacity: 1;
+}
+
+.action-button {
+  padding: 0.375rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-button:hover {
+  background: var(--glass-bg-hover);
+  transform: translateY(-1px);
+}
+
+.action-button.resolve:hover {
+  border-color: var(--success-color);
+  color: var(--success-color);
+}
+
+.action-button.reopen:hover {
+  border-color: var(--info-color);
+  color: var(--info-color);
+}
+
+.action-button.dismiss:hover {
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+/* Hunk Context */
+.hunk-context {
+  padding: 0 1rem 1rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.context-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.75rem;
+}
+
+.file-path {
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.line-range {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.hunk-description {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.description-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.description-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.description-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.description-text {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Code Context */
+.code-context {
+  margin-top: 0.75rem;
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.code-snippet {
+  background: var(--code-bg);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* Thread Responses */
+.thread-responses {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.response-item {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--glass-bg-darker);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle);
+}
+
+.response-item.author-user {
+  background: var(--primary-alpha-5);
+  border-color: var(--primary-alpha-20);
+}
+
+.response-item.author-ai {
+  background: var(--glass-bg-darker);
+  border-color: var(--border-subtle);
+}
+
+.response-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.author-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.author-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.response-time {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+}
+
+.response-content {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* AI Typing Indicator */
+.ai-typing {
+  padding: 0.75rem;
+  background: var(--glass-bg-darker);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 1rem;
+}
+
+.typing-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.typing-indicator {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.typing-animation {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  background: var(--text-tertiary);
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing-bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+/* Streaming Response */
+.streaming-response {
+  padding: 0.75rem;
+  background: var(--glass-bg-darker);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 1rem;
+}
+
+.response-content.streaming {
+  position: relative;
+}
+
+.cursor {
+  animation: cursor-blink 1s infinite;
+  color: var(--primary-color);
+}
+
+@keyframes cursor-blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* User Input Section */
+.user-input-section {
+  padding: 1rem;
+}
+
+.input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.input-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.input-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.input-field-container {
+  position: relative;
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  resize: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 60px;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-alpha-10);
+}
+
+.input-field:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.char-count {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.submit-button {
+  min-width: 80px;
+}
+
+.input-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+/* Quick Actions */
+.quick-actions {
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* Response Transitions */
+.response-slide-enter-active {
+  transition: all 0.3s ease;
+}
+
+.response-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* CSS Variables */
+:root {
+  --code-bg: rgba(30, 30, 30, 0.5);
+  --primary-alpha-5: rgba(99, 102, 241, 0.05);
+  --primary-alpha-10: rgba(99, 102, 241, 0.1);
+  --primary-alpha-20: rgba(99, 102, 241, 0.2);
+  --primary-bg: rgba(99, 102, 241, 0.1);
+
+  /* Semantic colors */
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --error-color: #ef4444;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --warning-color: #f59e0b;
+  --info-bg: rgba(59, 130, 246, 0.1);
+  --info-color: #3b82f6;
+  --success-bg: rgba(34, 197, 94, 0.1);
+  --success-color: #22c55e;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hunk-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .hunk-actions {
+    opacity: 1;
+    justify-content: flex-end;
+  }
+
+  .hunk-description {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .response-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .input-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .submit-button {
+    width: 100%;
+  }
+}
+</style>

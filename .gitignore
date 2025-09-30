@@ -56,3 +56,4 @@ git-diff-viewer/**
 .claude/**
 output-prompts/**
 packages/vscode-webview/test/screenshots/*
+reviews/*.json

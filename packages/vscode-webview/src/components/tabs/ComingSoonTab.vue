@@ -38,19 +38,19 @@
           <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="0.5" opacity="0.4"/>
           <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="0.5" opacity="0.2"/>
         </svg>
-        <svg v-else-if="tabType === 'build'" class="tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M4 8L12 4L20 8V16L12 20L4 16V8Z" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>
-          <path d="M12 4V20" stroke="currentColor" stroke-width="0.5" opacity="0.5"/>
+        <svg v-else-if="tabType === 'devops'" class="tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <!-- Combined build and deploy icon -->
+          <path d="M4 8L12 4L20 8V12" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>
+          <path d="M12 4V12" stroke="currentColor" stroke-width="0.5" opacity="0.5"/>
           <path d="M4 8L12 12L20 8" stroke="currentColor" stroke-width="0.5" opacity="0.7"/>
-        </svg>
-        <svg v-else-if="tabType === 'deploy'" class="tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L12 9M12 9L15 6M12 9L9 6" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.7"/>
-          <circle cx="12" cy="16" r="6" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>
-          <circle cx="12" cy="16" r="2" fill="currentColor" opacity="0.6"/>
+          <path d="M12 12L12 16M12 16L15 13M12 16L9 13" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.7"/>
+          <circle cx="12" cy="19" r="3" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>
         </svg>
         <svg v-else-if="tabType === 'maintain'" class="tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <!-- Combined maintain and enhance icon -->
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="0.5" opacity="0.6"/>
+          <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="0.5" opacity="0.4"/>
           <path d="M12 2V6M12 18V22M4 12H8M16 12H20" stroke="currentColor" stroke-width="0.5" opacity="0.3"/>
-          <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="0.5" opacity="0.6"/>
           <path d="M12 10V12L14 14" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.8"/>
         </svg>
         <svg v-else-if="tabType === 'daemon'" class="tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -147,43 +147,25 @@ const tabContent = {
     ],
     status: "Developing troubleshooting agent"
   },
-  enhance: {
-    title: "Code Evolution",
-    subtitle: "Continuous improvement engine",
+  devops: {
+    title: "DevOps Automation",
+    subtitle: "Build, deploy, and deliver with confidence",
     hints: [
-      "Pattern modernization",
-      "Performance optimization",
-      "Architecture refinement"
-    ],
-    status: "Designing enhancement algorithms"
-  },
-  build: {
-    title: "Build Orchestration",
-    subtitle: "Intelligent pipeline management",
-    hints: [
-      "Automatic failure recovery",
-      "Pipeline rescheduling",
-      "Success monitoring"
-    ],
-    status: "Creating build automation"
-  },
-  deploy: {
-    title: "Zero-Touch Deployment",
-    subtitle: "Automated release management",
-    hints: [
+      "Automatic failure recovery & rescheduling",
       "Build-triggered deployments",
-      "Log analysis & monitoring",
-      "Success verification"
+      "Log analysis & success verification",
+      "Pipeline orchestration & monitoring"
     ],
-    status: "Engineering deployment agent"
+    status: "Engineering DevOps automation"
   },
   maintain: {
-    title: "Proactive Maintenance",
-    subtitle: "Code health automation",
+    title: "Code Health & Evolution",
+    subtitle: "Continuous improvement and maintenance",
     hints: [
-      "Safe refactoring",
-      "Null reference prevention",
-      "Pattern modernization"
+      "Safe refactoring & modernization",
+      "Performance optimization",
+      "Architecture refinement",
+      "Null reference prevention"
     ],
     status: "Developing maintenance intelligence"
   },

@@ -1,7 +1,80 @@
 <template>
   <div class="code-review-tab">
-    <!-- Input Section -->
-    <div class="review-input-section">
+    <!-- Tab Navigation -->
+    <div class="tab-navigation">
+      <GlassCard :elevation="1" :hoverable="false" class="nav-card">
+        <div class="tab-buttons">
+          <button
+            @click="activeTab = 'current'"
+            :class="['tab-button', { active: activeTab === 'current' }]"
+          >
+            <Icon name="activity" />
+            Current Review
+            <span v-if="hasUnsavedChanges" class="unsaved-indicator" title="Unsaved changes">
+              <Icon name="circle" :size="6" />
+            </span>
+          </button>
+          <button
+            @click="activeTab = 'saved'"
+            :class="['tab-button', { active: activeTab === 'saved' }]"
+          >
+            <Icon name="archive" />
+            Saved Reviews
+            <span v-if="savedReviewsCount > 0" class="review-count-badge">
+              {{ savedReviewsCount }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Save Status & Actions -->
+        <div v-if="activeTab === 'current'" class="save-status-section">
+          <div class="save-status">
+            <div v-if="lastSaveTime" class="save-info">
+              <Icon name="check-circle" :size="14" class="save-icon" />
+              <span class="save-text">Saved {{ formatSaveTime(lastSaveTime) }}</span>
+            </div>
+            <div v-else-if="hasUnsavedChanges" class="unsaved-info">
+              <Icon name="clock" :size="14" class="unsaved-icon" />
+              <span class="unsaved-text">Unsaved changes</span>
+            </div>
+          </div>
+
+          <div class="save-actions">
+            <ActionButton
+              v-if="reviewResult"
+              @click="showSaveDialog = true"
+              variant="ghost"
+              size="small"
+              class="save-button"
+            >
+              <Icon name="save" />
+              Save Review
+            </ActionButton>
+            <button
+              v-if="autoSaveEnabled"
+              @click="toggleAutoSave"
+              class="auto-save-toggle active"
+              title="Auto-save is enabled"
+            >
+              <Icon name="zap" :size="14" />
+            </button>
+            <button
+              v-else
+              @click="toggleAutoSave"
+              class="auto-save-toggle"
+              title="Auto-save is disabled"
+            >
+              <Icon name="zap-off" :size="14" />
+            </button>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+
+    <!-- Current Review Tab -->
+    <div v-if="activeTab === 'current'" class="current-review-content">
+      <!-- Input Section -->
+      <div class="review-input-section">
       <GlassCard :elevation="1" :hoverable="false" class="input-card">
         <h3 class="section-title">
           <Icon name="git-compare" />
@@ -228,8 +301,14 @@
               :files="currentDiffFiles"
               :comments="reviewResult.comments"
               :hunks="reviewResult.hunks"
-              :viewMode="selectedViewMode"
+              :viewMode="selectedViewMode as 'unified' | 'split'"
+              :threading-service="threadingService || undefined"
+              :threads="getAllThreads()"
+              :is-hunk-ai-typing="isHunkAITyping"
+              :get-hunk-streaming-response="getHunkStreamingResponse"
               @comment-click="handleCommentClick"
+              @hunk-question="handleHunkQuestion"
+              @comment-reply="handleCommentReply"
             />
             <div v-else class="no-diff-message">
               <Icon name="file-x" />
@@ -258,43 +337,76 @@
             </button>
           </div>
 
-          <!-- Comments List -->
+          <!-- Comments with Threading -->
           <div class="comments-list">
             <TransitionGroup name="fade">
-              <CommentCard
+              <CommentThreadCard
                 v-for="comment in filteredComments"
-                :key="`${comment.file}-${comment.lines.start}`"
-                :comment="comment"
-                @click="scrollToComment(comment)"
-                @apply-fix="applyFix(comment)"
+                :key="`thread-${comment.file}-${comment.lines.start}`"
+                :original-comment="convertToSavedComment(comment)"
+                :responses="getThreadResponses(comment)"
+                :thread-status="getThreadStatus(comment)"
+                :code-context="getCodeContext(comment)"
+                :is-a-i-typing="isAITyping(comment)"
+                :streaming-response="getStreamingResponse(comment)"
+                @user-response="handleUserResponse(comment, $event)"
+                @status-change="handleThreadStatusChange(comment, $event)"
+                @toggle-collapsed="handleThreadToggle(comment, $event)"
               />
             </TransitionGroup>
           </div>
         </GlassCard>
       </div>
-    </TransitionGroup>
+      </TransitionGroup>
 
-    <!-- Empty State -->
-    <div v-if="!isReviewing && !reviewResult && insights.length === 0" class="empty-state">
-      <GlassCard :elevation="1" :hoverable="false">
-        <div class="empty-content">
-          <Icon name="code-review" class="empty-icon" />
-          <h3>Ready to Review Code</h3>
-          <p>Select a review type above and provide the necessary information to start your code review.</p>
-        </div>
-      </GlassCard>
+      <!-- Empty State -->
+      <div v-if="!isReviewing && !reviewResult && insights.length === 0" class="empty-state">
+        <GlassCard :elevation="1" :hoverable="false">
+          <div class="empty-content">
+            <Icon name="code-review" class="empty-icon" />
+            <h3>Ready to Review Code</h3>
+            <p>Select a review type above and provide the necessary information to start your code review.</p>
+          </div>
+        </GlassCard>
+      </div>
     </div>
+
+    <!-- Saved Reviews Tab -->
+    <div v-if="activeTab === 'saved'" class="saved-reviews-content">
+      <ReviewListManager
+        :persistence-service="persistenceService"
+        @review-selected="handleReviewSelected"
+        @new-review="handleNewReview"
+        @review-loaded="handleReviewLoaded"
+        @review-deleted="handleReviewDeleted"
+      />
+    </div>
+
+    <!-- Save Review Dialog -->
+    <ReviewSaveDialog
+      v-if="showSaveDialog"
+      :is-visible="showSaveDialog"
+      :review-result="reviewResult"
+      :insights="insights"
+      @save="handleManualSave"
+      @cancel="showSaveDialog = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { CodeReviewService, ReviewInsight, ReviewResult, DiffFile, Comment } from '../../services/CodeReviewService'
+import { ReviewPersistenceService } from '../../services/ReviewPersistenceService'
+import { CommentThreadingService } from '../../services/CommentThreadingService'
+import { type SavedCodeReview, type ReviewMetadata } from '../../types/CodeReview'
 import GlassCard from '../shared/GlassCard.vue'
 import ActionButton from '../shared/ActionButton.vue'
 import Icon from '../Icon.vue'
 import DiffViewer from '../review/DiffViewer.vue'
-import CommentCard from '../review/CommentCard.vue'
+import CommentThreadCard from '../review/CommentThreadCard.vue'
+import ReviewListManager from '../review/ReviewListManager.vue'
+import ReviewSaveDialog from '../review/ReviewSaveDialog.vue'
 
 // Collapse states
 const insightsCollapsed = ref(false)
@@ -311,8 +423,17 @@ interface Props {
 
 const props = defineProps<Props>()
 
-// Service instance - use the client passed from parent
+// Service instances
 const reviewService = ref<CodeReviewService | null>(null)
+const persistenceService = ref<ReviewPersistenceService | null>(null)
+const threadingService = ref<CommentThreadingService | null>(null)
+
+// Threading state for reactivity
+const threadUpdateTrigger = ref(0)
+
+// AI processing states for each thread
+const aiTypingThreads = ref<Set<string>>(new Set())
+const streamingResponses = ref<Map<string, string>>(new Map())
 
 // Review types
 const reviewTypes = [
@@ -336,7 +457,15 @@ const commentFilters = [
   { id: 'high', label: 'High Severity' }
 ]
 
-// State
+// Tab state
+const activeTab = ref<'current' | 'saved'>('current')
+const showSaveDialog = ref(false)
+const savedReviewsCount = ref(0)
+const autoSaveEnabled = ref(true)
+const lastSaveTime = ref<Date | null>(null)
+const hasUnsavedChanges = ref(false)
+
+// Review state
 const selectedReviewType = ref('branches')
 const selectedViewMode = ref('unified')
 const selectedCommentFilter = ref('all')
@@ -375,6 +504,12 @@ const canStartReview = computed(() => {
 const filteredComments = computed(() => {
   if (!reviewResult.value) return []
   return getFilteredComments(selectedCommentFilter.value)
+})
+
+// Save state computed properties
+const currentReviewInfo = computed(() => {
+  if (!reviewService.value) return null
+  return reviewService.value.getCurrentReviewInfo()
 })
 
 // Methods
@@ -505,10 +640,249 @@ async function fetchGitData() {
   }
 }
 
+// New methods for tab integration
+function handleReviewSelected(review: SavedCodeReview): void {
+  // Switch to current review tab and load the review
+  activeTab.value = 'current'
+  if (reviewService.value) {
+    reviewService.value.loadSavedReview(review.id!)
+  }
+}
+
+function handleNewReview(): void {
+  // Switch to current review tab for new review
+  activeTab.value = 'current'
+  clearCurrentReview()
+}
+
+function handleReviewLoaded(review: SavedCodeReview): void {
+  console.log('Review loaded:', review.metadata.title)
+  updateSaveState()
+}
+
+function handleReviewDeleted(reviewId: string): void {
+  console.log('Review deleted:', reviewId)
+  updateSavedReviewsCount()
+}
+
+function clearCurrentReview(): void {
+  reviewResult.value = null
+  insights.value = []
+  currentDiffFiles.value = []
+  lastSaveTime.value = null
+  hasUnsavedChanges.value = false
+}
+
+function updateSaveState(): void {
+  if (reviewService.value) {
+    const info = reviewService.value.getCurrentReviewInfo()
+    lastSaveTime.value = info.lastSaveTime
+    hasUnsavedChanges.value = info.hasUnsavedChanges
+    autoSaveEnabled.value = info.autoSaveEnabled
+  }
+}
+
+async function updateSavedReviewsCount(): Promise<void> {
+  if (reviewService.value) {
+    const reviews = await reviewService.value.getSavedReviews()
+    savedReviewsCount.value = reviews.length
+  }
+}
+
+function toggleAutoSave(): void {
+  autoSaveEnabled.value = !autoSaveEnabled.value
+  if (reviewService.value) {
+    reviewService.value.setAutoSaveEnabled(autoSaveEnabled.value)
+  }
+}
+
+function formatSaveTime(time: Date): string {
+  const now = new Date()
+  const diffMs = now.getTime() - time.getTime()
+  const diffMinutes = Math.floor(diffMs / (1000 * 60))
+
+  if (diffMinutes < 1) {
+    return 'just now'
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`
+  } else {
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) {
+      return `${diffHours}h ago`
+    } else {
+      return time.toLocaleDateString()
+    }
+  }
+}
+
+async function handleManualSave(saveData: {
+  title: string
+  description?: string
+  status: 'draft' | 'active' | 'completed'
+}): Promise<void> {
+  if (!reviewService.value) return
+
+  try {
+    const savedId = await reviewService.value.saveReview(
+      saveData.title,
+      saveData.description,
+      saveData.status
+    )
+
+    if (savedId) {
+      showSaveDialog.value = false
+      updateSaveState()
+      updateSavedReviewsCount()
+    }
+  } catch (error) {
+    console.error('Failed to save review:', error)
+  }
+}
+
+// Threading integration methods
+function convertToSavedComment(comment: Comment): any {
+  return {
+    id: `${comment.file}-${comment.lines.start}-${comment.lines.end}`,
+    file: comment.file,
+    lines: comment.lines,
+    type: comment.type,
+    severity: comment.severity,
+    message: comment.message,
+    fixCode: comment.fixCode,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+}
+
+function getThreadResponses(comment: Comment): any[] {
+  if (!threadingService.value) return []
+  // Access the reactive trigger to ensure updates
+  threadUpdateTrigger.value
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  const thread = threadingService.value.getThread(threadId)
+  return thread?.responses || []
+}
+
+function getThreadStatus(comment: Comment): 'open' | 'resolved' | 'dismissed' {
+  if (!threadingService.value) return 'open'
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  const thread = threadingService.value.getThread(threadId)
+  return thread?.status || 'open'
+}
+
+function isAITyping(comment: Comment): boolean {
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  return aiTypingThreads.value.has(threadId)
+}
+
+function getStreamingResponse(comment: Comment): string {
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  return streamingResponses.value.get(threadId) || ''
+}
+
+// Hunk-specific AI state functions
+function isHunkAITyping(hunk: any): boolean {
+  const threadId = `${hunk.file}-hunk-${hunk.start}-${hunk.end}`
+  return aiTypingThreads.value.has(threadId)
+}
+
+function getHunkStreamingResponse(hunk: any): string {
+  const threadId = `${hunk.file}-hunk-${hunk.start}-${hunk.end}`
+  return streamingResponses.value.get(threadId) || ''
+}
+
+function getCodeContext(comment: Comment): string {
+  // Try to get code context from the diff files
+  const file = currentDiffFiles.value.find(f => f.path === comment.file)
+  if (!file?.patches) return ''
+
+  // Find the patch that contains the comment lines
+  for (const patch of file.patches) {
+    if (comment.lines.start >= patch.newStart &&
+        comment.lines.start <= patch.newStart + patch.newLines) {
+      // Return a snippet of the patch around the comment
+      const startIndex = Math.max(0, comment.lines.start - patch.newStart - 2)
+      const endIndex = Math.min(patch.lines.length, comment.lines.start - patch.newStart + 3)
+      return patch.lines.slice(startIndex, endIndex).join('\n')
+    }
+  }
+
+  return ''
+}
+
+function getAllThreads() {
+  // Include threadUpdateTrigger to make this reactive
+  threadUpdateTrigger.value
+  if (!threadingService.value) return []
+  return threadingService.value.getAllThreads()
+}
+
+async function handleHunkQuestion(hunk: any, question: string): Promise<void> {
+  if (!reviewService.value) return
+
+  console.log('[CodeReviewTab] Handling hunk question:', question, 'for hunk:', hunk)
+
+  try {
+    // Use the new addHunkResponse method which handles thread creation/management
+    await reviewService.value.addHunkResponse(hunk, question, 'User')
+
+    // Force reactivity update
+    threadUpdateTrigger.value++
+    console.log('[CodeReviewTab] Hunk question handled successfully')
+  } catch (error) {
+    console.error('Failed to handle hunk question:', error)
+  }
+}
+
+async function handleCommentReply(comment: Comment, reply: string): Promise<void> {
+  if (!threadingService.value) return
+
+  try {
+    const savedComment = convertToSavedComment(comment)
+
+    // Find or create thread for this comment
+    const thread = await threadingService.value.findOrCreateThreadForComment(savedComment, reply)
+
+    // Force reactivity update
+    threadUpdateTrigger.value++
+  } catch (error) {
+    console.error('Failed to handle comment reply:', error)
+  }
+}
+
+async function handleUserResponse(comment: Comment, content: string): Promise<void> {
+  if (!reviewService.value) return
+
+  // Use the new addCommentResponse method which handles thread creation/management
+  await reviewService.value.addCommentResponse(comment, content, 'User')
+}
+
+async function handleThreadStatusChange(
+  comment: Comment,
+  status: 'open' | 'resolved' | 'dismissed'
+): Promise<void> {
+  if (!reviewService.value) return
+
+  const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  await reviewService.value.updateThreadStatus(threadId, status)
+}
+
+function handleThreadToggle(comment: Comment, collapsed: boolean): void {
+  console.log('Thread toggled:', comment.file, collapsed)
+}
+
 // Lifecycle
 onMounted(async () => {
   if (props.wsClient) {
+    // Initialize services
     reviewService.value = new CodeReviewService(props.wsClient)
+    persistenceService.value = new ReviewPersistenceService()
+
+    // Initialize threading first
+    reviewService.value.initializeCommentThreading()
+
+    // Use the threading service from the review service
+    threadingService.value = reviewService.value.getThreadingService()
 
     // Set up callbacks
     reviewService.value.setCallbacks({
@@ -519,6 +893,7 @@ onMounted(async () => {
         reviewResult.value = result
         isReviewing.value = false
         progressMessage.value = ''
+        hasUnsavedChanges.value = true
 
         // If we have diff files from the review, update them
         if (result && reviewService.value) {
@@ -535,18 +910,69 @@ onMounted(async () => {
         console.error('Review error:', error)
         isReviewing.value = false
         progressMessage.value = ''
+      },
+      onReviewSaved: (reviewId, filename) => {
+        console.log('Review saved:', reviewId, filename)
+        updateSaveState()
+        updateSavedReviewsCount()
+      },
+      onThreadCreated: (threadInfo) => {
+        console.log('Thread created in UI:', threadInfo.threadId)
+        // Start AI typing indicator
+        aiTypingThreads.value.add(threadInfo.threadId)
+        // Trigger reactive update for thread display
+        threadUpdateTrigger.value++
+      },
+      onResponseReceived: (response, threadId) => {
+        console.log('Response received in UI:', threadId, response)
+        // Stop AI typing when response is received
+        if (response.author.type === 'ai') {
+          aiTypingThreads.value.delete(threadId)
+          streamingResponses.value.delete(threadId)
+        }
+        // Trigger reactive update for thread display
+        threadUpdateTrigger.value++
+      },
+      onAIResponseChunk: (chunk, threadId) => {
+        // Handle streaming AI response chunks
+        console.log('AI chunk received:', threadId, chunk.substring(0, 50) + '...')
+        // Stop typing indicator and start streaming
+        aiTypingThreads.value.delete(threadId)
+        // Update streaming response
+        const current = streamingResponses.value.get(threadId) || ''
+        streamingResponses.value.set(threadId, current + chunk)
+        // Trigger reactive update
+        threadUpdateTrigger.value++
+      },
+      onAIResponseComplete: (fullContent, threadId) => {
+        console.log('AI response complete:', threadId)
+        // Clear streaming and typing states
+        aiTypingThreads.value.delete(threadId)
+        streamingResponses.value.delete(threadId)
+        // Trigger reactive update for final response
+        threadUpdateTrigger.value++
       }
     })
 
-    // Fetch git data on mount
-    await fetchGitData()
+    // Fetch initial data
+    await Promise.all([
+      fetchGitData(),
+      updateSavedReviewsCount()
+    ])
   }
 })
 
 onUnmounted(() => {
-  // Cleanup if needed
+  // Cleanup resources
   if (reviewService.value) {
     reviewService.value.cancelReview()
+    reviewService.value.cleanup()
+  }
+  if (persistenceService.value) {
+    persistenceService.value.cleanup()
+  }
+  if (threadingService.value) {
+    threadingService.value.cleanup()
   }
 })
 
@@ -556,6 +982,141 @@ onUnmounted(() => {
 .code-review-tab {
   padding: 1.5rem;
   max-width: 100%;
+  animation: fadeIn 0.3s ease;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+  margin-bottom: 1.5rem;
+}
+
+.nav-card {
+  padding: 1rem;
+}
+
+.tab-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tab-button:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.tab-button.active {
+  background: var(--primary-gradient);
+  border-color: transparent;
+  color: white;
+}
+
+.unsaved-indicator {
+  color: var(--warning-color);
+  animation: pulse 2s infinite;
+}
+
+.review-count-badge {
+  padding: 0.125rem 0.375rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 1rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.tab-button:not(.active) .review-count-badge {
+  background: var(--primary-alpha-10);
+  color: var(--primary-color);
+}
+
+/* Save Status Section */
+.save-status-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.save-info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--success-color);
+}
+
+.save-icon {
+  color: var(--success-color);
+}
+
+.unsaved-info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--warning-color);
+}
+
+.unsaved-icon {
+  color: var(--warning-color);
+  animation: pulse 2s infinite;
+}
+
+.save-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auto-save-toggle {
+  padding: 0.375rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auto-save-toggle:hover {
+  background: var(--glass-bg-hover);
+  transform: translateY(-1px);
+}
+
+.auto-save-toggle.active {
+  background: var(--success-alpha-10);
+  border-color: var(--success-color);
+  color: var(--success-color);
+}
+
+/* Content Sections */
+.current-review-content,
+.saved-reviews-content {
   animation: fadeIn 0.3s ease;
 }
 
@@ -1089,6 +1650,15 @@ onUnmounted(() => {
   }
 }
 
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
 .spinning {
   animation: spinning 1s linear infinite;
 }
@@ -1120,5 +1690,44 @@ onUnmounted(() => {
 .fade-scale-enter-from {
   opacity: 0;
   transform: scale(0.95);
+}
+
+.fade-scale-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-scale-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* CSS Variables for new features */
+:root {
+  --primary-alpha-10: rgba(99, 102, 241, 0.1);
+  --success-alpha-10: rgba(34, 197, 94, 0.1);
+  --warning-alpha-10: rgba(245, 158, 11, 0.1);
+}
+
+/* Responsive adjustments for tabs */
+@media (max-width: 768px) {
+  .tab-buttons {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .tab-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .save-status-section {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .save-actions {
+    justify-content: center;
+  }
 }
 </style>

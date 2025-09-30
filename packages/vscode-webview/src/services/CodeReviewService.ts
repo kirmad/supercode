@@ -1,6 +1,9 @@
 import { XMLParser } from "../utils/XMLUtils"
 import { SuperCodeWebSocketClient } from "./SuperCodeWebSocketClient"
 import { SessionManager, type StreamingCallbacks, type MessagePayload, type SessionConfig } from "./SessionManager"
+import { ReviewPersistenceService } from "./ReviewPersistenceService"
+import { CommentThreadingService } from "./CommentThreadingService"
+import { type ReviewMetadata, type CommentThreadInfo, type SavedComment } from "../types/CodeReview"
 import { debounce } from "../utils/debounce"
 
 /**
@@ -13,6 +16,7 @@ export interface ReviewInsight {
 }
 
 export interface Hunk {
+  id?: string
   file: string
   start: number
   end: number
@@ -20,9 +24,12 @@ export interface Hunk {
   risk: 'high' | 'medium' | 'low'
   description: string
   needsAttention: boolean
+  threadId?: string
+  sessionId?: string
 }
 
 export interface Comment {
+  id?: string
   file: string
   lines: {
     start: number
@@ -32,6 +39,8 @@ export interface Comment {
   severity: 'high' | 'medium' | 'low'
   message: string
   fixCode?: string
+  threadId?: string
+  sessionId?: string
 }
 
 export interface ReviewResult {
@@ -62,6 +71,8 @@ export class CodeReviewService {
   private xmlParser: XMLParser
   private wsClient: SuperCodeWebSocketClient
   private sessionManager: SessionManager
+  private persistenceService: ReviewPersistenceService
+  private threadingService: CommentThreadingService
   private readonly port: number = 25716
 
   private insights: ReviewInsight[] = []
@@ -70,18 +81,34 @@ export class CodeReviewService {
   private currentFiles: DiffFile[] = []
   private currentSessionId: string | null = null
   private accumulatedContent = '' // Accumulate streaming content for complete XML parsing
+  private currentReviewId: string | null = null
+  private autoSaveEnabled = true
+  private lastSaveTime: Date | null = null
 
   // Callbacks for UI updates
   private onInsightReceived?: (insight: ReviewInsight) => void
   private onReviewComplete?: (result: ReviewResult) => void
   private onProgressUpdate?: (message: string) => void
   private onError?: (error: string) => void
+  private onReviewSaved?: (reviewId: string, filename: string) => void
+  private onThreadCreated?: (threadInfo: CommentThreadInfo) => void
+  private onResponseReceived?: (response: any, threadId: string) => void
+  private onAIResponseChunk?: (chunk: string, threadId: string) => void
+  private onAIResponseComplete?: (fullContent: string, threadId: string) => void
 
   constructor(wsClient: SuperCodeWebSocketClient) {
     this.xmlParser = new XMLParser()
     this.wsClient = wsClient
     this.sessionManager = new SessionManager(this.port)
+    this.persistenceService = new ReviewPersistenceService()
+    this.threadingService = new CommentThreadingService(wsClient)
+
+    // Set up auto-save with debounce
+    this.debouncedAutoSave = debounce(this.performAutoSave.bind(this), 5000)
   }
+
+  // Debounced auto-save function
+  private debouncedAutoSave: ((review: ReviewResult) => void) & { cancel: () => void }
 
   /**
    * Set callback handlers for UI updates
@@ -91,11 +118,21 @@ export class CodeReviewService {
     onReviewComplete?: (result: ReviewResult) => void
     onProgressUpdate?: (message: string) => void
     onError?: (error: string) => void
+    onReviewSaved?: (reviewId: string, filename: string) => void
+    onThreadCreated?: (threadInfo: CommentThreadInfo) => void
+    onResponseReceived?: (response: any, threadId: string) => void
+    onAIResponseChunk?: (chunk: string, threadId: string) => void
+    onAIResponseComplete?: (fullContent: string, threadId: string) => void
   }) {
     this.onInsightReceived = callbacks.onInsightReceived
     this.onReviewComplete = callbacks.onReviewComplete
     this.onProgressUpdate = callbacks.onProgressUpdate
     this.onError = callbacks.onError
+    this.onReviewSaved = callbacks.onReviewSaved
+    this.onThreadCreated = callbacks.onThreadCreated
+    this.onResponseReceived = callbacks.onResponseReceived
+    this.onAIResponseChunk = callbacks.onAIResponseChunk
+    this.onAIResponseComplete = callbacks.onAIResponseComplete
   }
 
   /**
@@ -357,6 +394,11 @@ export class CodeReviewService {
 
           this.isReviewing = false
           this.onProgressUpdate?.("Review complete")
+
+          // Auto-save completed review if enabled
+          if (this.autoSaveEnabled && this.reviewResult) {
+            this.debouncedAutoSave(this.reviewResult)
+          }
         },
         onError: (error: Error) => {
           console.error('[CodeReviewService] Streaming error:', error)
@@ -393,7 +435,7 @@ export class CodeReviewService {
   /**
    * Get files from the local codebase or via API
    */
-  public async getFiles(paths: string[]): Promise<DiffFile[]> {
+  public async getFiles(_paths: string[]): Promise<DiffFile[]> {
     const files: DiffFile[] = []
 
     // Note: Currently the WebSocket API doesn't have a direct file reading endpoint
@@ -411,7 +453,7 @@ export class CodeReviewService {
   /**
    * Get diff between two commits or branches
    */
-  public async getDiff(options: {
+  public async getDiff(_options: {
     sourceBranch?: string
     targetBranch?: string
     commitHash?: string
@@ -557,104 +599,6 @@ export class CodeReviewService {
     }
   }
 
-  /**
-   * DEPRECATED - Create a message handler for processing review responses
-   */
-  private createMessageHandler() {
-    return (message: any) => {
-      try {
-        console.log('📥 Review Service - Received message:', message)
-
-        // Handle SSE message format
-        let content = ''
-        if (typeof message === 'object') {
-          // Check for various message types that may contain agent responses
-          // The agent's response typically comes through these events
-          if (message.type === 'message.created' ||
-              message.type === 'message.updated' ||
-              message.type === 'message.delta' ||
-              message.type === 'message.completed' ||
-              message.type === 'agent.response' ||
-              message.type === 'completion.message') {
-
-            // Extract content from various possible locations in the message structure
-            // Different message types may have content in different places
-            if (message.properties?.text) {
-              content = message.properties.text
-            } else if (message.properties?.content) {
-              content = message.properties.content
-            } else if (message.properties?.delta?.text) {
-              // For streaming messages, content may be in delta
-              content = message.properties.delta.text
-            } else if (message.data?.text) {
-              content = message.data.text
-            } else if (message.data?.content) {
-              content = message.data.content
-            } else if (message.data?.delta?.text) {
-              content = message.data.delta.text
-            } else if (message.data?.message?.content) {
-              // Sometimes the message is nested
-              content = message.data.message.content
-            } else if (message.text) {
-              // Direct text property
-              content = message.text
-            } else if (message.content) {
-              // Direct content property
-              content = message.content
-            }
-          } else if (message.properties?.content) {
-            content = message.properties.content
-          } else if (message.data?.content) {
-            content = message.data.content
-          } else if (message.data && typeof message.data === 'string') {
-            content = message.data
-          }
-        } else if (typeof message === 'string') {
-          content = message
-        }
-
-        if (!content) {
-          console.log('📥 Review Service - No content found in message type:', message.type)
-          return
-        }
-
-        console.log('📥 Review Service - Extracted content:', content)
-
-        // Parse review insights (streaming)
-        const insightMatches = content.matchAll(/<review-insight[^>]*>([\s\S]*?)<\/review-insight>/g)
-        for (const match of insightMatches) {
-          const insight = this.parseInsight(match[0])
-          if (insight && !this.insights.some(i => i.message === insight.message)) {
-            this.insights.push(insight)
-            this.onInsightReceived?.(insight)
-          }
-        }
-
-        // Parse review result (final)
-        const resultMatch = content.match(/<review-result>([\s\S]*?)<\/review-result>/s)
-        if (resultMatch && !this.reviewResult) {
-          const result = this.parseReviewResult(resultMatch[1])
-          if (result) {
-            this.reviewResult = result
-            this.onReviewComplete?.(result)
-            this.isReviewing = false
-            this.onProgressUpdate?.("Review complete")
-          }
-        }
-
-        // Handle progress messages
-        if (content.includes("Analyzing") || content.includes("Reading")) {
-          const progressMatch = content.match(/(?:Analyzing|Reading)[^<]*/)?.[0]
-          if (progressMatch) {
-            this.onProgressUpdate?.(progressMatch.trim())
-          }
-        }
-
-      } catch (error) {
-        console.error("Error processing review message:", error)
-      }
-    }
-  }
 
   /**
    * Parse a review insight from XML
@@ -769,7 +713,7 @@ export class CodeReviewService {
       console.log('🔍 Parsing hunk - file:', fileMatch?.[1], 'start:', startMatch?.[1], 'end:', endMatch?.[1])
 
       if (fileMatch && startMatch && endMatch) {
-        return {
+        const hunkData = {
           file: fileMatch[1],
           start: parseInt(startMatch[1]),
           end: parseInt(endMatch[1]),
@@ -778,6 +722,15 @@ export class CodeReviewService {
           description: descriptionMatch?.[1] || '',
           needsAttention: needsAttentionMatch?.[1] === 'yes'
         }
+
+        // Generate IDs for the hunk to support threading
+        const hunk = {
+          ...hunkData,
+          id: this.generateHunkId(hunkData),
+          threadId: this.generateHunkThreadId(hunkData)
+        }
+
+        return hunk
       } else {
         console.log('❌ Missing required hunk fields')
       }
@@ -809,9 +762,7 @@ export class CodeReviewService {
           },
           type: typeMatch[1] as Comment['type'],
           severity: severityMatch[1] as Comment['severity'],
-          message: messageMatch[1].trim(),
-          author: 'AI Reviewer',
-          body: messageMatch[1].trim()
+          message: messageMatch[1].trim()
         }
 
         if (fixCodeMatch && fixCodeMatch[1].trim()) {
@@ -956,127 +907,380 @@ export class CodeReviewService {
     return diff
   }
 
-  /**
-   * Generate comments from insights by intelligently mapping them to file locations
-   */
-  private generateCommentsFromInsights(insights: ReviewInsight[], files: DiffFile[]): Comment[] {
-    const comments: Comment[] = []
-
-    for (const insight of insights) {
-      // Skip if not enough information to create a comment
-      if (!insight.message) continue
-
-      // Try to extract file references from the insight message
-      const fileMatches = insight.message.match(/`([^`]+\.(ts|tsx|js|jsx|vue|py|go|java|rs|cpp|h|c|md))`/gi)
-      const lineMatches = insight.message.match(/line[s]?\s+(\d+)(?:\s*[-–]\s*(\d+))?/gi)
-
-      // Map severity to comment type
-      const type: Comment['type'] =
-        insight.type === 'bug' || insight.type === 'security' ? 'issue' :
-        insight.type === 'performance' || insight.type === 'best-practice' ? 'suggestion' :
-        'suggestion'
-
-      // If we found file references in the message
-      if (fileMatches && fileMatches.length > 0) {
-        for (const fileMatch of fileMatches) {
-          const fileName = fileMatch.replace(/`/g, '')
-
-          // Find the matching file in our diff files
-          const matchingFile = files.find(f =>
-            f.path.endsWith(fileName) ||
-            f.path.includes(fileName) ||
-            fileName.includes(f.path.split('/').pop() || '')
-          )
-
-          if (matchingFile) {
-            // Extract line numbers if mentioned
-            let startLine = 1
-            let endLine = 1
-
-            if (lineMatches && lineMatches.length > 0) {
-              const lineMatch = lineMatches[0].match(/(\d+)(?:\s*[-–]\s*(\d+))?/)
-              if (lineMatch) {
-                startLine = parseInt(lineMatch[1])
-                endLine = lineMatch[2] ? parseInt(lineMatch[2]) : startLine
-              }
-            } else if (matchingFile.patches && matchingFile.patches.length > 0) {
-              // If no specific line mentioned, use the first changed hunk
-              const firstPatch = matchingFile.patches[0]
-              startLine = firstPatch.newStart
-              endLine = firstPatch.newStart + Math.min(5, firstPatch.newLines) // Show first 5 lines of the hunk
-            }
-
-            comments.push({
-              file: matchingFile.path,
-              lines: { start: startLine, end: endLine },
-              type,
-              severity: insight.severity,
-              message: insight.message
-            })
-          }
-        }
-      } else if (files.length > 0) {
-        // If no specific file mentioned, but we have context about which files changed
-        // Try to intelligently map based on content keywords
-
-        // Keywords that might indicate which file type this relates to
-        const componentKeywords = ['component', 'render', 'props', 'state', 'hooks', 'jsx', 'tsx']
-        const serviceKeywords = ['service', 'api', 'fetch', 'request', 'response', 'async', 'promise']
-        const styleKeywords = ['style', 'css', 'sass', 'scss', 'class', 'selector']
-
-        // Try to find the most relevant file based on keywords
-        let targetFile = files[0] // Default to first file if no match
-
-        const lowerMessage = insight.message.toLowerCase()
-
-        for (const file of files) {
-          const isComponent = file.path.includes('component') || file.path.endsWith('.vue') || file.path.endsWith('.tsx')
-          const isService = file.path.includes('service') || file.path.includes('api')
-          const isStyle = file.path.endsWith('.css') || file.path.endsWith('.scss')
-
-          if (isComponent && componentKeywords.some(k => lowerMessage.includes(k))) {
-            targetFile = file
-            break
-          } else if (isService && serviceKeywords.some(k => lowerMessage.includes(k))) {
-            targetFile = file
-            break
-          } else if (isStyle && styleKeywords.some(k => lowerMessage.includes(k))) {
-            targetFile = file
-            break
-          }
-        }
-
-        // Find the most relevant lines in the target file
-        let startLine = 1
-        let endLine = 1
-
-        if (targetFile.patches && targetFile.patches.length > 0) {
-          // Focus on the largest change hunk
-          const largestPatch = targetFile.patches.reduce((largest, patch) =>
-            patch.lines.length > largest.lines.length ? patch : largest
-          )
-          startLine = largestPatch.newStart
-          endLine = largestPatch.newStart + Math.min(10, largestPatch.newLines)
-        }
-
-        comments.push({
-          file: targetFile.path,
-          lines: { start: startLine, end: endLine },
-          type,
-          severity: insight.severity,
-          message: insight.message
-        })
-      }
-    }
-
-    console.log(`💬 Generated ${comments.length} comments from ${insights.length} insights`)
-    return comments
-  }
 
   /**
    * Get the current diff files
    */
   public getCurrentFiles(): DiffFile[] {
     return this.currentFiles
+  }
+
+  /**
+   * Auto-save functionality
+   */
+  public setAutoSaveEnabled(enabled: boolean): void {
+    this.autoSaveEnabled = enabled
+    if (!enabled) {
+      this.debouncedAutoSave.cancel()
+    }
+  }
+
+  private async performAutoSave(review: ReviewResult): Promise<void> {
+    if (!this.autoSaveEnabled || !review) return
+
+    try {
+      // Generate auto-save title if none exists
+      const title = this.generateAutoSaveTitle(review)
+      const metadata = {
+        title,
+        status: 'active' as const,
+        autoSaved: true
+      }
+
+      const source = {
+        type: 'branches' as const,
+        diffContent: this.generateDiffFromFiles(this.currentFiles),
+        diffFiles: this.currentFiles
+      }
+
+      const analysis = {
+        insights: this.insights,
+        aiSessionId: this.currentSessionId || undefined
+      }
+
+      const result = await this.persistenceService.saveReview(review, metadata, source, analysis)
+      this.currentReviewId = result.id
+      this.lastSaveTime = new Date()
+      this.onReviewSaved?.(result.id, result.filename)
+    } catch (error) {
+      console.error('Auto-save failed:', error)
+      // Don't show error to user for auto-save failures
+    }
+  }
+
+  private generateAutoSaveTitle(review: ReviewResult): string {
+    const timestamp = new Date().toLocaleString()
+    if (review.hunks.length > 0) {
+      const fileCount = new Set(review.hunks.map(h => h.file)).size
+      return `Auto-saved Review (${fileCount} file${fileCount !== 1 ? 's' : ''}) - ${timestamp}`
+    }
+    return `Auto-saved Review - ${timestamp}`
+  }
+
+  /**
+   * Manual save functionality
+   */
+  public async saveReview(
+    title: string,
+    description?: string,
+    status: 'draft' | 'active' | 'completed' = 'active'
+  ): Promise<string | null> {
+    if (!this.reviewResult) {
+      this.onError?.('No review result to save')
+      return null
+    }
+
+    try {
+      const metadata = {
+        title,
+        description,
+        status,
+        autoSaved: false
+      }
+
+      const source = {
+        type: 'branches' as const,
+        diffContent: this.generateDiffFromFiles(this.currentFiles),
+        diffFiles: this.currentFiles
+      }
+
+      const analysis = {
+        insights: this.insights,
+        aiSessionId: this.currentSessionId || undefined
+      }
+
+      const result = await this.persistenceService.saveReview(this.reviewResult, metadata, source, analysis)
+      this.currentReviewId = result.id
+      this.lastSaveTime = new Date()
+      this.onReviewSaved?.(result.id, result.filename)
+      return result.id
+    } catch (error) {
+      this.onError?.(`Failed to save review: ${error}`)
+      return null
+    }
+  }
+
+  /**
+   * Load a saved review
+   */
+  public async loadSavedReview(reviewId: string): Promise<boolean> {
+    try {
+      this.onProgressUpdate?.('Loading saved review...')
+
+      const savedReview = await this.persistenceService.loadReview(reviewId)
+      if (!savedReview) {
+        this.onError?.('Review not found')
+        return false
+      }
+
+      // Convert back to current format
+      this.reviewResult = this.persistenceService.convertToReviewResult(savedReview)
+      this.insights = savedReview.analysis?.insights || []
+      this.currentReviewId = reviewId
+      this.lastSaveTime = new Date(savedReview.metadata.updatedAt)
+
+      // Restore session if possible
+      if (savedReview.analysis?.aiSessionId) {
+        this.currentSessionId = savedReview.analysis.aiSessionId
+      }
+
+      // Notify UI of loaded review
+      this.onReviewComplete?.(this.reviewResult)
+      this.onProgressUpdate?.('Review loaded successfully')
+
+      return true
+    } catch (error) {
+      this.onError?.(`Failed to load review: ${error}`)
+      return false
+    }
+  }
+
+  /**
+   * Get list of saved reviews
+   */
+  public async getSavedReviews(): Promise<ReviewMetadata[]> {
+    try {
+      return await this.persistenceService.listReviews()
+    } catch (error) {
+      this.onError?.(`Failed to load reviews: ${error}`)
+      return []
+    }
+  }
+
+  /**
+   * Delete a saved review
+   */
+  public async deleteSavedReview(reviewId: string): Promise<boolean> {
+    try {
+      await this.persistenceService.deleteReview(reviewId)
+
+      // Clear current review if it was the deleted one
+      if (this.currentReviewId === reviewId) {
+        this.currentReviewId = null
+        this.lastSaveTime = null
+      }
+
+      return true
+    } catch (error) {
+      this.onError?.(`Failed to delete review: ${error}`)
+      return false
+    }
+  }
+
+  /**
+   * Comment threading integration
+   */
+  public initializeCommentThreading(): void {
+    this.threadingService.setCallbacks({
+      onThreadCreated: (threadInfo: CommentThreadInfo) => {
+        console.log('Thread created:', threadInfo.threadId, threadInfo.context)
+        // Notify external callbacks for UI updates
+        this.onThreadCreated?.(threadInfo)
+      },
+      onResponseReceived: (response, threadId) => {
+        console.log('Response added to thread:', threadId, response)
+        // Notify external callbacks for UI updates
+        this.onResponseReceived?.(response, threadId)
+      },
+      onAIResponseChunk: (chunk, threadId) => {
+        // Forward AI response chunks
+        this.onAIResponseChunk?.(chunk, threadId)
+      },
+      onAIResponseComplete: (fullContent, threadId) => {
+        // Forward AI response completion
+        this.onAIResponseComplete?.(fullContent, threadId)
+      },
+      onError: (error) => {
+        this.onError?.(error)
+      }
+    })
+  }
+
+  /**
+   * Get comment threads for the current review
+   */
+  public getCommentThreads() {
+    return this.threadingService.getAllThreads()
+  }
+
+  /**
+   * Add a response to a comment thread
+   */
+  public async addThreadResponse(threadId: string, content: string): Promise<void> {
+    try {
+      await this.threadingService.addUserResponseToThread(threadId, content, 'User')
+    } catch (error) {
+      this.onError?.(`Failed to add thread response: ${error}`)
+    }
+  }
+
+  /**
+   * Add a response to a comment with proper thread management
+   */
+  public async addCommentResponse(
+    comment: Comment,
+    content: string,
+    userName: string = 'User'
+  ): Promise<void> {
+    try {
+      // Convert Comment to SavedComment format for threading
+      const savedComment: SavedComment = {
+        ...comment,
+        id: comment.id || this.generateCommentId(comment),
+        threadId: comment.threadId || this.generateCommentThreadId(comment),
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: { type: 'ai', name: 'AI Assistant' },
+        responses: []
+      }
+
+      // Find or create thread for this comment
+      const thread = await this.threadingService.findOrCreateThreadForComment(
+        savedComment,
+        content,
+        userName
+      )
+
+      // Update the comment with the proper thread ID and session ID
+      comment.threadId = thread.threadId
+      if (thread.sessionId) {
+        comment.sessionId = thread.sessionId
+      }
+
+      console.log('Comment response added successfully:', {
+        commentId: comment.id,
+        threadId: thread.threadId,
+        sessionId: thread.sessionId
+      })
+
+    } catch (error) {
+      this.onError?.(`Failed to add comment response: ${error}`)
+    }
+  }
+
+  public async addHunkResponse(
+    hunk: Hunk,
+    content: string,
+    userName: string = 'User'
+  ): Promise<void> {
+    console.log('[CodeReviewService] addHunkResponse called with:', content, 'for hunk:', hunk)
+    try {
+      // Ensure the hunk has proper IDs
+      if (!hunk.id) {
+        hunk.id = this.generateHunkId(hunk)
+      }
+      if (!hunk.threadId) {
+        hunk.threadId = this.generateHunkThreadId(hunk)
+      }
+
+      // Find or create thread for this hunk
+      const thread = await this.threadingService.findOrCreateHunkThread(
+        hunk,
+        content,
+        userName
+      )
+
+      // Update the hunk with the proper thread ID and session ID
+      hunk.threadId = thread.threadId
+      if (thread.sessionId) {
+        hunk.sessionId = thread.sessionId
+      }
+
+      console.log('Hunk response added successfully:', {
+        hunkId: hunk.id,
+        threadId: thread.threadId,
+        sessionId: thread.sessionId
+      })
+
+    } catch (error) {
+      this.onError?.(`Failed to add hunk response: ${error}`)
+    }
+  }
+
+  /**
+   * Generate a thread ID for a comment
+   */
+  private generateCommentThreadId(comment: Comment): string {
+    // Use the same format as expected by the Vue component
+    return `${comment.file}-${comment.lines.start}-${comment.lines.end}`
+  }
+
+  private generateHunkId(hunk: Hunk): string {
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 11)
+    const fileHash = hunk.file.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)
+    return `hunk-${fileHash}-${hunk.start}-${timestamp}-${random}`
+  }
+
+  private generateHunkThreadId(hunk: Hunk): string {
+    // Use the same format as expected by the Vue component: file-hunk-start-end
+    return `${hunk.file}-hunk-${hunk.start}-${hunk.end}`
+  }
+
+  /**
+   * Update thread status
+   */
+  public async updateThreadStatus(
+    threadId: string,
+    status: 'open' | 'resolved' | 'dismissed'
+  ): Promise<void> {
+    try {
+      const thread = this.threadingService.getAllThreads().find(t => t.threadId === threadId)
+      if (thread) {
+        console.log('Updating thread status:', threadId, status)
+        // Thread status update logic would be implemented here
+      }
+    } catch (error) {
+      this.onError?.(`Failed to update thread status: ${error}`)
+    }
+  }
+
+  /**
+   * Get current review metadata
+   */
+  public getCurrentReviewInfo() {
+    return {
+      id: this.currentReviewId,
+      lastSaveTime: this.lastSaveTime,
+      autoSaveEnabled: this.autoSaveEnabled,
+      hasUnsavedChanges: this.reviewResult && !this.lastSaveTime
+    }
+  }
+
+  /**
+   * Generate unique comment ID
+   */
+  private generateCommentId(comment: Comment): string {
+    const timestamp = Date.now()
+    const random = Math.random().toString(36).substring(2, 11)
+    const fileHash = comment.file.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8)
+    return `comment-${fileHash}-${comment.lines.start}-${timestamp}-${random}`
+  }
+
+  /**
+   * Get the threading service instance
+   */
+  public getThreadingService(): CommentThreadingService {
+    return this.threadingService
+  }
+
+  /**
+   * Clean up resources
+   */
+  public cleanup(): void {
+    this.debouncedAutoSave.cancel()
+    this.persistenceService.cleanup()
+    this.threadingService.cleanup()
   }
 }

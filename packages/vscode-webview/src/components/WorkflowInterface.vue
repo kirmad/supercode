@@ -235,13 +235,10 @@ interface AvailableAgent {
 // Tab configuration
 const tabs = [
   { id: "prompt", name: "Prompt Generation", component: PromptGenerationTab },
-  { id: "plan", name: "Plan", component: PlanGenerationTab }, // Updated to use PlanGenerationTab
+  { id: "plan", name: "Plan", component: PlanGenerationTab },
   { id: "implement", name: "Implement", component: ComingSoonTab },
   { id: "review", name: "Review", component: CodeReviewTab },
-  { id: "validate", name: "Validate", component: ComingSoonTab },
-  { id: "enhance", name: "Enhance", component: ComingSoonTab },
-  { id: "build", name: "Build", component: ComingSoonTab },
-  { id: "deploy", name: "Deploy", component: ComingSoonTab },
+  { id: "devops", name: "DevOps", component: ComingSoonTab },
   { id: "maintain", name: "Maintain", component: ComingSoonTab },
   { id: "daemon", name: "Daemon", component: ComingSoonTab },
 ]

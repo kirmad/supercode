@@ -28,6 +28,7 @@ import { createWebRoutes } from "./web-routes"
 import { createDebugLogsRoutes } from "./debug-logs-routes"
 import { createHttpLogsRoutes } from "./http-logs-routes"
 import { createGitRoutes } from "./git-routes"
+import { createFileRoutes } from "./file-routes"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
@@ -1935,6 +1936,7 @@ export namespace Server {
     .route("/tui/control", TuiRoute)
     .route("/web", createWebRoutes())
     .route("/git", createGitRoutes())
+    .route("/", createFileRoutes())
     .route("/", createMCPRoutes())
     .route("/", createDebugLogsRoutes())
     .route("/", createHttpLogsRoutes())

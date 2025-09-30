@@ -228,6 +228,7 @@ export namespace Session {
     () => {
       const pending = new Map<string, AbortController>()
       const autoCompacting = new Map<string, boolean>()
+      const compressionPending = new Map<string, boolean>()
       const queued = new Map<
         string,
         {
@@ -242,6 +243,7 @@ export namespace Session {
       return {
         pending,
         autoCompacting,
+        compressionPending,
         queued,
       }
     },
@@ -522,6 +524,27 @@ export namespace Session {
 
     // Process revert cleanup first, before creating new messages
     const session = await get(input.sessionID)
+
+    // Check if compression was pending from the previous agent message
+    // If so, compress now before processing the new user message
+    if (state().compressionPending.get(input.sessionID)) {
+      log.info("applying deferred compression before processing user message", {
+        sessionID: input.sessionID
+      })
+      state().compressionPending.delete(input.sessionID)
+
+      // Get model info for compression
+      const msgs = await messages(input.sessionID)
+      const lastAssistant = [...msgs].reverse().find(m => m.info.role === "assistant")
+      if (lastAssistant && lastAssistant.info.role === "assistant") {
+        await enhanced_summarize({
+          sessionID: input.sessionID,
+          providerID: lastAssistant.info.providerID,
+          modelID: lastAssistant.info.modelID,
+        }, true)
+      }
+    }
+
     if (session.revert) {
       let msgs = await messages(input.sessionID)
       const messageID = session.revert.messageID
@@ -1342,21 +1365,31 @@ ${contextParts.join("\n")}
 
     // Check if compression was flagged during processing
     if (processor.getShouldCompress()) {
-      log.info("compression flagged during processing, compacting and continuing", { 
-        sessionID: input.sessionID 
-      })
-      
-      // Mark current session as auto-compacting to prevent loops
-      state().autoCompacting.set(input.sessionID, true)
-      
-      await enhanced_summarize({
-        sessionID: input.sessionID,
-        providerID: model.providerID,
-        modelID: model.modelID,
-      }, true)
-      
-      // Recursively continue the chat after compression
-      return prompt(input)
+      // Only compress and continue if there are still active tool calls pending
+      // Otherwise, defer compression until the user sends the next message
+      if (processor.hasActiveToolCalls()) {
+        log.info("compression flagged during processing with active tool calls, compacting and continuing", {
+          sessionID: input.sessionID
+        })
+
+        // Mark current session as auto-compacting to prevent loops
+        state().autoCompacting.set(input.sessionID, true)
+
+        await enhanced_summarize({
+          sessionID: input.sessionID,
+          providerID: model.providerID,
+          modelID: model.modelID,
+        }, true)
+
+        // Recursively continue the chat after compression
+        return prompt(input)
+      } else {
+        // No active tool calls - defer compression to next user message
+        log.info("compression flagged but no active tool calls, deferring to next user message", {
+          sessionID: input.sessionID
+        })
+        state().compressionPending.set(input.sessionID, true)
+      }
     }
 
     // Debug logging: Log the completion and response
@@ -1690,6 +1723,9 @@ ${contextParts.join("\n")}
       },
       setShouldCompress(value: boolean) {
         shouldCompress = value
+      },
+      hasActiveToolCalls() {
+        return Object.keys(toolcalls).length > 0
       },
       async process(stream: StreamTextResult<Record<string, AITool>, never>) {
         try {
