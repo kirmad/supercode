@@ -26,7 +26,7 @@
     },
     "cloud/core": {
       "name": "@opencode/cloud-core",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@aws-sdk/client-sts": "3.782.0",
         "@opencode/cloud-resource": "workspace:*",
@@ -43,7 +43,7 @@
     },
     "cloud/function": {
       "name": "@opencode/cloud-function",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@ai-sdk/anthropic": "2.0.0",
         "@ai-sdk/openai": "2.0.2",
@@ -69,7 +69,7 @@
     },
     "cloud/scripts": {
       "name": "@opencode/cloud-scripts",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@opencode/cloud-core": "workspace:*",
         "tsx": "4.20.5",
@@ -81,7 +81,7 @@
     },
     "packages/azure-devops": {
       "name": "@supercode/azure-devops",
-      "version": "1.0.0",
+      "version": "0.6.49",
       "dependencies": {
         "zod": "catalog:",
       },
@@ -92,7 +92,7 @@
     },
     "packages/function": {
       "name": "@opencode/function",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@octokit/auth-app": "8.0.1",
         "@octokit/rest": "22.0.0",
@@ -107,7 +107,7 @@
     },
     "packages/opencode": {
       "name": "@kirmad/supercode",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "bin": {
         "@kirmad/supercode": "./bin/supercode.js",
         "supercode": "./bin/supercode.js",
@@ -120,6 +120,7 @@
         "@modelcontextprotocol/sdk": "1.15.1",
         "@openauthjs/openauth": "0.4.3",
         "@standard-schema/spec": "1.0.0",
+        "@supercode/azure-devops": "workspace:*",
         "@zip.js/zip.js": "2.7.62",
         "ai": "catalog:",
         "decimal.js": "10.5.0",
@@ -162,7 +163,7 @@
     },
     "packages/plugin": {
       "name": "@kirmad/supercode-plugin",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@kirmad/supercode-sdk": "workspace:*",
       },
@@ -171,9 +172,21 @@
         "typescript": "catalog:",
       },
     },
+    "packages/project-workflow": {
+      "name": "@kirmad/supercode-project-workflow",
+      "version": "0.6.49",
+      "dependencies": {
+        "@kirmad/supercode-sdk": "workspace:*",
+        "@supercode/azure-devops": "workspace:*",
+      },
+      "devDependencies": {
+        "@tsconfig/node22": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/sdk/js": {
       "name": "@kirmad/supercode-sdk",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@hey-api/openapi-ts": "0.81.0",
       },
@@ -185,10 +198,11 @@
     },
     "packages/vscode-webview": {
       "name": "@supercode/vscode-webview",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@kirmad/supercode-sdk": "latest",
         "@supercode/azure-devops": "workspace:*",
+        "playwright": "1.55.1",
         "vue": "^3.5.0",
         "vue-router": "^4.5.0",
       },
@@ -208,7 +222,7 @@
     },
     "packages/web": {
       "name": "@opencode/web",
-      "version": "0.6.43",
+      "version": "0.6.49",
       "dependencies": {
         "@astrojs/cloudflare": "12.6.3",
         "@astrojs/markdown-remark": "6.3.1",
@@ -678,6 +692,8 @@
 
     "@kirmad/supercode-plugin": ["@kirmad/supercode-plugin@workspace:packages/plugin"],
 
+    "@kirmad/supercode-project-workflow": ["@kirmad/supercode-project-workflow@workspace:packages/project-workflow"],
+
     "@kirmad/supercode-sdk": ["@kirmad/supercode-sdk@workspace:packages/sdk/js"],
 
     "@logdna/tail-file": ["@logdna/tail-file@2.2.0", "", {}, "sha512-XGSsWDweP80Fks16lwkAUIr54ICyBs6PsI4mpfTLQaWgEJRtY9xEV+PeyDpJ+sJEGZxqINlpmAwe/6tS1pP8Ng=="],
@@ -1116,7 +1132,7 @@
 
     "@types/braces": ["@types/braces@3.0.5", "", {}, "sha512-SQFof9H+LXeWNz8wDe7oN5zu7ket0qwMu5vZubW4GCJ8Kkeh6nBWUz87+KTz/G3Kqsrp0j/W253XJb3KMEeg3w=="],
 
-    "@types/bun": ["@types/bun@1.2.21", "", { "dependencies": { "bun-types": "1.2.21" } }, "sha512-NiDnvEqmbfQ6dmZ3EeUO577s4P5bf4HCTXtI6trMc6f6RzirY5IrF3aIookuSpyslFzrnvv2lmEWv5HyC1X79A=="],
+    "@types/bun": ["@types/bun@1.2.23", "", { "dependencies": { "bun-types": "1.2.23" } }, "sha512-le8ueOY5b6VKYf19xT3McVbXqLqmxzPXHsQT/q9JHgikJ2X22wyTW3g3ohz2ZMnp7dod6aduIiq8A14Xyimm0A=="],
 
     "@types/cacheable-request": ["@types/cacheable-request@6.0.3", "", { "dependencies": { "@types/http-cache-semantics": "*", "@types/keyv": "^3.1.4", "@types/node": "*", "@types/responselike": "^1.0.0" } }, "sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw=="],
 
@@ -1396,7 +1412,7 @@
 
     "buffer-from": ["buffer-from@1.1.2", "", {}, "sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ=="],
 
-    "bun-types": ["bun-types@1.2.21", "", { "dependencies": { "@types/node": "*" }, "peerDependencies": { "@types/react": "^19" } }, "sha512-sa2Tj77Ijc/NTLS0/Odjq/qngmEPZfbfnOERi0KRUYhT9R8M4VBioWVmMWE5GrYbKMc+5lVybXygLdibHaqVqw=="],
+    "bun-types": ["bun-types@1.2.23", "", { "dependencies": { "@types/node": "*" }, "peerDependencies": { "@types/react": "^19" } }, "sha512-R9f0hKAZXgFU3mlrA0YpE/fiDvwV0FT9rORApt2aQVWSuJDzZOyB5QLc0N/4HF57CS8IXJ6+L5E4W1bW6NS2Aw=="],
 
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 
@@ -3410,7 +3426,7 @@
 
     "@solidjs/start/shiki": ["shiki@1.29.2", "", { "dependencies": { "@shikijs/core": "1.29.2", "@shikijs/engine-javascript": "1.29.2", "@shikijs/engine-oniguruma": "1.29.2", "@shikijs/langs": "1.29.2", "@shikijs/themes": "1.29.2", "@shikijs/types": "1.29.2", "@shikijs/vscode-textmate": "^10.0.1", "@types/hast": "^3.0.4" } }, "sha512-njXuliz/cP+67jU2hukkxCNuH1yUi4QfdZZY+sMr5PPrIyXSu5iTb/qYC4BiWWB0vZ+7TbdvYUCeL23zpwCfbg=="],
 
-    "@supercode/vscode-webview/@kirmad/supercode-sdk": ["@kirmad/supercode-sdk@0.6.43", "", { "dependencies": { "@hey-api/openapi-ts": "0.81.0" } }, "sha512-XOf/sntmjgY249T41ChJeD6m2G9dblu0Rw0bVaRYY0whLNn4eSr+ArT+edu7me8USjHS4KQJoAUHhfiqd1enkw=="],
+    "@supercode/vscode-webview/@kirmad/supercode-sdk": ["@kirmad/supercode-sdk@0.6.49", "", { "dependencies": { "@hey-api/openapi-ts": "0.81.0" } }, "sha512-Em07Y00v7tCqZV3t9/0OoS4DNt7CtYygSXQsufqZuIzMIQgQIIa6vSAK4I/EAk6A5mLhcerx4DD8cr7UM2KvQw=="],
 
     "@tufjs/models/minimatch": ["minimatch@9.0.5", "", { "dependencies": { "brace-expansion": "^2.0.1" } }, "sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow=="],
 

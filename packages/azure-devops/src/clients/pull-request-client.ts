@@ -16,6 +16,7 @@ import type {
   UpdateCommentRequest,
   UpdateThreadRequest,
   PullRequestSearchCriteria,
+  PullRequestCompletionOptions,
   AssociatedWorkItem,
   GitRepository,
   GitItem,
@@ -33,7 +34,7 @@ export class PullRequestClient {
     this.config = config;
     this.baseUrl = `https://dev.azure.com/${config.organization}/${config.project}/_apis`;
     this.apiVersion = config.apiVersion || '7.1';
-    this.prApiVersion = '7.1-preview.1';
+    this.prApiVersion = '7.2-preview';
     this.headers = {
       'Authorization': `Basic ${Buffer.from(`:${config.pat}`).toString('base64')}`,
       'Content-Type': 'application/json',
@@ -616,6 +617,257 @@ export class PullRequestClient {
   /**
    * Get file content at a specific commit
    * @param repositoryId Repository ID
+   * @param commitId Commit ID
+   * @param filePath File path
+   */
+  async getFileContent(
+    repositoryId: string,
+    commitId: string,
+    filePath: string
+  ): Promise<string | null> {
+    try {
+      const itemUrl = `https://dev.azure.com/${this.config.organization}/${this.config.project}/_apis/git/repositories/${repositoryId}/items`
+      const queryParams = new URLSearchParams({
+        'path': filePath,
+        'versionDescriptor.version': commitId,
+        'versionDescriptor.versionType': 'commit',
+        'api-version': '7.1'
+      })
+      const fullUrl = `${itemUrl}?${queryParams.toString()}`
+
+      const response = await fetch(fullUrl, {
+        headers: {
+          "Authorization": `Basic ${Buffer.from(`:${this.config.pat}`).toString("base64")}`,
+          "Accept": "text/plain"
+        }
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null // File doesn't exist at this commit
+        }
+        throw new Error(`Azure DevOps API error: ${response.status} ${response.statusText}`)
+      }
+
+      return await response.text()
+    } catch (error) {
+      console.error(`Failed to get file content for ${filePath} at ${commitId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Generate a unified diff for a file using Azure DevOps native diff API
+   * Returns both the diff and the file contents
+   * @param repositoryId Repository ID
+   * @param baseCommit Base commit SHA
+   * @param targetCommit Target commit SHA
+   * @param filePath File path
+   * @param changeType Change type (add, delete, edit)
+   */
+  async generateFileDiff(
+    repositoryId: string,
+    baseCommit: string,
+    targetCommit: string,
+    filePath: string,
+    changeType?: string
+  ): Promise<{
+    diff: string;
+    oldContent: string | null;
+    newContent: string | null;
+  }> {
+    console.log(`[ADO Native] Fetching optimized diff: ${filePath} (${baseCommit.substring(0, 8)}...${targetCommit.substring(0, 8)}) [${changeType || 'edit'}]`)
+
+    try {
+      // Use Azure DevOps Diffs API for optimized diffs
+      const diffUrl = `https://dev.azure.com/${this.config.organization}/${this.config.project}/_apis/git/repositories/${repositoryId}/diffs/commits`
+      const queryParams = new URLSearchParams({
+        'baseVersionDescriptor.versionType': 'commit',
+        'baseVersionDescriptor.version': baseCommit,
+        'targetVersionDescriptor.versionType': 'commit',
+        'targetVersionDescriptor.version': targetCommit,
+        'api-version': '7.1'
+      })
+
+      const fullUrl = `${diffUrl}?${queryParams.toString()}`
+
+      const response = await fetch(fullUrl, {
+        headers: {
+          "Authorization": `Basic ${Buffer.from(`:${this.config.pat}`).toString("base64")}`,
+          "Accept": "application/json"
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`Azure DevOps Diff API error: ${response.status} ${response.statusText}`)
+      }
+
+      const diffData = await response.json()
+
+      // Find the specific file change in the diff response
+      const fileChange = diffData.changes?.find((change: any) =>
+        change.item?.path === filePath || change.item?.path === `/${filePath.replace(/^\//, '')}`
+      )
+
+      if (fileChange && fileChange.gitDiff) {
+        // ADO provides optimized git diff format
+        console.log(`[ADO Native] Found optimized diff for ${filePath}: ${fileChange.gitDiff.length} chars`)
+        // Still need to fetch file contents for saving
+        const [oldContent, newContent] = await this.fetchFileContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
+        return {
+          diff: fileChange.gitDiff,
+          oldContent,
+          newContent
+        }
+      }
+
+      // Fallback to manual diff generation if native diff not available
+      console.log(`[ADO Native] No native diff found, falling back to manual generation for ${filePath}`)
+      return await this.generateFileDiffWithContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
+
+    } catch (error: any) {
+      console.log(`[ADO Native] Error fetching optimized diff for ${filePath}: ${error.message}`)
+      // Fallback to manual diff generation
+      return await this.generateFileDiffWithContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
+    }
+  }
+
+  /**
+   * Helper function to fetch file contents for both commits
+   */
+  private async fetchFileContents(
+    repositoryId: string,
+    baseCommit: string,
+    targetCommit: string,
+    filePath: string,
+    changeType?: string
+  ): Promise<[string | null, string | null]> {
+    let oldContent: string | null = null
+    let newContent: string | null = null
+
+    // Optimize file fetching based on change type
+    if (changeType === 'add') {
+      // For added files, only fetch new content
+      newContent = await this.getFileContent(repositoryId, targetCommit, filePath)
+      console.log(`[ADO] Added file content length: ${newContent?.length || 0}`)
+    } else if (changeType === 'delete') {
+      // For deleted files, only fetch old content
+      oldContent = await this.getFileContent(repositoryId, baseCommit, filePath)
+      console.log(`[ADO] Deleted file content length: ${oldContent?.length || 0}`)
+    } else {
+      // For modified files, fetch both
+      const [oldContentResult, newContentResult] = await Promise.all([
+        this.getFileContent(repositoryId, baseCommit, filePath),
+        this.getFileContent(repositoryId, targetCommit, filePath)
+      ])
+      oldContent = oldContentResult
+      newContent = newContentResult
+      console.log(`[ADO] Content lengths - old: ${oldContent?.length || 0}, new: ${newContent?.length || 0}`)
+    }
+
+    return [oldContent, newContent]
+  }
+
+  /**
+   * Helper function to get optimized diff using local files and git diff
+   * Returns the diff and file contents without saving to disk
+   */
+  private async generateFileDiffWithContents(
+    repositoryId: string,
+    baseCommit: string,
+    targetCommit: string,
+    filePath: string,
+    changeType?: string
+  ): Promise<{
+    diff: string;
+    oldContent: string | null;
+    newContent: string | null;
+  }> {
+    console.log(`[ADO Git] Generating optimized diff: ${filePath} (${baseCommit.substring(0, 8)}...${targetCommit.substring(0, 8)}) [${changeType || 'edit'}]`)
+
+    const fs = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const { execSync } = await import('node:child_process')
+
+    try {
+      // Fetch file contents
+      const [oldContent, newContent] = await this.fetchFileContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
+
+      // Create temporary directory for diff generation
+      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-diff-'))
+      const oldFilePath = path.join(tempDir, `old-${path.basename(filePath)}`)
+      const newFilePath = path.join(tempDir, `new-${path.basename(filePath)}`)
+
+      try {
+        // Write content to temporary files
+        if (oldContent !== null) {
+          await fs.writeFile(oldFilePath, oldContent, 'utf8')
+        }
+        if (newContent !== null) {
+          await fs.writeFile(newFilePath, newContent, 'utf8')
+        }
+
+        // Generate optimized diff using git diff
+        let gitDiff: string
+
+        if (changeType === 'add') {
+          // For added files: diff /dev/null to new file
+          gitDiff = execSync(`git diff --no-index /dev/null "${newFilePath}" || true`, { encoding: 'utf8' })
+          gitDiff = gitDiff.replace(/\/dev\/null/, `a${filePath}`)
+          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(newFilePath), 'g'), `b${filePath}`)
+        } else if (changeType === 'delete') {
+          // For deleted files: diff old file to /dev/null
+          gitDiff = execSync(`git diff --no-index "${oldFilePath}" /dev/null || true`, { encoding: 'utf8' })
+          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(oldFilePath), 'g'), `a${filePath}`)
+          gitDiff = gitDiff.replace(/\/dev\/null/, `b${filePath}`)
+        } else {
+          // For modified files: diff old to new
+          gitDiff = execSync(`git diff --no-index "${oldFilePath}" "${newFilePath}" || true`, { encoding: 'utf8' })
+          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(oldFilePath), 'g'), `a${filePath}`)
+          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(newFilePath), 'g'), `b${filePath}`)
+        }
+
+        // Clean up the diff header to match standard git format
+        gitDiff = gitDiff.replace(/^diff --git.*$/m, `diff --git a${filePath} b${filePath}`)
+
+        console.log(`[ADO Git] Generated optimized diff: ${gitDiff.length} chars (was ${oldContent?.length || 0} + ${newContent?.length || 0})`)
+        return {
+          diff: gitDiff,
+          oldContent,
+          newContent
+        }
+
+      } finally {
+        // Cleanup temporary files
+        try {
+          await fs.rm(tempDir, { recursive: true, force: true })
+        } catch (cleanupError) {
+          console.log(`[ADO Git] Failed to cleanup temp dir: ${cleanupError}`)
+        }
+      }
+
+    } catch (error: any) {
+      console.log(`[ADO Git] Could not generate optimized diff for ${filePath}: ${error.message}`)
+      // Fallback: generate basic diff header if no content available
+      return {
+        diff: `diff --git a${filePath} b${filePath}\n--- a${filePath}\n+++ b${filePath}\n@@ -1,1 +1,1 @@\n [Diff content not available: ${error.message}]`,
+        oldContent: null,
+        newContent: null
+      }
+    }
+  }
+
+  /**
+   * Helper function to escape special regex characters
+   */
+  private escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  /**
+   * Get file content at a specific commit
+   * @param repositoryId Repository ID
    * @param commitSha Commit SHA
    * @param path File path
    */
@@ -745,7 +997,13 @@ export class PullRequestClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      const errorText = await response.text();
+      let error;
+      try {
+        error = JSON.parse(errorText);
+      } catch {
+        error = { message: errorText || 'Unknown error' };
+      }
       throw new AzureDevOpsError(
         `Failed to get PR comments: ${error.message || response.statusText}`,
         response.status,
@@ -777,6 +1035,13 @@ export class PullRequestClient {
       status,
       threadContext
     };
+
+    console.log(`[PullRequestClient] Creating comment with threadContext:`, JSON.stringify({
+      url,
+      threadContext,
+      hasThreadContext: !!threadContext,
+      commentType: threadContext ? 'codeChange' : 'text'
+    }, null, 2));
 
     const response = await fetch(url, {
       method: 'POST',
@@ -811,8 +1076,10 @@ export class PullRequestClient {
     const body: CreateCommentRequest = {
       content,
       parentCommentId,
-      commentType: 'text'
+      commentType: 1
     };
+
+    console.log(`[ADO Client] Adding reply to thread ${threadId}`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -829,7 +1096,8 @@ export class PullRequestClient {
       );
     }
 
-    return response.json();
+    const responseData = await response.json();
+    return responseData;
   }
 
   /**
@@ -923,5 +1191,393 @@ export class PullRequestClient {
         error
       );
     }
+  }
+
+  /**
+   * Search for pull requests by source and target branch names
+   * @param repositoryId Repository ID
+   * @param sourceBranch Source branch name (without refs/heads/)
+   * @param targetBranch Target branch name (without refs/heads/)
+   * @param status PR status filter (default: 'all')
+   */
+  async searchPullRequestsByBranches(
+    repositoryId: string,
+    sourceBranch: string,
+    targetBranch: string,
+    status: 'active' | 'completed' | 'abandoned' | 'all' = 'all'
+  ): Promise<PullRequest[]> {
+    const searchCriteria: PullRequestSearchCriteria = {
+      sourceRefName: `refs/heads/${sourceBranch}`,
+      targetRefName: `refs/heads/${targetBranch}`,
+      status: status,
+      top: 50
+    };
+
+    return this.searchPullRequests(repositoryId, searchCriteria);
+  }
+
+  /**
+   * Find existing active PR or create a new one with the specified branches
+   * @param repositoryId Repository ID
+   * @param sourceBranch Source branch name (without refs/heads/)
+   * @param targetBranch Target branch name (without refs/heads/)
+   * @param title PR title (optional, will generate default)
+   * @param description PR description (optional, will generate default)
+   * @returns Object with action ('found' | 'created') and PR details
+   */
+  async findOrCreatePullRequest(
+    repositoryId: string,
+    sourceBranch: string,
+    targetBranch: string,
+    title?: string,
+    description?: string
+  ): Promise<{
+    action: 'found' | 'created';
+    pullRequest: PullRequest;
+  }> {
+    // First check for active PRs with these branches
+    const activePRs = await this.searchPullRequestsByBranches(
+      repositoryId,
+      sourceBranch,
+      targetBranch,
+      'active'
+    );
+
+    // If active PR exists, return it
+    if (activePRs.length > 0) {
+      return {
+        action: 'found',
+        pullRequest: activePRs[0]
+      };
+    }
+
+    // No active PR found, create a new one
+    const defaultTitle = title || `Merge ${sourceBranch} into ${targetBranch}`;
+    const defaultDescription = description || `Automated PR created to merge changes from ${sourceBranch} into ${targetBranch}.`;
+
+    const createUrl = `${this.baseUrl}/git/repositories/${repositoryId}/pullrequests?api-version=${this.prApiVersion}`;
+
+    const createPayload = {
+      sourceRefName: `refs/heads/${sourceBranch}`,
+      targetRefName: `refs/heads/${targetBranch}`,
+      title: defaultTitle,
+      description: defaultDescription
+    };
+
+    const response = await fetch(createUrl, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(createPayload)
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new AzureDevOpsError(
+        `Failed to create pull request: ${error.message || response.statusText}`,
+        response.status,
+        error
+      );
+    }
+
+    const newPR = await response.json();
+
+    return {
+      action: 'created',
+      pullRequest: newPR
+    };
+  }
+
+  /**
+   * Get complete pull request data including commits, changes, and comments
+   * @param repositoryId Repository ID
+   * @param pullRequestId Pull request ID
+   * @param options Options for data retrieval
+   * @returns Complete PR data with all related information
+   */
+  async getCompletePullRequestData(
+    repositoryId: string,
+    pullRequestId: number,
+    options?: {
+      includeCommits?: boolean;
+      includeChanges?: boolean;
+      includeComments?: boolean;
+      includeWorkItems?: boolean;
+      maxChanges?: number;
+    }
+  ): Promise<{
+    pullRequest: PullRequest;
+    commits?: GitCommitRef[];
+    changes?: { changes: GitPullRequestChange[]; iterations?: GitPullRequestIteration[] };
+    comments?: GitPullRequestCommentThread[];
+    workItems?: AssociatedWorkItem[];
+  }> {
+    const opts = {
+      includeCommits: true,
+      includeChanges: true,
+      includeComments: true,
+      includeWorkItems: false,
+      maxChanges: 50,
+      ...options
+    };
+
+    // Start with the basic PR data
+    const pullRequest = await this.getPullRequest(repositoryId, pullRequestId);
+
+    // Fetch additional data in parallel based on options
+    const promises: Promise<any>[] = [];
+    const dataKeys: string[] = [];
+
+    if (opts.includeCommits) {
+      promises.push(this.getPullRequestCommits(repositoryId, pullRequestId));
+      dataKeys.push('commits');
+    }
+
+    if (opts.includeChanges) {
+      promises.push(this.getPullRequestChanges(repositoryId, pullRequestId));
+      dataKeys.push('changes');
+    }
+
+    if (opts.includeComments) {
+      promises.push(this.getPullRequestComments(repositoryId, pullRequestId));
+      dataKeys.push('comments');
+    }
+
+    if (opts.includeWorkItems) {
+      promises.push(this.getWorkItemsLinkedToPullRequest(repositoryId, pullRequestId));
+      dataKeys.push('workItems');
+    }
+
+    // Execute all requests in parallel
+    const results = await Promise.allSettled(promises);
+
+    // Build result object
+    const result: any = { pullRequest };
+
+    results.forEach((promiseResult, index) => {
+      const key = dataKeys[index];
+      if (promiseResult.status === 'fulfilled') {
+        result[key] = promiseResult.value;
+      } else {
+        console.warn(`Failed to fetch ${key} for PR ${pullRequestId}:`, promiseResult.reason);
+        // Set empty default for failed requests
+        if (key === 'commits') result[key] = [];
+        else if (key === 'changes') result[key] = { changes: [], iterations: [] };
+        else if (key === 'comments') result[key] = [];
+        else if (key === 'workItems') result[key] = [];
+      }
+    });
+
+    return result;
+  }
+
+  /**
+   * Publish a comment to a pull request (alias for addPullRequestComment)
+   * @param repositoryId Repository ID
+   * @param pullRequestId Pull request ID
+   * @param commentData Comment data
+   * @returns Created comment thread
+   */
+  async publishComment(
+    repositoryId: string,
+    pullRequestId: number,
+    commentData: {
+      content: string;
+      status?: 'active' | 'pending' | 'closed';
+      threadContext?: CommentThreadContext;
+    }
+  ): Promise<GitPullRequestCommentThread> {
+    return this.addPullRequestComment(
+      repositoryId,
+      pullRequestId,
+      commentData.content,
+      commentData.status || 'active',
+      commentData.threadContext
+    );
+  }
+
+  /**
+   * Reply to an existing comment thread
+   * @param repositoryId Repository ID
+   * @param pullRequestId Pull request ID
+   * @param threadId Thread ID to reply to
+   * @param content Reply content
+   * @param parentCommentId Optional parent comment ID for nested replies
+   * @returns Created reply comment
+   */
+  async replyToThread(
+    repositoryId: string,
+    pullRequestId: number,
+    threadId: number,
+    content: string,
+    parentCommentId?: number
+  ): Promise<Comment> {
+    return this.addReplyToThread(
+      repositoryId,
+      pullRequestId,
+      threadId,
+      content,
+      parentCommentId
+    );
+  }
+
+  /**
+   * Create a new pull request
+   * @param repositoryId Repository ID
+   * @param createData Pull request creation data
+   * @returns Created pull request
+   */
+  async createPullRequest(
+    repositoryId: string,
+    createData: {
+      sourceRefName: string;
+      targetRefName: string;
+      title: string;
+      description?: string;
+      reviewers?: string[];
+      workItemRefs?: number[];
+      labels?: string[];
+      isDraft?: boolean;
+    }
+  ): Promise<PullRequest> {
+    const url = `${this.baseUrl}/git/repositories/${repositoryId}/pullrequests?api-version=${this.prApiVersion}`;
+
+    const payload: any = {
+      sourceRefName: createData.sourceRefName,
+      targetRefName: createData.targetRefName,
+      title: createData.title,
+      description: createData.description || '',
+      isDraft: createData.isDraft || false
+    };
+
+    // Add reviewers if provided
+    if (createData.reviewers && createData.reviewers.length > 0) {
+      payload.reviewers = createData.reviewers.map(reviewerId => ({
+        id: reviewerId,
+        vote: 0
+      }));
+    }
+
+    // Add work item references if provided
+    if (createData.workItemRefs && createData.workItemRefs.length > 0) {
+      payload.workItemRefs = createData.workItemRefs.map(workItemId => ({
+        id: workItemId.toString()
+      }));
+    }
+
+    // Add labels if provided
+    if (createData.labels && createData.labels.length > 0) {
+      payload.labels = createData.labels.map(label => ({ name: label }));
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.headers,
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new AzureDevOpsError(
+        `Failed to create pull request: ${error.message || response.statusText}`,
+        response.status,
+        error
+      );
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Update an existing pull request
+   * @param repositoryId Repository ID
+   * @param pullRequestId Pull request ID
+   * @param updateData Update data
+   * @returns Updated pull request
+   */
+  async updatePullRequest(
+    repositoryId: string,
+    pullRequestId: number,
+    updateData: {
+      title?: string;
+      description?: string;
+      targetRefName?: string;
+      status?: 'active' | 'abandoned' | 'completed';
+      isDraft?: boolean;
+      autoCompleteSetBy?: string;
+      completionOptions?: PullRequestCompletionOptions;
+    }
+  ): Promise<PullRequest> {
+    const url = `${this.baseUrl}/git/repositories/${repositoryId}/pullrequests/${pullRequestId}?api-version=${this.prApiVersion}`;
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: this.headers,
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new AzureDevOpsError(
+        `Failed to update pull request: ${error.message || response.statusText}`,
+        response.status,
+        error
+      );
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get pull request status with additional metadata
+   * @param repositoryId Repository ID
+   * @param pullRequestId Pull request ID
+   * @returns PR status information
+   */
+  async getPullRequestStatus(
+    repositoryId: string,
+    pullRequestId: number
+  ): Promise<{
+    status: string;
+    mergeStatus: string;
+    isDraft: boolean;
+    hasConflicts: boolean;
+    canComplete: boolean;
+    reviewersStatus: {
+      approved: number;
+      waiting: number;
+      rejected: number;
+      total: number;
+    };
+  }> {
+    const pr = await this.getPullRequest(repositoryId, pullRequestId);
+
+    // Calculate reviewer statistics
+    const reviewersStatus = {
+      approved: 0,
+      waiting: 0,
+      rejected: 0,
+      total: pr.reviewers?.length || 0
+    };
+
+    if (pr.reviewers) {
+      for (const reviewer of pr.reviewers) {
+        if (reviewer.vote >= 10) {
+          reviewersStatus.approved++;
+        } else if (reviewer.vote <= -5) {
+          reviewersStatus.rejected++;
+        } else {
+          reviewersStatus.waiting++;
+        }
+      }
+    }
+
+    return {
+      status: pr.status,
+      mergeStatus: pr.mergeStatus,
+      isDraft: pr.isDraft,
+      hasConflicts: pr.mergeStatus === 'conflicts',
+      canComplete: pr.status === 'active' && pr.mergeStatus === 'succeeded' && reviewersStatus.rejected === 0,
+      reviewersStatus
+    };
   }
 }

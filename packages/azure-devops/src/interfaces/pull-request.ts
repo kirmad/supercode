@@ -2,6 +2,40 @@
  * Azure DevOps Pull Request Interfaces
  */
 
+// Comment type enums for consistency
+export enum CommentType {
+  Unknown = 0,
+  Text = 1,
+  CodeChange = 2,
+  System = 3
+}
+
+// Thread status enum for better type safety
+export enum CommentThreadStatus {
+  Unknown = 'unknown',
+  Active = 'active',
+  Fixed = 'fixed',
+  WontFix = 'wontFix',
+  Closed = 'closed',
+  ByDesign = 'byDesign',
+  Pending = 'pending'
+}
+
+// Pull request status enum
+export enum PullRequestStatus {
+  NotSet = 'notSet',
+  Active = 'active',
+  Abandoned = 'abandoned',
+  Completed = 'completed',
+  Draft = 'draft',
+  All = 'all'
+}
+
+// Properties interface for better type safety
+export interface AdditionalProperties {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
 export interface PullRequest {
   pullRequestId: number;
   codeReviewId: number;
@@ -192,7 +226,7 @@ export interface GitPullRequestCommentThread {
   comments: Comment[];
   status: 'unknown' | 'active' | 'fixed' | 'wontFix' | 'closed' | 'byDesign' | 'pending';
   threadContext?: CommentThreadContext;
-  properties?: any;
+  properties?: AdditionalProperties;
   identities?: { [key: string]: IdentityRef };
   isDeleted?: boolean;
   _links?: ReferenceLinks;
@@ -231,13 +265,13 @@ export interface CreateThreadRequest {
   comments: CreateCommentRequest[];
   status?: 'active' | 'pending' | 'closed' | 'fixed' | 'wontFix' | 'byDesign';
   threadContext?: CommentThreadContext;
-  properties?: any;
+  properties?: AdditionalProperties;
 }
 
 export interface CreateCommentRequest {
   parentCommentId?: number;
   content: string;
-  commentType?: 'text' | 'codeChange';
+  commentType?: 'text' | 'codeChange' | 'unknown' | 'system' | number;
 }
 
 export interface UpdateCommentRequest {
