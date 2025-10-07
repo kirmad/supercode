@@ -180,6 +180,7 @@ export namespace Session {
           diff: z.string().optional(),
         })
         .optional(),
+      outputStyle: z.string().optional(),
     })
     .openapi({
       ref: "Session",
@@ -632,7 +633,7 @@ export namespace Session {
                     sessionID: input.sessionID,
                     type: "text",
                     synthetic: true,
-                    text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
+                    text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`.trimEnd(),
                   },
                   {
                     id: Identifier.ascending("part"),
@@ -709,7 +710,7 @@ export namespace Session {
                     sessionID: input.sessionID,
                     type: "text",
                     synthetic: true,
-                    text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
+                    text: `Called the Read tool with the following input: ${JSON.stringify(args)}`.trimEnd(),
                   },
                   {
                     id: Identifier.ascending("part"),
@@ -736,7 +737,7 @@ export namespace Session {
                   messageID: userMsg.id,
                   sessionID: input.sessionID,
                   type: "text",
-                  text: `Called the Read tool with the following input: {\"filePath\":\"${filePath}\"}`,
+                  text: `Called the Read tool with the following input: {\"filePath\":\"${filePath}\"}`.trimEnd(),
                   synthetic: true,
                 },
                 {
@@ -852,7 +853,11 @@ export namespace Session {
     using abort = lock(input.sessionID)
 
     const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
-    if (lastSummary) msgs = msgs.filter((msg) => msg.info.id >= lastSummary.info.id)
+    if (lastSummary) {
+      const filteredMsgs = msgs.filter((msg) => msg.info.id > lastSummary.info.id)
+      // If no messages after summary, include the summary itself to avoid empty array
+      msgs = filteredMsgs.length > 0 ? filteredMsgs : [lastSummary]
+    }
 
     if (msgs.filter((m) => m.info.role === "user").length === 1 && !session.parentID && isDefaultTitle(session.title)) {
       const small = (await Provider.getSmallModel(model.providerID)) ?? model
@@ -946,9 +951,18 @@ export namespace Session {
 
     let system = await SystemPrompt.header(model.modelID)
 
-    // Get the output style from command, or fall back to config
+    // Get the output style from session (persistent), input command, or fall back to config
     const config = await Config.get()
-    const outputStyle = input.outputStyle || config.outputStyle || "default"
+    let outputStyle = session.outputStyle || input.outputStyle || config.outputStyle || "default"
+
+    // If output style is set via custom command, persist it to the session
+    if (input.outputStyle && input.outputStyle !== session.outputStyle) {
+      await update(input.sessionID, (draft) => {
+        draft.outputStyle = input.outputStyle
+      })
+      outputStyle = input.outputStyle
+      l.info("output style persisted to session", { outputStyle: input.outputStyle, sessionID: input.sessionID })
+    }
 
     // Notify TUI about custom command output style only if this is the active TUI session
     await notifyTUIOutputStyle(input.outputStyle, input.sessionID, l)
@@ -987,7 +1001,7 @@ export namespace Session {
         messageID: userMsg.id,
         sessionID: input.sessionID,
         type: "text",
-        text: `<system-reminder>\n${styleName} output style is active. Remember to follow the specific guidelines for this style.\n</system-reminder>`,
+        text: `<system-reminder>\n${styleName} output style is active. Remember to follow the specific guidelines for this style.\n</system-reminder>`.trimEnd(),
         synthetic: true,
       })
     }
@@ -1015,7 +1029,7 @@ export namespace Session {
           text: `<system-reminder>
 As you answer the user's questions, you can use the following context:
 ${contextParts.join("\n")}
-</system-reminder>`,
+</system-reminder>`.trimEnd(),
           synthetic: true,
         })
       }
@@ -1367,7 +1381,7 @@ ${contextParts.join("\n")}
     if (processor.getShouldCompress()) {
       // Only compress and continue if there are still active tool calls pending
       // Otherwise, defer compression until the user sends the next message
-      if (processor.hasActiveToolCalls()) {
+      // if (processor.hasActiveToolCalls()) {
         log.info("compression flagged during processing with active tool calls, compacting and continuing", {
           sessionID: input.sessionID
         })
@@ -1383,13 +1397,13 @@ ${contextParts.join("\n")}
 
         // Recursively continue the chat after compression
         return prompt(input)
-      } else {
-        // No active tool calls - defer compression to next user message
-        log.info("compression flagged but no active tool calls, deferring to next user message", {
-          sessionID: input.sessionID
-        })
-        state().compressionPending.set(input.sessionID, true)
-      }
+      // } else {
+      //   // No active tool calls - defer compression to next user message
+      //   log.info("compression flagged but no active tool calls, deferring to next user message", {
+      //     sessionID: input.sessionID
+      //   })
+      //   state().compressionPending.set(input.sessionID, true)
+      // }
     }
 
     // Debug logging: Log the completion and response
@@ -2269,9 +2283,16 @@ ${contextParts.join("\n")}
     const lastSummary = msgs.findLast((msg) => msg.info.role === "assistant" && msg.info.summary === true)
     const filtered = msgs.filter((msg) => !lastSummary || msg.info.id >= lastSummary.info.id)
     const model = await Provider.getModel(input.providerID, input.modelID)
-    
+
+    // Get session to preserve output style
+    const session = await get(input.sessionID)
+
     // No system prompts for compaction as per how-to.md
     const system: string[] = []
+
+    // Store session's output style for later use in final summary, but don't apply during compaction
+    const configData = await Config.get()
+    const sessionOutputStyle = session.outputStyle || input.outputStyle || configData.outputStyle || "default"
 
     const next: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2365,6 +2386,7 @@ ${contextParts.join("\n")}
             .replace(/<\/analysis>/gi, "")
             .replace(/<summary>/gi, "summary:")
             .replace(/<\/summary>/gi, "")
+            .trimEnd()
         }
       }
     }
@@ -2392,25 +2414,27 @@ ${contextParts.join("\n")}
       log.info("Could not read todos during compaction", { error })
     }
     
-    // Get the output style from input, or fall back to config
-    const config = await Config.get()
-    const outputStyle = input.outputStyle || config.outputStyle || "default"
+    // Create the final summary message with proper system prompts (same pattern as main session)
+    let summarySystem = await SystemPrompt.header(input.modelID)
 
-    // Create the final summary message with proper system prompts
-    const summarySystem = [
-      ...(await SystemPrompt.header(input.providerID)),
-      ...(await SystemPrompt.environment()),
-      ...(await SystemPrompt.custom()),
-      ...(await SystemPrompt.instructions()),
-    ]
+    summarySystem.push(
+      ...(await SystemPrompt.provider(input.modelID, sessionOutputStyle))
+    )
 
-    // Add output style content if not default
-    if (outputStyle && outputStyle !== "default") {
-      const styleContent = await OutputStyle.loadPrompt(outputStyle)
+    // Add output style content if not default (same pattern as main session)
+    if (sessionOutputStyle && sessionOutputStyle !== "default") {
+      const styleContent = await OutputStyle.loadPrompt(sessionOutputStyle)
       if (styleContent) {
-        summarySystem.push(`# Output Style: ${outputStyle.charAt(0).toUpperCase() + outputStyle.slice(1)}\n${styleContent}`)
+        summarySystem.push(`# Output Style: ${sessionOutputStyle.charAt(0).toUpperCase() + sessionOutputStyle.slice(1)}\n${styleContent}`)
       }
     }
+
+    // Add environment info for all models via concatenation (same pattern as main session)
+    summarySystem.push(...(await SystemPrompt.environment()))
+
+    // Get custom and instructions for later use in user message (same pattern as main session)
+    const customContent = await SystemPrompt.custom()
+    const instructionsContent = await SystemPrompt.instructions()
     
     const finalSummaryMsg: MessageV2.Info = {
       id: Identifier.ascending("message"),
@@ -2443,35 +2467,91 @@ ${contextParts.join("\n")}
       text: `This session is being continued from a previous conversation that ran out of context. The conversation is summarized below:
 
 <context>
-${processedText}
+${processedText.trimEnd()}
 </context>
 
 Please continue the conversation from where we left it off without asking the user any further questions. Continue with the last task that you were asked to work on.
 
-This is your continuation prompt.`
+This is your continuation prompt.`.trimEnd()
     }
     await updatePart(continuationPart)
-    
+
     const parts = [continuationPart]
-    
-    // Only add todo system reminder if there are active (non-completed) todos
-    if (hasActiveTodos) {
-      const todoReminderPart: MessageV2.Part = {
+
+    // Add output style reminder if not default (same pattern as regular sessions)
+    if (sessionOutputStyle && sessionOutputStyle !== "default") {
+      const styleName = sessionOutputStyle.charAt(0).toUpperCase() + sessionOutputStyle.slice(1)
+      const outputStyleReminderPart: MessageV2.Part = {
         id: Identifier.ascending("part"),
         messageID: finalSummaryMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        synthetic: true,
+        text: `<system-reminder>\n${styleName} output style is active. Remember to follow the specific guidelines for this style.\n</system-reminder>`.trimEnd()
+      }
+      await updatePart(outputStyleReminderPart)
+      parts.push(outputStyleReminderPart)
+    }
+
+    // Add custom and instructions as system-reminder (same pattern as regular sessions)
+    if (customContent.length > 0 || instructionsContent.length > 0) {
+      const contextParts: string[] = []
+
+      if (customContent.length > 0) {
+        contextParts.push("# claudeMd")
+        contextParts.push(...customContent)
+      }
+
+      if (instructionsContent.length > 0) {
+        if (contextParts.length > 0) contextParts.push("")  // Add separator
+        contextParts.push(...instructionsContent)
+      }
+
+      if (contextParts.length > 0) {
+        const customInstructionsReminderPart: MessageV2.Part = {
+          id: Identifier.ascending("part"),
+          messageID: finalSummaryMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: `<system-reminder>
+As you answer the user's questions, you can use the following context:
+${contextParts.join("\n")}
+</system-reminder>`.trimEnd()
+        }
+        await updatePart(customInstructionsReminderPart)
+        parts.push(customInstructionsReminderPart)
+      }
+    }
+    
+    // Only add todo system reminder if there are active (non-completed) todos
+    // Create as a separate user message to avoid adding system reminders to assistant messages
+    if (hasActiveTodos) {
+      const todoUserMsg: MessageV2.User = {
+        id: Identifier.ascending("message"),
+        sessionID: input.sessionID,
+        time: {
+          created: Date.now(),
+        },
+        role: "user",
+      }
+      await updateMessage(todoUserMsg)
+
+      const todoReminderPart: MessageV2.Part = {
+        id: Identifier.ascending("part"),
+        messageID: todoUserMsg.id,
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
         text: `<system-reminder>
 Your todo list has changed. DO NOT mention this explicitly to the user. Here are the latest contents of your todo list:
 
-${JSON.stringify(todos)}. 
+${JSON.stringify(todos)}.
 
 Continue on with the tasks at hand if applicable.
-</system-reminder>`
+</system-reminder>`.trimEnd()
       }
       await updatePart(todoReminderPart)
-      parts.push(todoReminderPart)
     }
     
     // Return the final summary message with proper system context

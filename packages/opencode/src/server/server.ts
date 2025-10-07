@@ -29,6 +29,7 @@ import { createDebugLogsRoutes } from "./debug-logs-routes"
 import { createHttpLogsRoutes } from "./http-logs-routes"
 import { createGitRoutes } from "./git-routes"
 import { createFileRoutes } from "./file-routes"
+import { createFileOperationsRoutes } from "./file-operations-routes"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoute } from "./project"
@@ -1937,6 +1938,7 @@ export namespace Server {
     .route("/web", createWebRoutes())
     .route("/git", createGitRoutes())
     .route("/", createFileRoutes())
+    .route("/", createFileOperationsRoutes())
     .route("/", createMCPRoutes())
     .route("/", createDebugLogsRoutes())
     .route("/", createHttpLogsRoutes())

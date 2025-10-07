@@ -1,11 +1,10 @@
+import "zod-openapi/extend"
 import { Hono } from "hono"
 import { describeRoute } from "hono-openapi"
 import { resolver, validator as zValidator } from "hono-openapi/zod"
 import { z } from "zod"
 import { exec } from "child_process"
 import { promisify } from "util"
-import fs from "node:fs/promises"
-import path from "node:path"
 import { Log } from "../util/log"
 
 const execAsync = promisify(exec)
@@ -17,12 +16,12 @@ const GitDiffSchema = z.object({
   targetBranch: z.string().optional(),
   commitHash: z.string().optional(),
   staged: z.boolean().optional(),
-})
+}).openapi({ ref: "GitDiffRequest" })
 
 const GitFileContentSchema = z.object({
   path: z.string(),
   ref: z.string().optional(), // branch, commit, or HEAD
-})
+}).openapi({ ref: "GitFileContentRequest" })
 
 const GitStatusSchema = z.object({
   branch: z.string(),
@@ -51,13 +50,6 @@ export function createGitRoutes() {
     describeRoute({
       description: "Get git diff for branches, commits, or working directory",
       operationId: "git.diff",
-      requestBody: {
-        content: {
-          "application/json": {
-            schema: resolver(GitDiffSchema),
-          },
-        },
-      },
       responses: {
         200: {
           description: "Git diff output",
@@ -100,7 +92,7 @@ export function createGitRoutes() {
         for (const line of statLines) {
           const match = line.match(/^\s*(.+?)\s+\|\s+(\d+)\s+([\+\-]+)/)
           if (match) {
-            const [, filePath, changes] = match
+            const [, filePath] = match
             const additions = (match[3].match(/\+/g) || []).length
             const deletions = (match[3].match(/\-/g) || []).length
             files.push({
@@ -116,7 +108,7 @@ export function createGitRoutes() {
           files,
         })
       } catch (error) {
-        log.error("Failed to get git diff", error)
+        log.error("Failed to get git diff", error as Record<string, any>)
         return c.json({ error: "Failed to get git diff" }, 500)
       }
     }
@@ -128,13 +120,6 @@ export function createGitRoutes() {
     describeRoute({
       description: "Get file content at specific git revision",
       operationId: "git.file",
-      requestBody: {
-        content: {
-          "application/json": {
-            schema: resolver(GitFileContentSchema),
-          },
-        },
-      },
       responses: {
         200: {
           description: "File content",
@@ -172,7 +157,7 @@ export function createGitRoutes() {
           })
         }
       } catch (error) {
-        log.error("Failed to get file content", error)
+        log.error("Failed to get file content", error as Record<string, any>)
         return c.json({ error: "Failed to get file content" }, 500)
       }
     }
@@ -241,7 +226,7 @@ export function createGitRoutes() {
           untracked,
         })
       } catch (error) {
-        log.error("Failed to get git status", error)
+        log.error("Failed to get git status", error as Record<string, any>)
         return c.json({ error: "Failed to get git status" }, 500)
       }
     }
@@ -290,7 +275,7 @@ export function createGitRoutes() {
           branches,
         })
       } catch (error) {
-        log.error("Failed to get branches", error)
+        log.error("Failed to get branches", error as Record<string, any>)
         return c.json({ error: "Failed to get branches" }, 500)
       }
     }
@@ -302,10 +287,6 @@ export function createGitRoutes() {
     describeRoute({
       description: "Get recent commits",
       operationId: "git.commits",
-      query: resolver(z.object({
-        limit: z.string().optional(),
-        branch: z.string().optional(),
-      })),
       responses: {
         200: {
           description: "List of commits",
@@ -325,10 +306,15 @@ export function createGitRoutes() {
         },
       },
     }),
+    zValidator("query", z.object({
+      limit: z.string().optional(),
+      branch: z.string().optional(),
+    })),
     async (c) => {
       try {
-        const limit = c.req.query("limit") || "20"
-        const branch = c.req.query("branch") || "HEAD"
+        const query = c.req.valid("query")
+        const limit = query.limit || "20"
+        const branch = query.branch || "HEAD"
 
         const { stdout } = await execAsync(
           `git log ${branch} -${limit} --pretty=format:"%H|%h|%s|%an|%ad" --date=relative`
@@ -341,7 +327,7 @@ export function createGitRoutes() {
 
         return c.json({ commits })
       } catch (error) {
-        log.error("Failed to get commits", error)
+        log.error("Failed to get commits", error as Record<string, any>)
         return c.json({ error: "Failed to get commits" }, 500)
       }
     }

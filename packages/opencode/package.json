@@ -49,6 +49,7 @@
     "@openauthjs/openauth": "0.4.3",
     "@kirmad/supercode-plugin": "workspace:*",
     "@kirmad/supercode-sdk": "workspace:*",
+    "@supercode/azure-devops": "workspace:*",
     "@standard-schema/spec": "1.0.0",
     "@zip.js/zip.js": "2.7.62",
     "ai": "catalog:",

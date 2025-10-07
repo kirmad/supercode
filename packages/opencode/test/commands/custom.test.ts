@@ -59,9 +59,9 @@ describe("CustomCommands.executeCommand", () => {
 
     await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/shell-test")
-      expect(result).toContain("Current directory:")
-      expect(result).toContain("Date:")
-      expect(result).toContain("Echo: Hello Shell")
+      expect(result?.content).toContain("Current directory:")
+      expect(result?.content).toContain("Date:")
+      expect(result?.content).toContain("Echo: Hello Shell")
     })
   })
 
@@ -75,8 +75,8 @@ describe("CustomCommands.executeCommand", () => {
 
     await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/error-test")
-      expect(result).toContain("[Error executing")
-      expect(result).toContain("invalidcommandthatdoesnotexist")
+      expect(result?.content).toContain("[Error executing")
+      expect(result?.content).toContain("invalidcommandthatdoesnotexist")
     })
   })
 
@@ -90,10 +90,10 @@ describe("CustomCommands.executeCommand", () => {
 
     await Instance.provide(fixturePath, async () => {
       const result = await CustomCommands.executeCommand("/combined-test hello world")
-      expect(result).toContain("Arguments: hello world")
-      expect(result).toContain("Directory:")
+      expect(result?.content).toContain("Arguments: hello world")
+      expect(result?.content).toContain("Directory:")
       // Note: The shell command won't see $ARGUMENTS as it's already replaced
-      expect(result).toContain("Echo args:")
+      expect(result?.content).toContain("Echo args:")
     })
   })
 

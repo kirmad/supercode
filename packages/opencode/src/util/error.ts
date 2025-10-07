@@ -54,4 +54,20 @@ export abstract class NamedError extends Error {
       message: z.string(),
     }),
   )
+
+  public static readonly NotFound = NamedError.create(
+    "NotFound",
+    z.object({
+      message: z.string(),
+      data: z.any().optional(),
+    }),
+  )
+
+  public static readonly BadRequest = NamedError.create(
+    "BadRequest",
+    z.object({
+      message: z.string(),
+      data: z.any().optional(),
+    }),
+  )
 }

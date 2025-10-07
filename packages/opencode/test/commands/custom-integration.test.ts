@@ -22,8 +22,8 @@ describe("CustomCommands.executeCommand Integration", () => {
     try {
       await Instance.provide(testDir, async () => {
         const result = await CustomCommands.executeCommand("/integration-test")
-        expect(result).toContain("Current directory:")
-        expect(result).toContain("Echo test: integration-test")
+        expect(result?.content).toContain("Current directory:")
+        expect(result?.content).toContain("Echo test: integration-test")
       })
     } finally {
       // Cleanup
@@ -45,8 +45,8 @@ describe("CustomCommands.executeCommand Integration", () => {
     try {
       await Instance.provide(testDir, async () => {
         const result = await CustomCommands.executeCommand("/args-shell-test hello world")
-        expect(result).toContain("Arguments: hello world")
-        expect(result).toContain("Directory:")
+        expect(result?.content).toContain("Arguments: hello world")
+        expect(result?.content).toContain("Directory:")
       })
     } finally {
       // Cleanup
