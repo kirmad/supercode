@@ -22,7 +22,6 @@ scalar-*.png
 web-client/dist/*
 server.log
 opencodetmp/*
-.opencode/*
 packages/tui/test-tui
 .trash/
 .serena/cache/**/*.pkl
@@ -57,3 +56,6 @@ git-diff-viewer/**
 output-prompts/**
 packages/vscode-webview/test/screenshots/*
 reviews/*.json
+.opencode/logs/http/*
+packages/project-workflow/dist/*
+.supercode-workspaces/*
