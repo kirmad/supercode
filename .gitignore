@@ -59,3 +59,4 @@ reviews/*.json
 .opencode/logs/http/*
 packages/project-workflow/dist/*
 .supercode-workspaces/*
+packages/opencode/.supercode-workspaces/*
