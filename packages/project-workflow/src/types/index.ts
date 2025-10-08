@@ -81,6 +81,14 @@ export enum WorkflowType {
   REFACTOR = 'refactor'
 }
 
+export enum GitDiffType {
+  STAGED = 'staged',
+  UNPUSHED = 'unpushed',
+  COMMIT = 'commit',
+  COMMIT_RANGE = 'commit-range',
+  BRANCH_DIFF = 'branch-diff'
+}
+
 // ========== Base Types ==========
 
 /**
@@ -191,6 +199,31 @@ export interface LoggingConfig {
   level: 'debug' | 'info' | 'warn' | 'error'
   format: 'text' | 'json'
   destination?: string
+}
+
+/**
+ * Git diff configuration for different scenarios
+ */
+export interface GitDiffConfig {
+  type: GitDiffType
+  repositoryPath: string
+
+  // Scenario-specific fields
+  commit?: string              // For single commit
+  fromCommit?: string          // For commit range
+  toCommit?: string           // For commit range
+  fromBranch?: string         // For branch diff
+  toBranch?: string           // For branch diff
+  remoteName?: string         // For unpushed changes (default: 'origin')
+  baseBranch?: string         // For unpushed changes (default: 'main')
+}
+
+/**
+ * Git workflow configuration extending base workflow config
+ */
+export interface GitWorkflowConfig extends WorkflowConfig {
+  type: 'git-diff'
+  diff: GitDiffConfig
 }
 
 // ========== Content Types ==========
@@ -578,6 +611,25 @@ export interface ReviewIndex {
   createdAt: string
 }
 
+/**
+ * Git review index metadata extending ReviewIndex
+ */
+export interface GitReviewIndex extends Omit<ReviewIndex, 'source'> {
+  source: 'git-diff'
+  diffType: GitDiffType
+  repository: string
+  gitMetadata: {
+    commit?: string
+    fromCommit?: string
+    toCommit?: string
+    fromBranch?: string
+    toBranch?: string
+    author?: string
+    commitMessage?: string
+    timestamp: string
+  }
+}
+
 // ========== Error Types ==========
 
 /**
@@ -625,6 +677,36 @@ export class ValidationError extends WorkflowError {
   constructor(message: string, context?: Record<string, any>) {
     super(message, 'VALIDATION_ERROR', context)
     this.name = 'ValidationError'
+  }
+}
+
+/**
+ * Git operation error
+ */
+export class GitError extends WorkflowError {
+  public readonly gitCommand?: string
+
+  constructor(message: string, gitCommand?: string, context?: Record<string, any>) {
+    super(message, 'GIT_ERROR', context)
+    this.name = 'GitError'
+    this.gitCommand = gitCommand
+  }
+}
+
+/**
+ * Git repository error
+ */
+export class GitRepositoryError extends GitError {
+  constructor(message: string, repositoryPath?: string, context?: Record<string, any>) {
+    super(message, undefined, { ...context, repositoryPath })
+    this.name = 'GitRepositoryError'
+    // Set code through the parent constructor instead of direct assignment
+    Object.defineProperty(this, 'code', {
+      value: 'GIT_REPOSITORY_ERROR',
+      writable: false,
+      enumerable: true,
+      configurable: false
+    })
   }
 }
 

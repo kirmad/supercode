@@ -254,7 +254,7 @@ export function createLogger(prefix: string = '') {
   }
 
   return {
-    debug: (message: string, ...args: any[]) => log('DEBUG', message, ...args),
+    debug: (message: string, ...args: any[]) => {}, //log('DEBUG', message, ...args),
     info: (message: string, ...args: any[]) => log('INFO', message, ...args),
     warn: (message: string, ...args: any[]) => log('WARN', message, ...args),
     error: (message: string, ...args: any[]) => log('ERROR', message, ...args)

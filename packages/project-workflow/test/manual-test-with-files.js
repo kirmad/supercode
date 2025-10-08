@@ -12,6 +12,7 @@
 import { createReviewWorkflow, processReview } from '../src/index.ts'
 import { ADOContentSource } from '../src/sources/ado-content-source.ts'
 import { WorkflowFactory } from '../src/core/workflow-factory.ts'
+import { GitApiClient } from '../src/core/git-client.ts'
 import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
@@ -26,6 +27,12 @@ const ADO_CONFIG = {
 }
 
 const TEST_PR_URL = `https://${ADO_CONFIG.organization}.visualstudio.com/${ADO_CONFIG.project}/_git/${ADO_CONFIG.repository}/pullrequest/${ADO_CONFIG.pullRequestId}`
+
+// Git configuration for testing git diff reviews
+const GIT_CONFIG = {
+  repositoryPath: process.cwd(), // Current directory (should be supercode repo)
+  baseUrl: 'http://localhost:3000'
+}
 
 // Operation subscription test configuration
 const OPERATION_SUBSCRIPTION_CONFIG = {
@@ -201,6 +208,358 @@ async function testOperationSubscription() {
   } catch (error) {
     await log(`❌ Operation subscription test failed: ${error.message}`, 'ERROR')
     throw error
+  }
+}
+
+/**
+ * Test git repository discovery and validate git diff scenarios
+ */
+async function testGitRepository() {
+  await log('🔄 Testing Git repository discovery and validation')
+  await log('===============================================')
+
+  try {
+    // Test git client initialization
+    const gitClient = new GitApiClient(GIT_CONFIG.baseUrl, GIT_CONFIG.repositoryPath)
+
+    // Validate repository
+    await log('🔍 Validating git repository...')
+    await gitClient.validateRepository()
+    await log('✅ Git repository validation successful')
+
+    // Get repository status
+    const status = await gitClient.getStatus()
+    await log(`📊 Repository Status:`)
+    console.log(`   Current branch: ${status.branch}`)
+    console.log(`   Staged files: ${status.staged.length}`)
+    console.log(`   Modified files: ${status.modified.length}`)
+    console.log(`   Untracked files: ${status.untracked.length}`)
+    console.log(`   Ahead: ${status.ahead} commits`)
+    console.log(`   Behind: ${status.behind} commits`)
+
+    // Get recent commits
+    const commits = await gitClient.getCommits(5)
+    await log(`📝 Recent commits (${commits.commits.length}):`)
+    commits.commits.forEach((commit, i) => {
+      console.log(`   ${i+1}. ${commit.shortHash} - ${commit.subject} (${commit.author})`)
+    })
+
+    // Get branches
+    const branches = await gitClient.getBranches()
+    await log(`🌿 Available branches (${branches.branches.length}):`)
+    branches.branches.slice(0, 10).forEach((branch, i) => {
+      const current = branch === branches.current ? ' (current)' : ''
+      console.log(`   ${i+1}. ${branch}${current}`)
+    })
+
+    return {
+      status,
+      commits: commits.commits,
+      branches: branches.branches,
+      currentBranch: branches.current,
+      repositoryPath: GIT_CONFIG.repositoryPath
+    }
+
+  } catch (error) {
+    await log(`❌ Git repository test failed: ${error.message}`, 'ERROR')
+    throw error
+  }
+}
+
+/**
+ * Test git diff scenarios and determine which are available
+ */
+async function determineAvailableGitScenarios(gitInfo) {
+  await log('🔄 Determining available git diff scenarios')
+  await log('============================================')
+
+  const availableScenarios = []
+
+  try {
+    const gitClient = new GitApiClient(GIT_CONFIG.baseUrl, GIT_CONFIG.repositoryPath)
+
+    // Test 1: Staged files
+    if (gitInfo.status.staged.length > 0) {
+      await log(`✅ Staged files scenario available (${gitInfo.status.staged.length} files)`)
+      availableScenarios.push({
+        type: 'staged',
+        description: `Review ${gitInfo.status.staged.length} staged files`,
+        config: { type: 'staged', repositoryPath: GIT_CONFIG.repositoryPath }
+      })
+    } else {
+      await log('⚠️ No staged files available for testing')
+    }
+
+    // Test 2: Unpushed changes
+    if (gitInfo.status.ahead > 0) {
+      await log(`✅ Unpushed changes scenario available (${gitInfo.status.ahead} commits ahead)`)
+      availableScenarios.push({
+        type: 'unpushed',
+        description: `Review ${gitInfo.status.ahead} unpushed commits`,
+        config: { type: 'unpushed', repositoryPath: GIT_CONFIG.repositoryPath }
+      })
+    } else {
+      await log('⚠️ No unpushed changes available for testing')
+    }
+
+    // Test 3: Single commit (use latest commit)
+    if (gitInfo.commits.length > 0) {
+      const latestCommit = gitInfo.commits[0]
+      await log(`✅ Single commit scenario available (${latestCommit.shortHash})`)
+      availableScenarios.push({
+        type: 'commit',
+        description: `Review commit: ${latestCommit.shortHash} - ${latestCommit.subject}`,
+        config: { type: 'commit', repositoryPath: GIT_CONFIG.repositoryPath, commit: latestCommit.hash }
+      })
+    }
+
+    // Test 4: Commit range (use last 2 commits if available)
+    if (gitInfo.commits.length >= 2) {
+      const fromCommit = gitInfo.commits[1]
+      const toCommit = gitInfo.commits[0]
+      await log(`✅ Commit range scenario available (${fromCommit.shortHash}..${toCommit.shortHash})`)
+      availableScenarios.push({
+        type: 'commit-range',
+        description: `Review commits: ${fromCommit.shortHash}..${toCommit.shortHash}`,
+        config: {
+          type: 'commit-range',
+          repositoryPath: GIT_CONFIG.repositoryPath,
+          fromCommit: fromCommit.hash,
+          toCommit: toCommit.hash
+        }
+      })
+    }
+
+    // Test 5: Branch diff (compare current branch with main/master if different)
+    const currentBranch = gitInfo.currentBranch
+    const possibleBaseBranches = ['main', 'master', 'dev', 'develop']
+    const availableBaseBranch = possibleBaseBranches.find(branch =>
+      gitInfo.branches.includes(branch) && branch !== currentBranch
+    )
+
+    if (availableBaseBranch && currentBranch !== availableBaseBranch) {
+      await log(`✅ Branch diff scenario available (${availableBaseBranch}..${currentBranch})`)
+      availableScenarios.push({
+        type: 'branch-diff',
+        description: `Review branch diff: ${availableBaseBranch} → ${currentBranch}`,
+        config: {
+          type: 'branch-diff',
+          repositoryPath: GIT_CONFIG.repositoryPath,
+          fromBranch: availableBaseBranch,
+          toBranch: currentBranch
+        }
+      })
+    } else {
+      await log(`⚠️ No suitable base branch found for branch diff (current: ${currentBranch})`)
+    }
+
+    await log(`📊 Found ${availableScenarios.length} available git diff scenarios`)
+    availableScenarios.forEach((scenario, i) => {
+      console.log(`   ${i+1}. ${scenario.type}: ${scenario.description}`)
+    })
+
+    return availableScenarios
+
+  } catch (error) {
+    await log(`❌ Failed to determine git scenarios: ${error.message}`, 'ERROR')
+    throw error
+  }
+}
+
+/**
+ * Test git diff review workflow with a specific scenario
+ */
+async function testGitDiffReview(scenario, subscriptionTest = null) {
+  await log(`🔄 Testing Git diff review: ${scenario.type}`)
+  await log(`📝 ${scenario.description}`)
+  await log('=======================================')
+
+  try {
+    // Create git review input
+    const reviewInput = {
+      type: 'git',
+      identifier: `${scenario.type}-${Date.now()}`,
+      metadata: {
+        gitDiffType: scenario.type,
+        repositoryPath: scenario.config.repositoryPath
+      }
+    }
+
+    // Create review configuration for git
+    const config = {
+      baseUrl: GIT_CONFIG.baseUrl,
+      // Note: No ADO credentials needed for git workflows
+      autoCleanup: false,  // PRESERVE WORKSPACE for inspection
+      saveVersions: true,  // SAVE VERSION HISTORY
+      operationSubscription: OPERATION_SUBSCRIPTION_CONFIG,
+      sharding: {
+        strategy: 'file_boundary',
+        targetTokens: 8000,
+        maxTokens: 12000,
+        minTokens: 2000,
+        preserveBoundaries: true
+      },
+      processing: {
+        batchSize: 2,
+        retryAttempts: 3,
+        retryDelay: 1000,
+        timeout: 30000
+      },
+      aggregation: {
+        outputFormat: 'json',
+        includeMetadata: true,
+        includeStatistics: true,
+        sortResults: true
+      }
+    }
+
+    await log('🚀 Creating git workflow factory...')
+    const factory = new WorkflowFactory({
+      baseUrl: GIT_CONFIG.baseUrl
+      // No ADO credentials required for git workflows
+    })
+
+    await log('⚙️ Creating git review workflow...')
+
+    // Create full end-to-end git workflow
+    const workflow = factory.createGitReviewWorkflow(scenario.config, config)
+
+    await log('🔄 Processing full git review workflow...')
+    const startTime = Date.now()
+
+    // Run the complete workflow: fetch → shard → process → aggregate → generate files
+    const result = await workflow.process(reviewInput, config)
+
+    const endTime = Date.now()
+    const processingTime = endTime - startTime
+
+    await log(`✅ Git review workflow completed successfully in ${processingTime}ms`)
+    await log(`📊 Results: ${result.insights?.length || 0} insights, ${result.hunks?.length || 0} hunks, ${result.comments?.length || 0} comments`)
+
+    // Show workspace location
+    if (result.workspace) {
+      await log(`📁 Workspace preserved at: ${result.workspace}`)
+    }
+
+    // Show sample insights
+    if (result.insights && result.insights.length > 0) {
+      await log(`💡 Sample insights:`)
+      result.insights.slice(0, 3).forEach((insight, i) => {
+        console.log(`   ${i+1}. [${insight.type}/${insight.severity}] ${insight.description}`)
+      })
+    }
+
+    // Show sample hunks
+    if (result.hunks && result.hunks.length > 0) {
+      await log(`🔧 Sample hunks:`)
+      result.hunks.slice(0, 3).forEach((hunk, i) => {
+        console.log(`   ${i+1}. ${hunk.file} (${hunk.category}): ${hunk.description}`)
+      })
+    }
+
+    // Show sample comments
+    if (result.comments && result.comments.length > 0) {
+      await log(`💬 Sample comments:`)
+      result.comments.slice(0, 3).forEach((comment, i) => {
+        console.log(`   ${i+1}. ${comment.file}:${comment.lineStart} [${comment.severity}] ${comment.message}`)
+      })
+    }
+
+    return {
+      success: true,
+      scenario: scenario.type,
+      description: scenario.description,
+      result,
+      processingTime,
+      metadata: {
+        insights: result.insights?.length || 0,
+        hunks: result.hunks?.length || 0,
+        comments: result.comments?.length || 0,
+        files: result.metadata?.processingStats?.totalFiles || 0,
+        workspace: result.workspace
+      }
+    }
+
+  } catch (error) {
+    await log(`❌ Git diff review failed: ${error.message}`, 'ERROR')
+    return {
+      success: false,
+      scenario: scenario.type,
+      error: error.message,
+      processingTime: 0
+    }
+  }
+}
+
+/**
+ * Test all available git diff scenarios
+ */
+async function testAllGitScenarios(subscriptionTest = null) {
+  await log('🔄 Testing all available Git diff scenarios')
+  await log('==========================================')
+
+  try {
+    // First, test git repository and get info
+    const gitInfo = await testGitRepository()
+
+    // Determine available scenarios
+    const availableScenarios = await determineAvailableGitScenarios(gitInfo)
+
+    if (availableScenarios.length === 0) {
+      await log('⚠️ No git diff scenarios available for testing', 'WARN')
+      return {
+        success: false,
+        message: 'No git scenarios available',
+        gitInfo
+      }
+    }
+
+    // Test each scenario
+    const results = []
+    for (const scenario of availableScenarios) {
+      await log(`\n${'='.repeat(60)}`)
+      try {
+        const result = await testGitDiffReview(scenario, subscriptionTest)
+        results.push(result)
+
+        if (result.success) {
+          await log(`✅ ${scenario.type} scenario completed successfully`)
+        } else {
+          await log(`❌ ${scenario.type} scenario failed: ${result.error}`, 'ERROR')
+        }
+      } catch (scenarioError) {
+        await log(`💥 ${scenario.type} scenario crashed: ${scenarioError.message}`, 'ERROR')
+        results.push({
+          success: false,
+          scenario: scenario.type,
+          error: scenarioError.message
+        })
+      }
+    }
+
+    const successfulTests = results.filter(r => r.success).length
+    const totalTests = results.length
+
+    await log(`\n📊 Git scenario testing summary: ${successfulTests}/${totalTests} successful`)
+
+    return {
+      success: successfulTests > 0,
+      gitInfo,
+      availableScenarios,
+      results,
+      summary: {
+        total: totalTests,
+        successful: successfulTests,
+        failed: totalTests - successfulTests
+      }
+    }
+
+  } catch (error) {
+    await log(`💥 Git scenario testing failed: ${error.message}`, 'ERROR')
+    return {
+      success: false,
+      error: error.message
+    }
   }
 }
 
@@ -473,8 +832,8 @@ async function testADOCommentWorkflow(reviewResult) {
   }
 }
 
-async function testWithFilePreservation() {
-  await log('🧪 Testing with file preservation to see generated review files')
+async function testWithFilePreservation(testMode = 'both') {
+  await log(`🧪 Testing with file preservation (mode: ${testMode})`)
 
   // Initialize operation subscription for real-time monitoring
   let subscriptionTest = null
@@ -487,102 +846,151 @@ async function testWithFilePreservation() {
     await log('   Continuing with review workflow without real-time monitoring...')
   }
 
+  let gitResult = null
+  let adoResult = null
+
   try {
-    const reviewInput = {
-      type: 'ado-pr',
-      identifier: TEST_PR_URL,
-      source: TEST_PR_URL
+    // Test ADO workflow if configured and requested
+    if ((testMode === 'both' || testMode === 'ado') && process.env.AZURE_DEVOPS_PAT) {
+      await log('\n' + '='.repeat(80))
+      await log('🔄 Testing ADO PR Review Workflow')
+      await log('='.repeat(80))
+
+      const reviewInput = {
+        type: 'ado-pr',
+        identifier: TEST_PR_URL,
+        source: TEST_PR_URL
+      }
+
+      const config = {
+        baseUrl: 'http://localhost:3000',  // Enable server for operation subscription
+        adoCredentials: {
+          pat: ADO_CONFIG.pat,
+          organization: ADO_CONFIG.organization
+        },
+        autoCleanup: false,  // PRESERVE WORKSPACE
+        saveVersions: true,  // SAVE VERSION HISTORY
+        // ENABLE operation subscription for real-time monitoring
+        operationSubscription: OPERATION_SUBSCRIPTION_CONFIG,
+        sharding: {
+          strategy: 'file_boundary',
+          targetTokens: 8000,
+          maxTokens: 12000,
+          minTokens: 2000,
+          preserveBoundaries: true
+        },
+        processing: {
+          batchSize: 2,
+          retryAttempts: 3,
+          retryDelay: 1000,
+          timeout: 30000
+        },
+        aggregation: {
+          outputFormat: 'json',
+          includeMetadata: true,
+          includeStatistics: true,
+          sortResults: true
+        }
+      }
+
+      await log('🔄 Processing real ADO PR with workspace preservation...')
+      const startTime = Date.now()
+
+      // This will test the full pipeline: fetch → shard → process → aggregate
+      adoResult = await processReview(reviewInput, config)
+
+      const endTime = Date.now()
+      const processingTime = endTime - startTime
+
+      await log(`✅ ADO PR processed successfully in ${processingTime}ms`)
+      await log(`📊 Results: ${adoResult.insights?.length || 0} insights, ${adoResult.hunks?.length || 0} hunks, ${adoResult.comments?.length || 0} comments`)
+
+      // Show workspace location
+      if (adoResult.workspace) {
+        await log(`📁 Workspace preserved at: ${adoResult.workspace}`)
+      }
+
+      // Show sample insights
+      if (adoResult.insights && adoResult.insights.length > 0) {
+        await log(`💡 Sample insights:`)
+        adoResult.insights.slice(0, 3).forEach((insight, i) => {
+          console.log(`   ${i+1}. [${insight.type}/${insight.severity}] ${insight.description}`)
+        })
+      }
+
+      // Show sample hunks
+      if (adoResult.hunks && adoResult.hunks.length > 0) {
+        await log(`🔧 Sample hunks:`)
+        adoResult.hunks.slice(0, 3).forEach((hunk, i) => {
+          console.log(`   ${i+1}. ${hunk.file} (${hunk.category}): ${hunk.description}`)
+        })
+      }
+
+      // Show sample comments
+      if (adoResult.comments && adoResult.comments.length > 0) {
+        await log(`💬 Sample comments:`)
+        adoResult.comments.slice(0, 3).forEach((comment, i) => {
+          console.log(`   ${i+1}. ${comment.file}:${comment.lineStart} [${comment.severity}] ${comment.message}`)
+        })
+      }
+
+      // Test ADO comment publishing and replying functionality
+      await log('\n' + '='.repeat(80))
+      const adoCommentResult = await testADOCommentWorkflow(adoResult)
+
+      // Add ADO test results to the main result
+      adoResult.adoCommentTest = adoCommentResult
+
+      // Add operation subscription test results
+      if (subscriptionTest) {
+        adoResult.operationSubscriptionTest = {
+          subscriptionId: subscriptionTest.subscriptionId,
+          topicId: subscriptionTest.topicId,
+          metrics: subscriptionTest.metrics
+        }
+      }
+    } else if (testMode === 'ado' || (testMode === 'both' && !process.env.AZURE_DEVOPS_PAT)) {
+      await log('⚠️ ADO testing requested but AZURE_DEVOPS_PAT not found, skipping ADO tests', 'WARN')
     }
 
-    const config = {
-      baseUrl: 'http://localhost:3000',  // Enable server for operation subscription
-      adoCredentials: {
-        pat: ADO_CONFIG.pat,
-        organization: ADO_CONFIG.organization
-      },
-      autoCleanup: false,  // PRESERVE WORKSPACE
-      saveVersions: true,  // SAVE VERSION HISTORY
-      // ENABLE operation subscription for real-time monitoring
-      operationSubscription: OPERATION_SUBSCRIPTION_CONFIG,
-      sharding: {
-        strategy: 'file_boundary',
-        targetTokens: 8000,
-        maxTokens: 12000,
-        minTokens: 2000,
-        preserveBoundaries: true
-      },
-      processing: {
-        batchSize: 2,
-        retryAttempts: 3,
-        retryDelay: 1000,
-        timeout: 30000
-      },
-      aggregation: {
-        outputFormat: 'json',
-        includeMetadata: true,
-        includeStatistics: true,
-        sortResults: true
+    // Test Git workflow if requested
+    if (testMode === 'both' || testMode === 'git') {
+      await log('\n' + '='.repeat(80))
+      await log('🔄 Testing Git Diff Review Workflow')
+      await log('='.repeat(80))
+
+      gitResult = await testAllGitScenarios(subscriptionTest)
+
+      if (gitResult.success) {
+        await log('✅ Git diff testing completed successfully')
+      } else {
+        await log(`❌ Git diff testing failed: ${gitResult.error || 'Unknown error'}`, 'ERROR')
       }
     }
 
-    await log('🔄 Processing real ADO PR with workspace preservation...')
-    const startTime = Date.now()
-
-    // This will test the full pipeline: fetch → shard → process → aggregate
-    const result = await processReview(reviewInput, config)
-
-    const endTime = Date.now()
-    const processingTime = endTime - startTime
-
-    await log(`✅ ADO PR processed successfully in ${processingTime}ms`)
-    await log(`📊 Results: ${result.insights?.length || 0} insights, ${result.hunks?.length || 0} hunks, ${result.comments?.length || 0} comments`)
-
-    // Show workspace location
-    if (result.workspace) {
-      await log(`📁 Workspace preserved at: ${result.workspace}`)
-    }
-
-    // Show sample insights
-    if (result.insights && result.insights.length > 0) {
-      await log(`💡 Sample insights:`)
-      result.insights.slice(0, 3).forEach((insight, i) => {
-        console.log(`   ${i+1}. [${insight.type}/${insight.severity}] ${insight.description}`)
-      })
-    }
-
-    // Show sample hunks
-    if (result.hunks && result.hunks.length > 0) {
-      await log(`🔧 Sample hunks:`)
-      result.hunks.slice(0, 3).forEach((hunk, i) => {
-        console.log(`   ${i+1}. ${hunk.file} (${hunk.category}): ${hunk.description}`)
-      })
-    }
-
-    // Show sample comments
-    if (result.comments && result.comments.length > 0) {
-      await log(`💬 Sample comments:`)
-      result.comments.slice(0, 3).forEach((comment, i) => {
-        console.log(`   ${i+1}. ${comment.file}:${comment.lineStart} [${comment.severity}] ${comment.message}`)
-      })
-    }
-
-    // NEW: Test ADO comment publishing and replying functionality
-    await log('\n' + '='.repeat(80))
-    const adoResult = await testADOCommentWorkflow(result)
-
-    // Add ADO test results to the main result
-    result.adoCommentTest = adoResult
-
-    // Add operation subscription test results
-    if (subscriptionTest) {
-      result.operationSubscriptionTest = {
-        subscriptionId: subscriptionTest.subscriptionId,
-        topicId: subscriptionTest.topicId,
-        metrics: subscriptionTest.metrics
+    // Return combined results
+    return {
+      success: true,
+      testMode,
+      adoResult,
+      gitResult,
+      hasBoth: !!(adoResult && gitResult),
+      summary: {
+        ado: adoResult ? {
+          success: !!adoResult.success,
+          insights: adoResult.insights?.length || 0,
+          hunks: adoResult.hunks?.length || 0,
+          comments: adoResult.comments?.length || 0,
+          workspace: adoResult.workspace
+        } : null,
+        git: gitResult ? {
+          success: gitResult.success,
+          scenarios: gitResult.summary?.total || 0,
+          successful: gitResult.summary?.successful || 0,
+          failed: gitResult.summary?.failed || 0
+        } : null
       }
     }
-
-    return result
 
   } catch (error) {
     await log(`❌ Test failed: ${error.message}`, 'ERROR')
@@ -603,109 +1011,171 @@ async function testWithFilePreservation() {
   }
 }
 
-async function runManualTest() {
+async function runManualTest(testMode = 'git') {
   const startTime = Date.now()
 
   try {
     await log('🚀 Starting manual test with file preservation')
-    await log(`🎯 Testing against ADO PR: ${TEST_PR_URL}`)
+    await log(`🎯 Test mode: ${testMode}`)
 
-    const result = await testWithFilePreservation()
+    if (testMode.includes('ado') && process.env.AZURE_DEVOPS_PAT) {
+      await log(`🎯 ADO PR URL: ${TEST_PR_URL}`)
+    }
+
+    if (testMode.includes('git')) {
+      await log(`🎯 Git repository: ${GIT_CONFIG.repositoryPath}`)
+    }
+
+    const result = await testWithFilePreservation(testMode)
 
     const endTime = Date.now()
     const totalTime = endTime - startTime
 
     await log(`🎉 Manual test completed! Total time: ${totalTime}ms`)
-    await log('✅ Check the workspace directory for generated files')
 
     // Show the final result summary
-    console.log('\n=== FINAL RESULTS ===')
-    console.log('Review Results:')
-    console.log(JSON.stringify({
-      success: result.success,
-      metadata: {
-        totalFiles: result.metadata?.processingStats?.totalShards || 0,
-        processingTime: result.metadata?.processingStats?.totalProcessingTime || 0
-      },
-      statistics: {
-        insights: result.insights?.length || 0,
-        hunks: result.hunks?.length || 0,
-        comments: result.comments?.length || 0
-      },
-      workspace: result.workspace
-    }, null, 2))
+    console.log('\n' + '='.repeat(80))
+    console.log('=== FINAL RESULTS SUMMARY ===')
+    console.log('='.repeat(80))
 
-    console.log('\nADO Comment Test Results:')
-    console.log(JSON.stringify({
-      adoTestSuccess: result.adoCommentTest?.success || false,
-      adoTestMessage: result.adoCommentTest?.message || 'No ADO test performed',
-      publishedComment: result.adoCommentTest?.testedComment?.id || null,
-      adoThreadId: result.adoCommentTest?.publishResult?.adoThreadId || null,
-      replySuccess: result.adoCommentTest?.replyResult?.success || false
-    }, null, 2))
+    console.log(`\nTest Mode: ${result.testMode}`)
+    console.log(`Overall Success: ${result.success}`)
+    console.log(`Total Processing Time: ${totalTime}ms`)
 
-    console.log('\nOperation Subscription Test Results:')
-    console.log(JSON.stringify({
-      subscriptionEnabled: !!result.operationSubscriptionTest,
-      subscriptionId: result.operationSubscriptionTest?.subscriptionId || null,
-      topicId: result.operationSubscriptionTest?.topicId || null,
-      eventsReceived: result.operationSubscriptionTest?.metrics?.eventsReceived || 0,
-      eventTypes: result.operationSubscriptionTest?.metrics?.eventsByType || {},
-      totalDataCount: result.operationSubscriptionTest?.metrics?.totalDataCount || 0,
-      sessionCount: result.operationSubscriptionTest?.metrics?.sessionEvents?.size || 0
-    }, null, 2))
+    // ADO Results
+    if (result.adoResult) {
+      console.log('\n--- ADO Workflow Results ---')
+      console.log(JSON.stringify({
+        success: result.summary.ado.success,
+        insights: result.summary.ado.insights,
+        hunks: result.summary.ado.hunks,
+        comments: result.summary.ado.comments,
+        workspace: result.summary.ado.workspace,
+        adoCommentTest: {
+          success: result.adoResult.adoCommentTest?.success || false,
+          message: result.adoResult.adoCommentTest?.message || 'No ADO test performed',
+          publishedComment: result.adoResult.adoCommentTest?.testedComment?.id || null,
+          adoThreadId: result.adoResult.adoCommentTest?.publishResult?.adoThreadId || null,
+          replySuccess: result.adoResult.adoCommentTest?.replyResult?.success || false
+        },
+        operationSubscription: {
+          enabled: !!result.adoResult.operationSubscriptionTest,
+          eventsReceived: result.adoResult.operationSubscriptionTest?.metrics?.eventsReceived || 0,
+          eventTypes: Object.keys(result.adoResult.operationSubscriptionTest?.metrics?.eventsByType || {}),
+          totalDataCount: result.adoResult.operationSubscriptionTest?.metrics?.totalDataCount || 0
+        }
+      }, null, 2))
+    }
 
-    // Show verification instructions
-    if (result.adoCommentTest?.success) {
-      console.log('\n📋 Manual Verification Steps:')
+    // Git Results
+    if (result.gitResult) {
+      console.log('\n--- Git Workflow Results ---')
+      console.log(JSON.stringify({
+        success: result.summary.git.success,
+        totalScenarios: result.summary.git.scenarios,
+        successfulScenarios: result.summary.git.successful,
+        failedScenarios: result.summary.git.failed,
+        availableScenarios: result.gitResult.availableScenarios?.map(s => ({
+          type: s.type,
+          description: s.description
+        })) || [],
+        results: result.gitResult.results?.map(r => ({
+          scenario: r.scenario,
+          success: r.success,
+          error: r.error,
+          metadata: r.metadata
+        })) || []
+      }, null, 2))
+    }
+
+    // Verification instructions
+    console.log('\n' + '='.repeat(80))
+    console.log('=== VERIFICATION INSTRUCTIONS ===')
+    console.log('='.repeat(80))
+
+    if (result.adoResult?.adoCommentTest?.success) {
+      console.log('\n📋 ADO Manual Verification Steps:')
       console.log('1. Visit the PR URL in your browser: ' + TEST_PR_URL)
       console.log('2. Look for the published AI comment in the PR thread')
       console.log('3. Verify the automated reply appears in the comment thread')
       console.log('4. Comments should be identifiable by their content and timestamp')
 
-      if (result.adoCommentTest.publishResult?.adoThreadId) {
-        console.log(`5. Check ADO thread ID: ${result.adoCommentTest.publishResult.adoThreadId}`)
+      if (result.adoResult.adoCommentTest.publishResult?.adoThreadId) {
+        console.log(`5. Check ADO thread ID: ${result.adoResult.adoCommentTest.publishResult.adoThreadId}`)
       }
-    } else {
-      console.log('\n⚠️ ADO Comment Test Issues:')
-      console.log('Make sure:')
-      console.log('1. OpenCode server is running (bun dev)')
-      console.log('2. Server has access to ADO API')
-      console.log('3. Review generated AI comments successfully')
-      console.log('4. Workspace files are preserved and accessible')
+
+      if (result.adoResult.workspace) {
+        console.log(`6. Inspect preserved workspace: ${result.adoResult.workspace}`)
+      }
     }
 
-    // Operation Subscription verification
-    if (result.operationSubscriptionTest) {
-      console.log('\n🔔 Operation Subscription Verification:')
-      console.log(`1. Real-time events received: ${result.operationSubscriptionTest.metrics.eventsReceived}`)
-      console.log(`2. Event types captured: ${Object.keys(result.operationSubscriptionTest.metrics.eventsByType).join(', ')}`)
-      console.log(`3. Total data items: ${result.operationSubscriptionTest.metrics.totalDataCount}`)
-      console.log(`4. Check console output above for real-time event logs during review processing`)
+    if (result.gitResult?.success) {
+      console.log('\n📋 Git Workflow Verification:')
+      console.log('✅ Git diff scenarios tested successfully')
+      console.log(`📊 ${result.summary.git.successful}/${result.summary.git.scenarios} scenarios passed`)
 
-      if (result.operationSubscriptionTest.metrics.eventsReceived > 0) {
-        console.log('✅ Operation subscription working correctly - events were captured in real-time!')
-      } else {
-        console.log('⚠️ No events received - check WebSocket connection and server configuration')
+      if (result.gitResult.availableScenarios) {
+        console.log('\n🔍 Tested Git Scenarios:')
+        result.gitResult.availableScenarios.forEach((scenario, i) => {
+          const testResult = result.gitResult.results?.find(r => r.scenario === scenario.type)
+          const status = testResult?.success ? '✅' : '❌'
+          console.log(`   ${i+1}. ${status} ${scenario.type}: ${scenario.description}`)
+          if (testResult && !testResult.success && testResult.error) {
+            console.log(`      Error: ${testResult.error}`)
+          }
+        })
       }
-    } else {
-      console.log('\n⚠️ Operation Subscription Issues:')
-      console.log('Make sure:')
-      console.log('1. OpenCode server is running with WebSocket support')
-      console.log('2. Server is accessible at http://localhost:3000')
-      console.log('3. WebSocket connection can be established')
-      console.log('4. Operation subscription is properly enabled in config')
     }
+
+    // Common issues and troubleshooting
+    console.log('\n🔧 Troubleshooting:')
+    console.log('Make sure:')
+    console.log('1. OpenCode server is running (bun dev)')
+    console.log('2. Server is accessible at http://localhost:3000')
+
+    if (testMode.includes('ado')) {
+      console.log('3. AZURE_DEVOPS_PAT environment variable is set for ADO tests')
+      console.log('4. ADO credentials have proper permissions for the test repository')
+    }
+
+    if (testMode.includes('git')) {
+      console.log('3. Current directory is a valid git repository with commit history')
+      console.log('4. Git repository has various diff scenarios available (commits, branches, etc.)')
+    }
+
+    return result
 
   } catch (error) {
     await log(`💥 Manual test failed: ${error.message}`, 'ERROR')
+    if (error.stack) {
+      await log(`Stack trace: ${error.stack}`, 'DEBUG')
+    }
     process.exit(1)
   }
 }
 
 // Run test if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runManualTest()
+  // Parse command line arguments
+  const args = process.argv.slice(2)
+  let testMode = 'git' // Default to git testing only
+
+  // Check for test mode argument
+  if (args.length > 0) {
+    const modeArg = args[0].toLowerCase()
+    if (['git', 'ado', 'both'].includes(modeArg)) {
+      testMode = modeArg
+    } else {
+      console.log('Usage: bun test/manual-test-with-files.js [git|ado|both]')
+      console.log('  git  - Test git diff scenarios only (default)')
+      console.log('  ado  - Test ADO PR workflow only')
+      console.log('  both - Test both git and ADO workflows')
+      process.exit(1)
+    }
+  }
+
+  console.log(`Starting manual test with mode: ${testMode}`)
+  runManualTest(testMode)
 }
 
 export {
@@ -713,7 +1183,12 @@ export {
   testWithFilePreservation,
   testADOCommentWorkflow,
   testOperationSubscription,
+  testGitRepository,
+  testAllGitScenarios,
+  testGitDiffReview,
+  determineAvailableGitScenarios,
   ADO_CONFIG,
+  GIT_CONFIG,
   TEST_PR_URL,
   OPERATION_SUBSCRIPTION_CONFIG
 }

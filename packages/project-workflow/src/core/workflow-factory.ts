@@ -15,12 +15,15 @@ import type {
   ShardingConfig,
   ProcessingConfig,
   AggregationConfig,
-  SubscriptionConfig
+  SubscriptionConfig,
+  GitWorkflowConfig,
+  GitDiffConfig
 } from '../types/index.js'
 import { WorkflowType } from '../types/index.js'
 import { ReviewWorkflowProcessor } from '../review/review-workflow-processor.js'
 import { OperationSubscriber } from './operation-subscriber.js'
 import { ValidationError, createLogger } from './utils.js'
+import { GitContentSource } from './git-content-source.js'
 
 /**
  * Configuration options for workflow creation
@@ -141,6 +144,111 @@ export class WorkflowFactory {
   }
 
   /**
+   * Create a git review workflow processor
+   */
+  createGitReviewWorkflow(gitConfig: GitDiffConfig, overrides?: Partial<ReviewConfig>): IWorkflowProcessor<ReviewInput, ReviewResult> {
+    this.logger.info('Creating git review workflow processor')
+
+    // Validate git configuration
+    this.validateGitConfig(gitConfig)
+
+    // Create GitContentSource
+    const gitContentSource = new GitContentSource(gitConfig, this.config.baseUrl)
+
+    // Create sub-configurations (similar to regular review workflow)
+    const shardingConfig: ShardingConfig = {
+      strategy: 'file_boundary' as any,
+      targetTokens: overrides?.optimalTokensPerShard ?? this.config.defaults?.optimalTokensPerShard ?? 8000,
+      maxTokens: overrides?.maxTokensPerShard ?? this.config.defaults?.maxTokensPerShard ?? 12000,
+      minTokens: overrides?.minTokensPerShard ?? this.config.defaults?.minTokensPerShard ?? 2000,
+      preserveBoundaries: true
+    }
+
+    const processingConfig: ProcessingConfig = {
+      batchSize: overrides?.maxParallelSessions ?? this.config.defaults?.maxParallelSessions ?? 3,
+      retryAttempts: 3,
+      retryDelay: 1000,
+      timeout: overrides?.timeoutPerShard ?? this.config.defaults?.timeoutPerShard ?? 300000
+    }
+
+    const aggregationConfig: AggregationConfig = {
+      outputFormat: (overrides?.outputFormat ?? this.config.defaults?.outputFormat ?? 'json') === 'json' ? 'json' as any : 'xml' as any,
+      includeMetadata: true,
+      includeStatistics: true,
+      sortResults: true
+    }
+
+    const reviewConfig: ReviewConfig = {
+      // Base WorkflowConfig fields
+      baseUrl: this.config.baseUrl,
+      maxParallelSessions: overrides?.maxParallelSessions ?? this.config.defaults?.maxParallelSessions ?? 3,
+      timeoutPerShard: overrides?.timeoutPerShard ?? this.config.defaults?.timeoutPerShard ?? 300000,
+      autoCleanup: overrides?.autoCleanup ?? this.config.defaults?.autoCleanup ?? true,
+
+      // Sub-configurations
+      sharding: shardingConfig,
+      processing: processingConfig,
+      aggregation: aggregationConfig,
+
+      // Review-specific fields
+      optimalTokensPerShard: overrides?.optimalTokensPerShard ?? this.config.defaults?.optimalTokensPerShard ?? 8000,
+      maxTokensPerShard: overrides?.maxTokensPerShard ?? this.config.defaults?.maxTokensPerShard ?? 12000,
+      minTokensPerShard: overrides?.minTokensPerShard ?? this.config.defaults?.minTokensPerShard ?? 2000,
+      agent: overrides?.agent ?? this.config.defaults?.agent ?? 'code-reviewer',
+      outputFormat: overrides?.outputFormat ?? this.config.defaults?.outputFormat ?? 'json',
+      includeFilePatterns: overrides?.includeFilePatterns ?? this.config.defaults?.includeFilePatterns ?? [
+        '**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx',
+        '**/*.py', '**/*.java', '**/*.cs', '**/*.cpp',
+        '**/*.c', '**/*.h', '**/*.go', '**/*.rs',
+        '**/*.php', '**/*.rb', '**/*.swift', '**/*.kt'
+      ],
+      excludeFilePatterns: overrides?.excludeFilePatterns ?? this.config.defaults?.excludeFilePatterns ?? [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/build/**',
+        '**/.git/**',
+        '**/coverage/**',
+        '**/*.min.js',
+        '**/*.bundle.js'
+      ],
+      maxFileSize: overrides?.maxFileSize ?? this.config.defaults?.maxFileSize ?? 1024 * 1024, // 1MB
+      // Note: No ADO credentials needed for git workflows
+      saveVersions: overrides?.saveVersions ?? this.config.defaults?.saveVersions ?? false
+    }
+
+    // Create ReviewWorkflowProcessor with git content source
+    return new ReviewWorkflowProcessor(reviewConfig, gitContentSource)
+  }
+
+  /**
+   * Validate git configuration
+   */
+  private validateGitConfig(gitConfig: GitDiffConfig): void {
+    if (!gitConfig.repositoryPath) {
+      throw new ValidationError('Repository path is required for git workflows')
+    }
+
+    switch (gitConfig.type) {
+      case 'commit':
+        if (!gitConfig.commit) {
+          throw new ValidationError('Commit hash is required for commit diff type')
+        }
+        break
+      case 'commit-range':
+        if (!gitConfig.fromCommit || !gitConfig.toCommit) {
+          throw new ValidationError('Both fromCommit and toCommit are required for commit-range diff type')
+        }
+        break
+      case 'branch-diff':
+        if (!gitConfig.fromBranch || !gitConfig.toBranch) {
+          throw new ValidationError('Both fromBranch and toBranch are required for branch-diff type')
+        }
+        break
+      // staged and unpushed types don't need additional validation
+    }
+  }
+
+  /**
    * Create a workflow processor for a specific type
    * Generic factory method that can be extended for other workflow types
    */
@@ -184,14 +292,7 @@ export class WorkflowFactory {
    */
   private validateConfig(): void {
     // Note: baseUrl is optional for local file system operation
-
-    if (!this.config.adoCredentials) {
-      throw new ValidationError('ADO credentials are required')
-    }
-
-    if (!this.config.adoCredentials.pat) {
-      throw new ValidationError('ADO Personal Access Token is required')
-    }
+    // ADO credentials are only required for ADO workflows, not git workflows
 
     if (this.config.defaults?.maxParallelSessions !== undefined && this.config.defaults.maxParallelSessions < 1) {
       throw new ValidationError('Max parallel sessions must be at least 1')

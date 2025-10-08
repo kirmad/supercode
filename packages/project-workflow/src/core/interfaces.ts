@@ -24,7 +24,11 @@ import type {
   SourceMetadata,
   ShardProcessor,
   OperationCallback,
-  SubscriptionInfo
+  SubscriptionInfo,
+  GitDiffConfig,
+  GitWorkflowConfig,
+  GitDiffType,
+  GitReviewIndex
 } from '../types/index.js'
 
 /**

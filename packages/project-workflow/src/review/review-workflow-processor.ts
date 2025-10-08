@@ -21,6 +21,7 @@ import type {
   ExtractedTagData,
   NotificationMetadata
 } from '../types/index.js'
+import type { IContentSource } from '../core/interfaces.js'
 import { ADOContentSource } from '../sources/ado-content-source.js'
 import { FileBoundaryShardingStrategy } from './file-boundary-sharding-strategy.js'
 import { SessionProcessingEngine } from './session-processing-engine.js'
@@ -40,7 +41,7 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   private readonly logger = createLogger('ReviewWorkflowProcessor')
 
   // Component instances
-  private readonly contentSource: ADOContentSource
+  private readonly contentSource: IContentSource
   private readonly shardingStrategy: FileBoundaryShardingStrategy
   private processingEngine: SessionProcessingEngine
   private readonly resultAggregator: ReviewResultAggregator
@@ -49,7 +50,7 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   private operationSubscriber?: IOperationSubscriber
   private subscriptionId?: string
 
-  constructor(config: ReviewConfig) {
+  constructor(config: ReviewConfig, contentSource?: IContentSource) {
     this.config = config
     this.logger.info('Initializing Review Workflow Processor')
 
@@ -64,13 +65,17 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
     // Initialize workspace manager with FileOperationsClient
     this.workspaceManager = new WorkspaceManager(this.fileOperationsClient)
 
-    // Initialize components
-    this.contentSource = new ADOContentSource({
-      baseUrl: config.baseUrl,
-      credentials: config.adoCredentials,
-      workspaceManager: this.workspaceManager,
-      fileOperationsClient: this.fileOperationsClient
-    })
+    // Initialize content source - use provided or default to ADO
+    if (contentSource) {
+      this.contentSource = contentSource
+    } else {
+      this.contentSource = new ADOContentSource({
+        baseUrl: config.baseUrl,
+        credentials: config.adoCredentials,
+        workspaceManager: this.workspaceManager,
+        fileOperationsClient: this.fileOperationsClient
+      })
+    }
 
     this.shardingStrategy = new FileBoundaryShardingStrategy()
 
