@@ -4,7 +4,7 @@
  * Coordinates all components to process review workflows
  */
 
-import type { IWorkflowProcessor } from '../core/interfaces.js'
+import type { IWorkflowProcessor, IOperationSubscriber } from '../core/interfaces.js'
 import type {
   ReviewInput,
   ReviewResult,
@@ -17,16 +17,19 @@ import type {
   ShardingConfig,
   AggregationConfig,
   ReviewIndex,
-  SourceContent
+  SourceContent,
+  ExtractedTagData,
+  NotificationMetadata
 } from '../types/index.js'
 import { ADOContentSource } from '../sources/ado-content-source.js'
 import { FileBoundaryShardingStrategy } from './file-boundary-sharding-strategy.js'
 import { SessionProcessingEngine } from './session-processing-engine.js'
 import { ReviewResultAggregator } from './review-result-aggregator.js'
 import { WorkspaceManager } from '../core/workspace-manager.js'
-import { ValidationError, ProcessingError, createLogger, formatDuration } from '../core/utils.js'
+import { ValidationError, ProcessingError, createLogger, formatDuration, generateId } from '../core/utils.js'
 import { FileOperationsClient } from '../services/file-operations-client.js'
 import { ChangeType } from '../types/index.js'
+import { OperationSubscriber } from '../core/operation-subscriber.js'
 
 /**
  * Review Workflow Processor
@@ -39,10 +42,12 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   // Component instances
   private readonly contentSource: ADOContentSource
   private readonly shardingStrategy: FileBoundaryShardingStrategy
-  private readonly processingEngine: SessionProcessingEngine
+  private processingEngine: SessionProcessingEngine
   private readonly resultAggregator: ReviewResultAggregator
   private readonly workspaceManager: WorkspaceManager
   private readonly fileOperationsClient?: FileOperationsClient
+  private operationSubscriber?: IOperationSubscriber
+  private subscriptionId?: string
 
   constructor(config: ReviewConfig) {
     this.config = config
@@ -89,6 +94,7 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   async process(input: ReviewInput, config?: Partial<ReviewConfig>): Promise<ReviewResult> {
     const startTime = Date.now()
     const mergedConfig = { ...this.config, ...config }
+    const workflowId = generateId('review-workflow')
 
     this.logger.info(`Starting review workflow for: ${input.identifier}`)
 
@@ -100,6 +106,11 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
 
       // Step 2: Create workspace
       const workspace = await this.createWorkspace(mergedConfig)
+
+      // Step 2.5: Set up operation subscription if enabled
+      if (mergedConfig.operationSubscription?.enabled) {
+        await this.setupOperationSubscription(workflowId, mergedConfig)
+      }
 
       // Step 3: Fetch content
       const content = await this.fetchContent(input, mergedConfig)
@@ -139,6 +150,16 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
       throw error
 
     } finally {
+      // Clean up operation subscription
+      if (this.subscriptionId && this.operationSubscriber) {
+        try {
+          this.operationSubscriber.unsubscribe(this.subscriptionId)
+          this.logger.debug('Operation subscription cleaned up', { subscriptionId: this.subscriptionId })
+        } catch (subscriptionError) {
+          this.logger.warn(`Operation subscription cleanup failed: ${subscriptionError}`)
+        }
+      }
+
       // Cleanup workspace if auto-cleanup is enabled
       if (mergedConfig.autoCleanup) {
         try {
@@ -477,6 +498,80 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
    */
   getPartialResults(): ShardResult[] {
     return this.processingEngine.getPartialResults()
+  }
+
+  /**
+   * Set up operation subscription for real-time workflow monitoring
+   */
+  private async setupOperationSubscription(workflowId: string, config: ReviewConfig): Promise<void> {
+    if (!config.operationSubscription?.enabled) {
+      return
+    }
+
+    try {
+      // Create operation subscriber if not already created
+      if (!this.operationSubscriber) {
+        // Get or create operation subscriber from base URL
+        const factory = await import('../core/workflow-factory.js')
+        const tempFactory = new factory.WorkflowFactory({
+          baseUrl: config.baseUrl,
+          adoCredentials: config.adoCredentials
+        })
+        this.operationSubscriber = tempFactory.createOperationSubscriber()
+      }
+
+      // Start listening for WebSocket events
+      await this.operationSubscriber.startListening()
+
+      // Subscribe to the workflow topic with review-specific tags
+      const tags = config.operationSubscription.tags || ['review-insight', 'hunk', 'comment']
+      const subscriptionId = this.operationSubscriber.subscribe(
+        workflowId,
+        tags,
+        (data, metadata) => this.handleRealtimeUpdates(data, metadata)
+      )
+
+      // Store subscription ID for cleanup
+      this.subscriptionId = subscriptionId
+
+      // Update processing engine to include operation subscription support
+      this.processingEngine = new SessionProcessingEngine({
+        baseUrl: config.baseUrl,
+        provider: 'anthropic',
+        model: 'claude-3-5-sonnet-20241022',
+        agent: config.agent,
+        timeoutPerShard: config.timeoutPerShard,
+        maxRetries: 3,
+        retryDelay: 1000,
+        operationSubscriber: this.operationSubscriber,
+        topicId: workflowId
+      })
+
+      this.logger.info(`Operation subscription setup completed for workflow ${workflowId}`)
+    } catch (error) {
+      this.logger.error(`Failed to setup operation subscription: ${error}`)
+      throw error
+    }
+  }
+
+  /**
+   * Handle real-time updates from operation subscription
+   */
+  private handleRealtimeUpdates(data: ExtractedTagData, metadata: NotificationMetadata): void {
+    this.logger.info('Received real-time update', {
+      topicId: metadata.topicId,
+      sessionId: metadata.sessionId,
+      tags: Object.keys(data),
+      timestamp: metadata.timestamp,
+      hasNewData: metadata.hasNewData
+    })
+
+    // Log sample data for each tag type
+    for (const [tag, values] of Object.entries(data)) {
+      this.logger.info(`Real-time ${tag}: ${values.length} items`, {
+        sampleData: values.slice(0, 2) // Show first 2 items
+      })
+    }
   }
 
   /**

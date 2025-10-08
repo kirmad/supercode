@@ -4,7 +4,7 @@
  * Extracted from scripts/sharded-review-parallel.js
  */
 
-import type { IProcessingEngine } from '../core/interfaces.js'
+import type { IProcessingEngine, IOperationSubscriber } from '../core/interfaces.js'
 import type {
   Shard,
   ShardResult,
@@ -25,11 +25,15 @@ export interface SessionConfig {
   timeoutPerShard: number
   maxRetries: number
   retryDelay: number
+  // Optional operation subscription integration
+  operationSubscriber?: IOperationSubscriber
+  topicId?: string
 }
 
 /**
  * Session Processing Engine
  * Manages parallel processing with session lifecycle and batching
+ * Supports automatic session registration with operation subscription topics
  */
 export class SessionProcessingEngine implements IProcessingEngine {
   private readonly config: SessionConfig
@@ -41,6 +45,13 @@ export class SessionProcessingEngine implements IProcessingEngine {
 
   constructor(config: SessionConfig) {
     this.config = config
+
+    // Validate operation subscription configuration
+    if (config.operationSubscriber && !config.topicId) {
+      this.logger.warn('Operation subscriber provided without topic ID - session registration disabled')
+    } else if (!config.operationSubscriber && config.topicId) {
+      this.logger.warn('Topic ID provided without operation subscriber - session registration disabled')
+    }
   }
 
   /**
@@ -314,6 +325,7 @@ Output ONLY the XML format above. Focus on security, performance, quality issues
 
   /**
    * Create a new session
+   * Automatically registers with operation subscription topic if configured
    */
   private async createSession(): Promise<string> {
     const response = await fetch(`${this.config.baseUrl}/session`, {
@@ -330,13 +342,36 @@ Output ONLY the XML format above. Focus on security, performance, quality issues
     }
 
     const session = await response.json()
-    return session.id
+    const sessionId = session.id
+
+    // Register session with operation subscription topic if configured
+    if (this.config.operationSubscriber && this.config.topicId) {
+      try {
+        this.config.operationSubscriber.addSessionToTopic(this.config.topicId, sessionId)
+        this.logger.debug(`Session ${sessionId} registered with topic ${this.config.topicId}`)
+      } catch (error) {
+        this.logger.warn(`Failed to register session ${sessionId} with topic: ${error}`)
+      }
+    }
+
+    return sessionId
   }
 
   /**
    * Cleanup a session
+   * Automatically deregisters from operation subscription topic if configured
    */
   private async cleanupSession(sessionId: string): Promise<void> {
+    // Deregister session from operation subscription topic if configured
+    if (this.config.operationSubscriber && this.config.topicId) {
+      try {
+        this.config.operationSubscriber.removeSessionFromTopic(this.config.topicId, sessionId)
+        this.logger.debug(`Session ${sessionId} deregistered from topic ${this.config.topicId}`)
+      } catch (error) {
+        this.logger.warn(`Failed to deregister session ${sessionId} from topic: ${error}`)
+      }
+    }
+
     try {
       await fetch(`${this.config.baseUrl}/session/${sessionId}`, {
         method: 'DELETE',

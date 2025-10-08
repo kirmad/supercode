@@ -10,6 +10,10 @@ import type {
   EventSubscribeResponses,
   ConfigGetData,
   ConfigGetResponses,
+  OutputStylesListData,
+  OutputStylesListResponses,
+  OutputStyleSetData,
+  OutputStyleSetResponses,
   PathGetData,
   PathGetResponses,
   SessionListData,
@@ -53,6 +57,12 @@ import type {
   PostSessionByIdPermissionsByPermissionIdResponses,
   CommandListData,
   CommandListResponses,
+  CustomCommandListData,
+  CustomCommandListResponses,
+  CustomCommandCompleteData,
+  CustomCommandCompleteResponses,
+  FlagSuggestionsGetData,
+  FlagSuggestionsGetResponses,
   ConfigProvidersData,
   ConfigProvidersResponses,
   FindTextData,
@@ -87,6 +97,8 @@ import type {
   TuiClearPromptResponses,
   TuiCancelPromptData,
   TuiCancelPromptResponses,
+  TuiClearSessionData,
+  TuiClearSessionResponses,
   TuiExecuteCommandData,
   TuiExecuteCommandResponses,
   TuiGetModelData,
@@ -103,6 +115,10 @@ import type {
   TuiNotifyModelChangedResponses,
   TuiNotifyAgentChangedData,
   TuiNotifyAgentChangedResponses,
+  TuiUpdateOutputStyleData,
+  TuiUpdateOutputStyleResponses,
+  TuiGetOutputStyleData,
+  TuiGetOutputStyleResponses,
   TuiShowToastData,
   TuiShowToastResponses,
   WebAppData,
@@ -111,6 +127,49 @@ import type {
   WebChatResponses,
   WebInfoData,
   WebInfoResponses,
+  GitDiffData,
+  GitDiffResponses,
+  GitFileData,
+  GitFileResponses,
+  GitStatusData,
+  GitStatusResponses,
+  GitBranchesData,
+  GitBranchesResponses,
+  GitCommitsData,
+  GitCommitsResponses,
+  ReviewsSaveData,
+  ReviewsSaveResponses,
+  ReviewsSaveErrors,
+  ReviewsListData,
+  ReviewsListResponses,
+  ReviewsListErrors,
+  ReviewsDeleteData,
+  ReviewsDeleteResponses,
+  ReviewsDeleteErrors,
+  ReviewsGetData,
+  ReviewsGetResponses,
+  ReviewsGetErrors,
+  ReviewsAddCommentResponseData,
+  ReviewsAddCommentResponseResponses,
+  ReviewsAddCommentResponseErrors,
+  FilesWriteData,
+  FilesWriteResponses,
+  FilesWriteErrors,
+  FilesReadData,
+  FilesReadResponses,
+  FilesReadErrors,
+  FilesListData,
+  FilesListResponses,
+  FilesListErrors,
+  FilesDeleteData,
+  FilesDeleteResponses,
+  FilesDeleteErrors,
+  FilesMkdirData,
+  FilesMkdirResponses,
+  FilesMkdirErrors,
+  FilesExistsData,
+  FilesExistsResponses,
+  FilesExistsErrors,
   ConfigMcpData,
   ConfigMcpResponses,
   DebugLogsGetAllData,
@@ -128,6 +187,10 @@ import type {
   AuthSetData,
   AuthSetResponses,
   AuthSetErrors,
+  WebsocketConnectionsData,
+  WebsocketConnectionsResponses,
+  WebsocketConnectionData,
+  WebsocketConnectionResponses,
   CompletionsGenerateTextData,
   CompletionsGenerateTextResponses,
   CompletionsGenerateTextErrors,
@@ -223,6 +286,34 @@ class Config extends _HeyApiClient {
     return (options?.client ?? this._client).get<ConfigMcpResponses, unknown, ThrowOnError>({
       url: "/config/mcp",
       ...options,
+    })
+  }
+}
+
+class OutputStyles extends _HeyApiClient {
+  /**
+   * Get available output styles
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<OutputStylesListData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<OutputStylesListResponses, unknown, ThrowOnError>({
+      url: "/output-styles",
+      ...options,
+    })
+  }
+}
+
+class OutputStyle extends _HeyApiClient {
+  /**
+   * Set output style
+   */
+  public set<ThrowOnError extends boolean = false>(options?: Options<OutputStyleSetData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<OutputStyleSetResponses, unknown, ThrowOnError>({
+      url: "/output-style/set",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
     })
   }
 }
@@ -465,6 +556,40 @@ class Command extends _HeyApiClient {
   }
 }
 
+class CustomCommand extends _HeyApiClient {
+  /**
+   * List all custom commands
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<CustomCommandListData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<CustomCommandListResponses, unknown, ThrowOnError>({
+      url: "/custom-commands",
+      ...options,
+    })
+  }
+
+  /**
+   * Get custom command completions for auto-completion
+   */
+  public complete<ThrowOnError extends boolean = false>(options?: Options<CustomCommandCompleteData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<CustomCommandCompleteResponses, unknown, ThrowOnError>({
+      url: "/custom-commands/complete",
+      ...options,
+    })
+  }
+}
+
+class FlagSuggestions extends _HeyApiClient {
+  /**
+   * Get flag suggestions for command auto-completion
+   */
+  public get<ThrowOnError extends boolean = false>(options?: Options<FlagSuggestionsGetData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<FlagSuggestionsGetResponses, unknown, ThrowOnError>({
+      url: "/flag-suggestions",
+      ...options,
+    })
+  }
+}
+
 class Find extends _HeyApiClient {
   /**
    * Find text in files
@@ -641,6 +766,16 @@ class Tui extends _HeyApiClient {
   }
 
   /**
+   * Clear the current TUI session
+   */
+  public clearSession<ThrowOnError extends boolean = false>(options?: Options<TuiClearSessionData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<TuiClearSessionResponses, unknown, ThrowOnError>({
+      url: "/tui/clear-session",
+      ...options,
+    })
+  }
+
+  /**
    * Execute a TUI command (e.g. agent_cycle)
    */
   public executeCommand<ThrowOnError extends boolean = false>(options?: Options<TuiExecuteCommandData, ThrowOnError>) {
@@ -747,6 +882,32 @@ class Tui extends _HeyApiClient {
   }
 
   /**
+   * Update the output style in TUI
+   */
+  public updateOutputStyle<ThrowOnError extends boolean = false>(
+    options?: Options<TuiUpdateOutputStyleData, ThrowOnError>,
+  ) {
+    return (options?.client ?? this._client).post<TuiUpdateOutputStyleResponses, unknown, ThrowOnError>({
+      url: "/tui/update-output-style",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Get the current output style from TUI
+   */
+  public getOutputStyle<ThrowOnError extends boolean = false>(options?: Options<TuiGetOutputStyleData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<TuiGetOutputStyleResponses, unknown, ThrowOnError>({
+      url: "/tui/get-output-style",
+      ...options,
+    })
+  }
+
+  /**
    * Show a toast notification in the TUI
    */
   public showToast<ThrowOnError extends boolean = false>(options?: Options<TuiShowToastData, ThrowOnError>) {
@@ -788,6 +949,206 @@ class Web extends _HeyApiClient {
   public info<ThrowOnError extends boolean = false>(options?: Options<WebInfoData, ThrowOnError>) {
     return (options?.client ?? this._client).get<WebInfoResponses, unknown, ThrowOnError>({
       url: "/web/api/info",
+      ...options,
+    })
+  }
+}
+
+class Git extends _HeyApiClient {
+  /**
+   * Get git diff for branches, commits, or working directory
+   */
+  public diff<ThrowOnError extends boolean = false>(options?: Options<GitDiffData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<GitDiffResponses, unknown, ThrowOnError>({
+      url: "/git/diff",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Get file content at specific git revision
+   */
+  public file<ThrowOnError extends boolean = false>(options?: Options<GitFileData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<GitFileResponses, unknown, ThrowOnError>({
+      url: "/git/file",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Get current git status
+   */
+  public status<ThrowOnError extends boolean = false>(options?: Options<GitStatusData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<GitStatusResponses, unknown, ThrowOnError>({
+      url: "/git/status",
+      ...options,
+    })
+  }
+
+  /**
+   * Get list of git branches
+   */
+  public branches<ThrowOnError extends boolean = false>(options?: Options<GitBranchesData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<GitBranchesResponses, unknown, ThrowOnError>({
+      url: "/git/branches",
+      ...options,
+    })
+  }
+
+  /**
+   * Get recent commits
+   */
+  public commits<ThrowOnError extends boolean = false>(options?: Options<GitCommitsData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<GitCommitsResponses, unknown, ThrowOnError>({
+      url: "/git/commits",
+      ...options,
+    })
+  }
+}
+
+class Reviews extends _HeyApiClient {
+  /**
+   * Save a code review to local JSON file
+   */
+  public save<ThrowOnError extends boolean = false>(options?: Options<ReviewsSaveData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<ReviewsSaveResponses, ReviewsSaveErrors, ThrowOnError>({
+      url: "/reviews/save",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * List all saved code reviews with metadata
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<ReviewsListData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<ReviewsListResponses, ReviewsListErrors, ThrowOnError>({
+      url: "/reviews",
+      ...options,
+    })
+  }
+
+  /**
+   * Delete a code review by ID
+   */
+  public delete<ThrowOnError extends boolean = false>(options: Options<ReviewsDeleteData, ThrowOnError>) {
+    return (options.client ?? this._client).delete<ReviewsDeleteResponses, ReviewsDeleteErrors, ThrowOnError>({
+      url: "/reviews/{id}",
+      ...options,
+    })
+  }
+
+  /**
+   * Load a specific code review by ID
+   */
+  public get<ThrowOnError extends boolean = false>(options: Options<ReviewsGetData, ThrowOnError>) {
+    return (options.client ?? this._client).get<ReviewsGetResponses, ReviewsGetErrors, ThrowOnError>({
+      url: "/reviews/{id}",
+      ...options,
+    })
+  }
+
+  /**
+   * Add user response to a comment thread in a review
+   */
+  public addCommentResponse<ThrowOnError extends boolean = false>(
+    options: Options<ReviewsAddCommentResponseData, ThrowOnError>,
+  ) {
+    return (options.client ?? this._client).post<
+      ReviewsAddCommentResponseResponses,
+      ReviewsAddCommentResponseErrors,
+      ThrowOnError
+    >({
+      url: "/reviews/{id}/comments/{commentId}/respond",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    })
+  }
+}
+
+class Files extends _HeyApiClient {
+  /**
+   * Write content to a file
+   */
+  public write<ThrowOnError extends boolean = false>(options?: Options<FilesWriteData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<FilesWriteResponses, FilesWriteErrors, ThrowOnError>({
+      url: "/api/files/write",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Read content from a file
+   */
+  public read<ThrowOnError extends boolean = false>(options: Options<FilesReadData, ThrowOnError>) {
+    return (options.client ?? this._client).get<FilesReadResponses, FilesReadErrors, ThrowOnError>({
+      url: "/api/files/read",
+      ...options,
+    })
+  }
+
+  /**
+   * List contents of a directory
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<FilesListData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<FilesListResponses, FilesListErrors, ThrowOnError>({
+      url: "/api/files/list",
+      ...options,
+    })
+  }
+
+  /**
+   * Delete a file or directory
+   */
+  public delete<ThrowOnError extends boolean = false>(options?: Options<FilesDeleteData, ThrowOnError>) {
+    return (options?.client ?? this._client).delete<FilesDeleteResponses, FilesDeleteErrors, ThrowOnError>({
+      url: "/api/files/delete",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Create a directory
+   */
+  public mkdir<ThrowOnError extends boolean = false>(options?: Options<FilesMkdirData, ThrowOnError>) {
+    return (options?.client ?? this._client).post<FilesMkdirResponses, FilesMkdirErrors, ThrowOnError>({
+      url: "/api/files/mkdir",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+  }
+
+  /**
+   * Check if a file or directory exists
+   */
+  public exists<ThrowOnError extends boolean = false>(options: Options<FilesExistsData, ThrowOnError>) {
+    return (options.client ?? this._client).get<FilesExistsResponses, FilesExistsErrors, ThrowOnError>({
+      url: "/api/files/exists",
       ...options,
     })
   }
@@ -873,23 +1234,45 @@ class Auth extends _HeyApiClient {
   }
 }
 
+class Websocket extends _HeyApiClient {
+  /**
+   * Get active WebSocket connections
+   */
+  public connections<ThrowOnError extends boolean = false>(options?: Options<WebsocketConnectionsData, ThrowOnError>) {
+    return (options?.client ?? this._client).get<WebsocketConnectionsResponses, unknown, ThrowOnError>({
+      url: "/websocket/connections",
+      ...options,
+    })
+  }
+
+  /**
+   * Get specific WebSocket connection info
+   */
+  public connection<ThrowOnError extends boolean = false>(options: Options<WebsocketConnectionData, ThrowOnError>) {
+    return (options.client ?? this._client).get<WebsocketConnectionResponses, unknown, ThrowOnError>({
+      url: "/websocket/connection/{id}",
+      ...options,
+    })
+  }
+}
+
 class Completions extends _HeyApiClient {
   /**
    * Generate text using AI with specified provider, model, prompts and tools
    */
   public generateText<ThrowOnError extends boolean = false>(
-    options?: Options<CompletionsGenerateTextData, ThrowOnError>,
+    options: Options<CompletionsGenerateTextData, ThrowOnError>,
   ) {
-    return (options?.client ?? this._client).post<
+    return (options.client ?? this._client).post<
       CompletionsGenerateTextResponses,
       CompletionsGenerateTextErrors,
       ThrowOnError
     >({
-      url: "/completions/generate-text",
+      url: "/websocket/connection/{id}",
       ...options,
       headers: {
         "Content-Type": "application/json",
-        ...options?.headers,
+        ...options.headers,
       },
     })
   }
@@ -918,16 +1301,24 @@ export class OpencodeClient extends _HeyApiClient {
   project = new Project({ client: this._client })
   event = new Event({ client: this._client })
   config = new Config({ client: this._client })
+  outputStyles = new OutputStyles({ client: this._client })
+  outputStyle = new OutputStyle({ client: this._client })
   path = new Path({ client: this._client })
   session = new Session({ client: this._client })
   command = new Command({ client: this._client })
+  customCommand = new CustomCommand({ client: this._client })
+  flagSuggestions = new FlagSuggestions({ client: this._client })
   find = new Find({ client: this._client })
   file = new File({ client: this._client })
   app = new App({ client: this._client })
   tui = new Tui({ client: this._client })
   web = new Web({ client: this._client })
+  git = new Git({ client: this._client })
+  reviews = new Reviews({ client: this._client })
+  files = new Files({ client: this._client })
   debugLogs = new DebugLogs({ client: this._client })
   httpLogs = new HttpLogs({ client: this._client })
   auth = new Auth({ client: this._client })
+  websocket = new Websocket({ client: this._client })
   completions = new Completions({ client: this._client })
 }

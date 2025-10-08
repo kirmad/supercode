@@ -4,7 +4,7 @@
  * Handles dependency injection and component initialization
  */
 
-import type { IWorkflowProcessor } from './interfaces.js'
+import type { IWorkflowProcessor, IOperationSubscriber } from './interfaces.js'
 import type {
   ReviewInput,
   ReviewResult,
@@ -14,10 +14,12 @@ import type {
   ADOCredentials,
   ShardingConfig,
   ProcessingConfig,
-  AggregationConfig
+  AggregationConfig,
+  SubscriptionConfig
 } from '../types/index.js'
 import { WorkflowType } from '../types/index.js'
 import { ReviewWorkflowProcessor } from '../review/review-workflow-processor.js'
+import { OperationSubscriber } from './operation-subscriber.js'
 import { ValidationError, createLogger } from './utils.js'
 
 /**
@@ -32,7 +34,7 @@ export interface WorkflowFactoryConfig {
   /**
    * ADO (Azure DevOps) credentials for content fetching
    */
-  adoCredentials: ADOCredentials
+  adoCredentials?: ADOCredentials
 
   /**
    * Default configuration values
@@ -60,6 +62,7 @@ export interface WorkflowFactoryConfig {
 export class WorkflowFactory {
   private readonly config: WorkflowFactoryConfig
   private readonly logger = createLogger('WorkflowFactory')
+  private operationSubscriber?: IOperationSubscriber
 
   constructor(config: WorkflowFactoryConfig) {
     this.config = config
@@ -223,6 +226,27 @@ export class WorkflowFactory {
    */
   getConfig(): Readonly<WorkflowFactoryConfig> {
     return Object.freeze({ ...this.config })
+  }
+
+  /**
+   * Create or get operation subscriber for real-time workflow monitoring
+   */
+  createOperationSubscriber(config?: Partial<SubscriptionConfig>): IOperationSubscriber {
+    if (!this.operationSubscriber) {
+      const fullConfig: SubscriptionConfig = {
+        baseUrl: this.config.baseUrl,
+        reconnectInterval: 1000,
+        maxRetries: 10,
+        enableLogging: true,
+        heartbeatInterval: 30000,
+        ...config
+      }
+
+      this.operationSubscriber = new OperationSubscriber(fullConfig)
+      this.logger.debug('Operation subscriber created', { baseUrl: fullConfig.baseUrl })
+    }
+
+    return this.operationSubscriber
   }
 
   /**

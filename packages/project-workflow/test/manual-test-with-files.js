@@ -11,6 +11,7 @@
 
 import { createReviewWorkflow, processReview } from '../src/index.ts'
 import { ADOContentSource } from '../src/sources/ado-content-source.ts'
+import { WorkflowFactory } from '../src/core/workflow-factory.ts'
 import fs from 'fs/promises'
 import path from 'path'
 import os from 'os'
@@ -26,9 +27,181 @@ const ADO_CONFIG = {
 
 const TEST_PR_URL = `https://${ADO_CONFIG.organization}.visualstudio.com/${ADO_CONFIG.project}/_git/${ADO_CONFIG.repository}/pullrequest/${ADO_CONFIG.pullRequestId}`
 
+// Operation subscription test configuration
+const OPERATION_SUBSCRIPTION_CONFIG = {
+  enabled: true,
+  tags: ['review-insight', 'hunk', 'comment'],
+  baseUrl: 'http://localhost:3000'
+}
+
 async function log(message, level = 'INFO') {
   const timestamp = new Date().toISOString()
   console.log(`[${timestamp}] [${level}] ${message}`)
+}
+
+/**
+ * Test operation subscription functionality
+ * Sets up real-time event monitoring during review processing
+ */
+async function testOperationSubscription() {
+  await log('🔄 Testing Operation Subscription functionality')
+  await log('==============================================')
+
+  try {
+    // Create workflow factory for operation subscription
+    const factory = new WorkflowFactory({
+      baseUrl: OPERATION_SUBSCRIPTION_CONFIG.baseUrl,
+      adoCredentials: {
+        pat: ADO_CONFIG.pat,
+        organization: ADO_CONFIG.organization
+      }
+    })
+
+    // Create operation subscriber
+    const operationSubscriber = factory.createOperationSubscriber()
+
+    // Test metrics
+    const subscriptionMetrics = {
+      eventsReceived: 0,
+      eventsByType: {},
+      firstEventTime: null,
+      lastEventTime: null,
+      sessionEvents: new Map(),
+      totalDataCount: 0
+    }
+
+    // Start listening for WebSocket events
+    await log('🎧 Starting WebSocket listener...')
+    await operationSubscriber.startListening()
+
+    if (!operationSubscriber.isListening()) {
+      throw new Error('Failed to start WebSocket listener')
+    }
+    await log('✅ WebSocket listener started successfully')
+
+    // Subscribe to review workflow topic with real-time event logging
+    const topicId = 'operation-subscription-test-topic'
+    const subscriptionId = operationSubscriber.subscribe(
+      topicId,
+      OPERATION_SUBSCRIPTION_CONFIG.tags,
+      (data, metadata) => {
+        // Real-time event logging
+        const timestamp = new Date().toISOString()
+        subscriptionMetrics.eventsReceived++
+
+        if (!subscriptionMetrics.firstEventTime) {
+          subscriptionMetrics.firstEventTime = timestamp
+        }
+        subscriptionMetrics.lastEventTime = timestamp
+
+        // Count events by type
+        for (const tag of Object.keys(data)) {
+          subscriptionMetrics.eventsByType[tag] = (subscriptionMetrics.eventsByType[tag] || 0) + data[tag].length
+          subscriptionMetrics.totalDataCount += data[tag].length
+        }
+
+        // Track session events
+        if (metadata.sessionId) {
+          if (!subscriptionMetrics.sessionEvents.has(metadata.sessionId)) {
+            subscriptionMetrics.sessionEvents.set(metadata.sessionId, 0)
+          }
+          subscriptionMetrics.sessionEvents.set(
+            metadata.sessionId,
+            subscriptionMetrics.sessionEvents.get(metadata.sessionId) + 1
+          )
+        }
+
+        console.log(`\n🔔 [${timestamp}] REAL-TIME EVENT`)
+        console.log(`   Topic: ${metadata.topicId}`)
+        console.log(`   Session: ${metadata.sessionId}`)
+        console.log(`   Source: ${metadata.source}`)
+        console.log(`   Has New Data: ${metadata.hasNewData}`)
+        console.log(`   Tags: ${Object.keys(data).join(', ')}`)
+
+        // Show sample data for each tag
+        for (const [tag, values] of Object.entries(data)) {
+          console.log(`   ${tag}: ${values.length} items`)
+          if (values.length > 0) {
+            // Show first item as sample
+            const sample = values[0].length > 100 ? values[0].substring(0, 100) + '...' : values[0]
+            console.log(`     Sample: "${sample}"`)
+          }
+        }
+        console.log(`   Total Events: ${subscriptionMetrics.eventsReceived}`)
+      }
+    )
+
+    await log(`✅ Subscribed to topic "${topicId}" with subscription ID: ${subscriptionId}`)
+    await log(`🏷️ Monitoring tags: ${OPERATION_SUBSCRIPTION_CONFIG.tags.join(', ')}`)
+
+    // Add test session to topic to simulate workflow integration
+    const testSessionId = 'test-session-' + Date.now()
+    operationSubscriber.addSessionToTopic(topicId, testSessionId)
+    await log(`➕ Added test session "${testSessionId}" to topic`)
+
+    // Show subscription status
+    const activeSubscriptions = operationSubscriber.getActiveSubscriptions()
+    await log(`📊 Active subscriptions: ${activeSubscriptions.length}`)
+    activeSubscriptions.forEach((sub, i) => {
+      console.log(`   ${i+1}. Topic: ${sub.topicId}, Tags: ${sub.tags.join(',')}, Sessions: ${sub.sessionCount}`)
+    })
+
+    // Show topic sessions
+    const topicSessions = operationSubscriber.getTopicSessions(topicId)
+    await log(`📋 Topic sessions: ${topicSessions.join(', ')}`)
+
+    // Get subscriber status
+    const status = operationSubscriber.getStatus()
+    await log('🔍 Subscriber Status:')
+    console.log(JSON.stringify(status, null, 2))
+
+    return {
+      operationSubscriber,
+      subscriptionId,
+      topicId,
+      metrics: subscriptionMetrics,
+      cleanup: async () => {
+        try {
+          await log('🧹 Cleaning up operation subscription...')
+
+          // Remove test session
+          operationSubscriber.removeSessionFromTopic(topicId, testSessionId)
+          await log(`➖ Removed test session "${testSessionId}" from topic`)
+
+          // Unsubscribe
+          const unsubscribed = operationSubscriber.unsubscribe(subscriptionId)
+          await log(`🔕 Unsubscribed from topic: ${unsubscribed}`)
+
+          // Stop listening
+          operationSubscriber.stopListening()
+          await log('⏹️ Stopped WebSocket listener')
+
+          // Final metrics
+          await log('📈 Final Subscription Metrics:')
+          console.log(`   Total Events: ${subscriptionMetrics.eventsReceived}`)
+          console.log(`   Event Types: ${JSON.stringify(subscriptionMetrics.eventsByType)}`)
+          console.log(`   Total Data Items: ${subscriptionMetrics.totalDataCount}`)
+          console.log(`   Session Count: ${subscriptionMetrics.sessionEvents.size}`)
+
+          if (subscriptionMetrics.firstEventTime && subscriptionMetrics.lastEventTime) {
+            const duration = new Date(subscriptionMetrics.lastEventTime) - new Date(subscriptionMetrics.firstEventTime)
+            console.log(`   Event Duration: ${duration}ms`)
+            if (duration > 0) {
+              const frequency = subscriptionMetrics.eventsReceived / (duration / 1000)
+              console.log(`   Event Frequency: ${frequency.toFixed(2)} events/second`)
+            }
+          }
+
+        } catch (cleanupError) {
+          await log(`⚠️ Cleanup error: ${cleanupError.message}`, 'WARN')
+        }
+      }
+    }
+
+  } catch (error) {
+    await log(`❌ Operation subscription test failed: ${error.message}`, 'ERROR')
+    throw error
+  }
 }
 
 /**
@@ -303,6 +476,17 @@ async function testADOCommentWorkflow(reviewResult) {
 async function testWithFilePreservation() {
   await log('🧪 Testing with file preservation to see generated review files')
 
+  // Initialize operation subscription for real-time monitoring
+  let subscriptionTest = null
+  try {
+    await log('\n🚀 Setting up operation subscription for real-time monitoring...')
+    subscriptionTest = await testOperationSubscription()
+    await log('✅ Operation subscription ready for real-time events\n')
+  } catch (subscriptionError) {
+    await log(`⚠️ Operation subscription setup failed: ${subscriptionError.message}`, 'WARN')
+    await log('   Continuing with review workflow without real-time monitoring...')
+  }
+
   try {
     const reviewInput = {
       type: 'ado-pr',
@@ -311,13 +495,15 @@ async function testWithFilePreservation() {
     }
 
     const config = {
-      // baseUrl: 'http://localhost:3000',  // Comment out to use local file system
+      baseUrl: 'http://localhost:3000',  // Enable server for operation subscription
       adoCredentials: {
         pat: ADO_CONFIG.pat,
         organization: ADO_CONFIG.organization
       },
       autoCleanup: false,  // PRESERVE WORKSPACE
       saveVersions: true,  // SAVE VERSION HISTORY
+      // ENABLE operation subscription for real-time monitoring
+      operationSubscription: OPERATION_SUBSCRIPTION_CONFIG,
       sharding: {
         strategy: 'file_boundary',
         targetTokens: 8000,
@@ -387,6 +573,15 @@ async function testWithFilePreservation() {
     // Add ADO test results to the main result
     result.adoCommentTest = adoResult
 
+    // Add operation subscription test results
+    if (subscriptionTest) {
+      result.operationSubscriptionTest = {
+        subscriptionId: subscriptionTest.subscriptionId,
+        topicId: subscriptionTest.topicId,
+        metrics: subscriptionTest.metrics
+      }
+    }
+
     return result
 
   } catch (error) {
@@ -395,6 +590,16 @@ async function testWithFilePreservation() {
       await log(`Stack trace: ${error.stack}`, 'DEBUG')
     }
     throw error
+  } finally {
+    // Clean up operation subscription
+    if (subscriptionTest && subscriptionTest.cleanup) {
+      try {
+        await log('\n🧹 Cleaning up operation subscription...')
+        await subscriptionTest.cleanup()
+      } catch (cleanupError) {
+        await log(`⚠️ Operation subscription cleanup failed: ${cleanupError.message}`, 'WARN')
+      }
+    }
   }
 }
 
@@ -439,6 +644,17 @@ async function runManualTest() {
       replySuccess: result.adoCommentTest?.replyResult?.success || false
     }, null, 2))
 
+    console.log('\nOperation Subscription Test Results:')
+    console.log(JSON.stringify({
+      subscriptionEnabled: !!result.operationSubscriptionTest,
+      subscriptionId: result.operationSubscriptionTest?.subscriptionId || null,
+      topicId: result.operationSubscriptionTest?.topicId || null,
+      eventsReceived: result.operationSubscriptionTest?.metrics?.eventsReceived || 0,
+      eventTypes: result.operationSubscriptionTest?.metrics?.eventsByType || {},
+      totalDataCount: result.operationSubscriptionTest?.metrics?.totalDataCount || 0,
+      sessionCount: result.operationSubscriptionTest?.metrics?.sessionEvents?.size || 0
+    }, null, 2))
+
     // Show verification instructions
     if (result.adoCommentTest?.success) {
       console.log('\n📋 Manual Verification Steps:')
@@ -459,6 +675,28 @@ async function runManualTest() {
       console.log('4. Workspace files are preserved and accessible')
     }
 
+    // Operation Subscription verification
+    if (result.operationSubscriptionTest) {
+      console.log('\n🔔 Operation Subscription Verification:')
+      console.log(`1. Real-time events received: ${result.operationSubscriptionTest.metrics.eventsReceived}`)
+      console.log(`2. Event types captured: ${Object.keys(result.operationSubscriptionTest.metrics.eventsByType).join(', ')}`)
+      console.log(`3. Total data items: ${result.operationSubscriptionTest.metrics.totalDataCount}`)
+      console.log(`4. Check console output above for real-time event logs during review processing`)
+
+      if (result.operationSubscriptionTest.metrics.eventsReceived > 0) {
+        console.log('✅ Operation subscription working correctly - events were captured in real-time!')
+      } else {
+        console.log('⚠️ No events received - check WebSocket connection and server configuration')
+      }
+    } else {
+      console.log('\n⚠️ Operation Subscription Issues:')
+      console.log('Make sure:')
+      console.log('1. OpenCode server is running with WebSocket support')
+      console.log('2. Server is accessible at http://localhost:3000')
+      console.log('3. WebSocket connection can be established')
+      console.log('4. Operation subscription is properly enabled in config')
+    }
+
   } catch (error) {
     await log(`💥 Manual test failed: ${error.message}`, 'ERROR')
     process.exit(1)
@@ -474,6 +712,8 @@ export {
   runManualTest,
   testWithFilePreservation,
   testADOCommentWorkflow,
+  testOperationSubscription,
   ADO_CONFIG,
-  TEST_PR_URL
+  TEST_PR_URL,
+  OPERATION_SUBSCRIPTION_CONFIG
 }

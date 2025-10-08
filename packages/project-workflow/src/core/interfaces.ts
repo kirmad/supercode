@@ -22,7 +22,9 @@ import type {
   WorkspaceConfig,
   WorkspaceStatistics,
   SourceMetadata,
-  ShardProcessor
+  ShardProcessor,
+  OperationCallback,
+  SubscriptionInfo
 } from '../types/index.js'
 
 /**
@@ -236,4 +238,69 @@ export interface IWorkspaceManager {
    * @returns The workspace root directory path
    */
   getWorkspaceRootDirectory?(): string
+}
+
+/**
+ * Operation subscription interface for real-time workflow monitoring
+ */
+export interface IOperationSubscriber {
+  /**
+   * Subscribe to workflow events for a specific topic
+   * @param topicId - Topic identifier (typically workflow ID)
+   * @param tags - XML tags to monitor
+   * @param callback - Callback function for notifications
+   * @returns Unique subscription ID
+   */
+  subscribe(topicId: string, tags: string[], callback: OperationCallback): string
+
+  /**
+   * Unsubscribe from a topic
+   * @param subscriptionId - Subscription ID returned from subscribe()
+   * @returns true if successfully unsubscribed, false if not found
+   */
+  unsubscribe(subscriptionId: string): boolean
+
+  /**
+   * Add a session to a topic for event filtering
+   * @param topicId - Topic identifier
+   * @param sessionId - Session ID to associate with topic
+   */
+  addSessionToTopic(topicId: string, sessionId: string): void
+
+  /**
+   * Remove a session from a topic
+   * @param topicId - Topic identifier
+   * @param sessionId - Session ID to remove from topic
+   */
+  removeSessionFromTopic(topicId: string, sessionId: string): void
+
+  /**
+   * Start listening for WebSocket events
+   * @returns Promise resolving when connection is established
+   */
+  startListening(): Promise<void>
+
+  /**
+   * Stop listening and cleanup resources
+   */
+  stopListening(): void
+
+  /**
+   * Get information about active subscriptions
+   * @returns Array of subscription information
+   */
+  getActiveSubscriptions(): SubscriptionInfo[]
+
+  /**
+   * Get session IDs associated with a topic
+   * @param topicId - Topic identifier
+   * @returns Array of session IDs
+   */
+  getTopicSessions(topicId: string): string[]
+
+  /**
+   * Check if the subscriber is actively listening
+   * @returns true if listening, false otherwise
+   */
+  isListening(): boolean
 }

@@ -402,6 +402,15 @@ export interface ReviewConfig extends WorkflowConfig {
   maxFileSize?: number
   adoCredentials?: ADOCredentials
   saveVersions?: boolean
+  /** Operation subscription configuration */
+  operationSubscription?: {
+    /** Enable real-time operation subscription */
+    enabled: boolean
+    /** XML tags to monitor (defaults to ['review-insight', 'hunk', 'comment']) */
+    tags?: string[]
+    /** Enable real-time updates during processing */
+    realtimeUpdates?: boolean
+  }
 }
 
 /**
@@ -616,5 +625,290 @@ export class ValidationError extends WorkflowError {
   constructor(message: string, context?: Record<string, any>) {
     super(message, 'VALIDATION_ERROR', context)
     this.name = 'ValidationError'
+  }
+}
+
+// ============================================================================
+// Operation Subscription Types
+// ============================================================================
+
+/**
+ * Callback function for operation notifications
+ */
+export type OperationCallback = (data: ExtractedTagData, metadata: NotificationMetadata) => void
+
+/**
+ * Configuration for operation subscription
+ */
+export interface SubscriptionConfig {
+  /** SuperCode server base URL */
+  baseUrl: string
+  /** WebSocket reconnect interval in milliseconds */
+  reconnectInterval?: number
+  /** Maximum reconnection attempts */
+  maxRetries?: number
+  /** Enable debug logging */
+  enableLogging?: boolean
+  /** WebSocket heartbeat interval in milliseconds */
+  heartbeatInterval?: number
+}
+
+/**
+ * Individual operation subscription
+ */
+export interface OperationSubscription {
+  /** Unique subscription identifier */
+  id: string
+  /** Topic identifier (typically workflow ID) */
+  topicId: string
+  /** XML tags to monitor */
+  tags: string[]
+  /** Notification callback function */
+  callback: OperationCallback
+  /** Subscription creation timestamp */
+  createdAt: string
+  /** Whether subscription is active */
+  isActive: boolean
+}
+
+/**
+ * Topic registry for managing sessions and subscriptions
+ */
+export interface TopicRegistry {
+  [topicId: string]: {
+    /** Active session IDs for this topic */
+    sessions: Set<string>
+    /** Active subscriptions for this topic */
+    subscriptions: Map<string, OperationSubscription>
+    /** Current aggregated data */
+    aggregatedData: ExtractedTagData
+    /** Last update timestamp */
+    lastUpdate: string
+  }
+}
+
+/**
+ * Extracted XML tag data
+ */
+export interface ExtractedTagData {
+  [tagName: string]: string[]
+}
+
+/**
+ * Subscription information for status reporting
+ */
+export interface SubscriptionInfo {
+  /** Subscription ID */
+  id: string
+  /** Topic ID */
+  topicId: string
+  /** Monitored tags */
+  tags: string[]
+  /** Number of associated sessions */
+  sessionCount: number
+  /** Number of data items */
+  dataCount: number
+  /** Last update timestamp */
+  lastUpdate: string
+}
+
+/**
+ * Notification metadata
+ */
+export interface NotificationMetadata {
+  /** Topic identifier */
+  topicId: string
+  /** Source session ID (if applicable) */
+  sessionId?: string
+  /** Event timestamp */
+  timestamp: string
+  /** Message source type */
+  source: 'partial' | 'complete'
+  /** Whether this notification contains new data */
+  hasNewData: boolean
+}
+
+/**
+ * WebSocket configuration for operation subscriber
+ */
+export interface WebSocketConfig {
+  /** WebSocket URL */
+  url: string
+  /** Session ID for connection */
+  sessionId?: string
+  /** Working directory */
+  directory?: string
+  /** Enable automatic reconnection */
+  autoReconnect?: boolean
+  /** Reconnection delay in milliseconds */
+  reconnectDelay?: number
+  /** Maximum reconnection attempts */
+  maxReconnectAttempts?: number
+  /** Heartbeat interval in milliseconds */
+  heartbeatInterval?: number
+}
+
+/**
+ * Processed message from WebSocket events
+ */
+export interface ProcessedMessage {
+  /** Session identifier */
+  sessionId: string
+  /** Message role */
+  role: 'assistant' | 'user' | 'system'
+  /** Message content */
+  content: string
+  /** Whether this is a partial message */
+  isPartial: boolean
+  /** Message timestamp */
+  timestamp: string
+  /** Raw event data */
+  rawEvent?: any
+}
+
+/**
+ * WebSocket event structure based on SuperCode protocol
+ */
+export interface SuperCodeWebSocketEvent {
+  /** Event type identifier */
+  type: 'event'
+  /** Event name */
+  event: string
+  /** Event payload */
+  data: {
+    /** Primary session identifier */
+    sessionId?: string
+    /** Alternative session identifier */
+    sessionID?: string
+    /** Legacy session identifiers */
+    session_id?: string
+    session?: string
+    /** Message correlation ID */
+    messageId?: string
+    /** Message role */
+    role?: 'assistant' | 'user' | 'system'
+    /** Raw content */
+    content?: string
+    /** Raw text content */
+    text?: string
+    /** Info object for message.updated events */
+    info?: {
+      id: string
+      role: 'assistant' | 'user' | 'system'
+      sessionID: string
+      sessionId?: string
+      content?: string
+      text?: string
+      completed?: boolean
+      [key: string]: any
+    }
+    /** Part object for message.part.updated events */
+    part?: {
+      sessionID?: string
+      sessionId?: string
+      text?: string
+      content?: string
+      completed?: boolean
+      time?: {
+        completed?: string
+      }
+      [key: string]: any
+    }
+    /** Structured message object */
+    message?: {
+      /** Message ID */
+      id: string
+      /** Session ID */
+      sessionId: string
+      /** Alternative session ID */
+      sessionID?: string
+      session_id?: string
+      session?: string
+      /** Message role */
+      role?: 'assistant' | 'user' | 'system'
+      /** Direct content */
+      content?: string
+      text?: string
+      /** Message parts */
+      parts: MessagePart[]
+      /** Message info */
+      info: MessageInfo
+      /** Completion marker */
+      completed?: boolean
+      /** Timing information */
+      time: {
+        /** Creation timestamp */
+        created: string
+        /** Last update timestamp */
+        updated: string
+        /** Completion timestamp (indicates complete message) */
+        completed?: string
+      }
+    }
+    /** Message parts array (alternative location) */
+    parts?: MessagePart[]
+    /** Completion flags */
+    completed?: boolean
+    finished?: boolean
+    /** Additional event-specific fields */
+    [key: string]: any
+  }
+  /** Event timestamp */
+  timestamp: number
+  /** Optional event ID */
+  id?: string
+}
+
+/**
+ * Message part structure
+ */
+export interface MessagePart {
+  /** Part type */
+  type: 'text' | 'tool_use' | 'tool_result'
+  /** Text content */
+  text?: string
+  /** Tool name for tool parts */
+  tool?: string
+  /** Tool output for tool results */
+  output?: any
+  /** Part identifier */
+  id?: string
+}
+
+/**
+ * Message info structure
+ */
+export interface MessageInfo {
+  /** Message role */
+  role: 'assistant' | 'user' | 'system'
+  /** Message ID */
+  id: string
+  /** Token usage information */
+  tokens?: {
+    /** Input tokens */
+    input: number
+    /** Output tokens */
+    output: number
+    /** Cache tokens */
+    cache?: {
+      /** Cache read tokens */
+      read: number
+      /** Cache write tokens */
+      write: number
+    }
+    /** Reasoning tokens */
+    reasoning?: number
+  }
+  /** Whether this is a summary message */
+  summary?: boolean
+}
+
+/**
+ * Operation subscription error
+ */
+export class OperationSubscriptionError extends WorkflowError {
+  constructor(message: string, context?: Record<string, any>) {
+    super(message, 'OPERATION_SUBSCRIPTION_ERROR', context)
+    this.name = 'OperationSubscriptionError'
   }
 }

@@ -62,6 +62,9 @@ export type Event =
   | ({
       type: "tui.agent.changed"
     } & EventTuiAgentChanged)
+  | ({
+      type: "tui.output.style.changed"
+    } & EventTuiOutputStyleChanged)
 
 export type EventInstallationUpdated = {
   type: "installation.updated"
@@ -586,6 +589,7 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  outputStyle?: string
 }
 
 export type EventSessionDeleted = {
@@ -647,6 +651,14 @@ export type EventTuiAgentChanged = {
   }
 }
 
+export type EventTuiOutputStyleChanged = {
+  type: "tui.output.style.changed"
+  properties: {
+    styleName: string
+    description?: string
+  }
+}
+
 export type Config = {
   /**
    * JSON schema reference for configuration validation
@@ -678,6 +690,8 @@ export type Config = {
       description?: string
       agent?: string
       model?: string
+      allowedTools?: Array<string>
+      denyTools?: Array<string>
     }
   }
   plugin?: Array<string>
@@ -686,6 +700,10 @@ export type Config = {
    * Control sharing behavior:'manual' allows manual sharing via commands, 'auto' enables automatic sharing, 'disabled' disables all sharing
    */
   share?: "manual" | "auto" | "disabled"
+  /**
+   * Output style mode: controls the tone and format of responses. Options: 'default', 'explanatory', 'learning', or custom styles
+   */
+  outputStyle?: string
   /**
    * @deprecated Use 'share' field instead. Share newly created sessions automatically
    */
@@ -1063,6 +1081,8 @@ export type AgentConfig = {
   tools?: {
     [key: string]: boolean
   }
+  allowedTools?: Array<string>
+  denyTools?: Array<string>
   disable?: boolean
   /**
    * Description of when to use the agent
@@ -1085,6 +1105,8 @@ export type AgentConfig = {
     | {
         [key: string]: boolean
       }
+    | Array<string>
+    | Array<string>
     | boolean
     | ("subagent" | "primary" | "all")
     | {
@@ -1178,6 +1200,14 @@ export type McpRemoteConfig = {
 
 export type LayoutConfig = "auto" | "stretch"
 
+export type OutputStylesList = {
+  styles: Array<{
+    name: string
+    description?: string
+    builtIn: boolean
+  }>
+}
+
 export type Path = {
   state: string
   config: string
@@ -1228,6 +1258,8 @@ export type Command = {
   agent?: string
   model?: string
   template: string
+  allowedTools?: Array<string>
+  denyTools?: Array<string>
 }
 
 export type Symbol = {
@@ -1295,9 +1327,72 @@ export type Agent = {
   tools: {
     [key: string]: boolean
   }
+  allowedTools?: Array<string>
+  denyTools?: Array<string>
   options: {
     [key: string]: unknown
   }
+}
+
+export type GitDiffRequest = {
+  sourceBranch?: string
+  targetBranch?: string
+  commitHash?: string
+  staged?: boolean
+}
+
+export type GitFileContentRequest = {
+  path: string
+  ref?: string
+}
+
+export type FileWriteResponse = {
+  success: boolean
+  path: string
+  size: number
+}
+
+export type FileError = {
+  error: string
+  details?: string
+}
+
+export type FileReadResponse = {
+  path: string
+  content: string
+  size: number
+}
+
+export type FileListResponse = {
+  path: string
+  entries: Array<{
+    name: string
+    path: string
+    type: "file" | "directory"
+    size?: number
+    modified?: string
+  }>
+}
+
+export type FileDeleteResponse = {
+  success: boolean
+  path: string
+  type: "file" | "directory"
+}
+
+export type FileMkdirResponse = {
+  success: boolean
+  path: string
+  recursive: boolean
+}
+
+export type FileExistsResponse = {
+  path: string
+  exists: boolean
+  type?: "file" | "directory"
+  size?: number
+  modified?: string
+  created?: string
 }
 
 export type Auth =
@@ -1411,6 +1506,46 @@ export type ConfigGetResponses = {
 
 export type ConfigGetResponse = ConfigGetResponses[keyof ConfigGetResponses]
 
+export type OutputStylesListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/output-styles"
+}
+
+export type OutputStylesListResponses = {
+  /**
+   * List of output styles
+   */
+  200: OutputStylesList
+}
+
+export type OutputStylesListResponse = OutputStylesListResponses[keyof OutputStylesListResponses]
+
+export type OutputStyleSetData = {
+  body?: {
+    outputStyle: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/output-style/set"
+}
+
+export type OutputStyleSetResponses = {
+  /**
+   * Output style updated
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type OutputStyleSetResponse = OutputStyleSetResponses[keyof OutputStyleSetResponses]
+
 export type PathGetData = {
   body?: never
   path?: never
@@ -1451,6 +1586,7 @@ export type SessionCreateData = {
   body?: {
     parentID?: string
     title?: string
+    outputStyle?: string
   }
   path?: never
   query?: {
@@ -1564,6 +1700,7 @@ export type SessionInitData = {
     messageID: string
     providerID: string
     modelID: string
+    outputStyle?: string
   }
   path: {
     /**
@@ -1650,6 +1787,7 @@ export type SessionSummarizeData = {
   body?: {
     providerID: string
     modelID: string
+    outputStyle?: string
   }
   path: {
     /**
@@ -1710,6 +1848,15 @@ export type SessionPromptData = {
     tools?: {
       [key: string]: boolean
     }
+    commandTools?: {
+      allowedTools?: Array<string>
+      denyTools?: Array<string>
+    }
+    flagTools?: {
+      allowedTools?: Array<string>
+      denyTools?: Array<string>
+    }
+    outputStyle?: string
     parts: Array<
       | ({
           type: "text"
@@ -1781,6 +1928,7 @@ export type SessionCommandData = {
     messageID?: string
     agent?: string
     model?: string
+    outputStyle?: string
     arguments: string
     command: string
   }
@@ -1919,6 +2067,123 @@ export type CommandListResponses = {
 
 export type CommandListResponse = CommandListResponses[keyof CommandListResponses]
 
+export type CustomCommandListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Optional session ID to determine project context
+     */
+    sessionId?: string
+  }
+  url: "/custom-commands"
+}
+
+export type CustomCommandListResponses = {
+  /**
+   * List of custom commands
+   */
+  200: Array<{
+    name: string
+    description?: string
+    namespace?: string
+    fullName: string
+    usage?: string
+    arguments?: Array<string>
+  }>
+}
+
+export type CustomCommandListResponse = CustomCommandListResponses[keyof CustomCommandListResponses]
+
+export type CustomCommandCompleteData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Command prefix to filter by
+     */
+    prefix?: string
+    /**
+     * Optional session ID to determine project context
+     */
+    sessionId?: string
+  }
+  url: "/custom-commands/complete"
+}
+
+export type CustomCommandCompleteResponses = {
+  /**
+   * Filtered list of custom commands for completion
+   */
+  200: Array<{
+    name: string
+    description?: string
+    namespace?: string
+    fullName: string
+    usage?: string
+    arguments?: Array<string>
+  }>
+}
+
+export type CustomCommandCompleteResponse = CustomCommandCompleteResponses[keyof CustomCommandCompleteResponses]
+
+export type FlagSuggestionsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Current input text to determine command context
+     */
+    input?: string
+    /**
+     * Flag prefix to filter suggestions (e.g., '--ve' for '--verbose')
+     */
+    prefix?: string
+    /**
+     * Optional session ID for context
+     */
+    sessionId?: string
+  }
+  url: "/flag-suggestions"
+}
+
+export type FlagSuggestionsGetResponses = {
+  /**
+   * List of flag suggestions
+   */
+  200: Array<{
+    /**
+     * The flag itself (e.g., '--verbose')
+     */
+    flag: string
+    /**
+     * Short version if available (e.g., '-v')
+     */
+    shortFlag?: string
+    /**
+     * Description of what the flag does
+     */
+    description: string
+    /**
+     * Type of value expected
+     */
+    valueType?: string
+    /**
+     * Category for grouping
+     */
+    category?: string
+    /**
+     * Example usage
+     */
+    example?: string
+  }>
+}
+
+export type FlagSuggestionsGetResponse = FlagSuggestionsGetResponses[keyof FlagSuggestionsGetResponses]
+
 export type ConfigProvidersData = {
   body?: never
   path?: never
@@ -2032,7 +2297,7 @@ export type FileListResponses = {
   200: Array<FileNode>
 }
 
-export type FileListResponse = FileListResponses[keyof FileListResponses]
+export type FileListResponse2 = FileListResponses[keyof FileListResponses]
 
 export type FileReadData = {
   body?: never
@@ -2051,7 +2316,7 @@ export type FileReadResponses = {
   200: FileContent
 }
 
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
+export type FileReadResponse2 = FileReadResponses[keyof FileReadResponses]
 
 export type FileStatusData = {
   body?: never
@@ -2272,6 +2537,24 @@ export type TuiCancelPromptResponses = {
 
 export type TuiCancelPromptResponse = TuiCancelPromptResponses[keyof TuiCancelPromptResponses]
 
+export type TuiClearSessionData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/clear-session"
+}
+
+export type TuiClearSessionResponses = {
+  /**
+   * Session cleared successfully
+   */
+  200: boolean
+}
+
+export type TuiClearSessionResponse = TuiClearSessionResponses[keyof TuiClearSessionResponses]
+
 export type TuiExecuteCommandData = {
   body?: {
     command: string
@@ -2442,6 +2725,46 @@ export type TuiNotifyAgentChangedResponses = {
 
 export type TuiNotifyAgentChangedResponse = TuiNotifyAgentChangedResponses[keyof TuiNotifyAgentChangedResponses]
 
+export type TuiUpdateOutputStyleData = {
+  body?: {
+    styleName: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/update-output-style"
+}
+
+export type TuiUpdateOutputStyleResponses = {
+  /**
+   * Output style updated successfully
+   */
+  200: boolean
+}
+
+export type TuiUpdateOutputStyleResponse = TuiUpdateOutputStyleResponses[keyof TuiUpdateOutputStyleResponses]
+
+export type TuiGetOutputStyleData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/tui/get-output-style"
+}
+
+export type TuiGetOutputStyleResponses = {
+  /**
+   * Current output style retrieved
+   */
+  200: {
+    styleName: string
+  }
+}
+
+export type TuiGetOutputStyleResponse = TuiGetOutputStyleResponses[keyof TuiGetOutputStyleResponses]
+
 export type TuiShowToastData = {
   body?: {
     title?: string
@@ -2522,6 +2845,632 @@ export type WebInfoResponses = {
 }
 
 export type WebInfoResponse = WebInfoResponses[keyof WebInfoResponses]
+
+export type GitDiffData = {
+  body?: GitDiffRequest
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/git/diff"
+}
+
+export type GitDiffResponses = {
+  /**
+   * Git diff output
+   */
+  200: {
+    diff: string
+    files: Array<{
+      path: string
+      additions: number
+      deletions: number
+    }>
+  }
+}
+
+export type GitDiffResponse = GitDiffResponses[keyof GitDiffResponses]
+
+export type GitFileData = {
+  body?: GitFileContentRequest
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/git/file"
+}
+
+export type GitFileResponses = {
+  /**
+   * File content
+   */
+  200: {
+    content: string
+    exists: boolean
+  }
+}
+
+export type GitFileResponse = GitFileResponses[keyof GitFileResponses]
+
+export type GitStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/git/status"
+}
+
+export type GitStatusResponses = {
+  /**
+   * Git status
+   */
+  200: {
+    branch: string
+    ahead: number
+    behind: number
+    modified: Array<string>
+    staged: Array<string>
+    untracked: Array<string>
+  }
+}
+
+export type GitStatusResponse = GitStatusResponses[keyof GitStatusResponses]
+
+export type GitBranchesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/git/branches"
+}
+
+export type GitBranchesResponses = {
+  /**
+   * List of branches
+   */
+  200: {
+    current: string
+    branches: Array<string>
+  }
+}
+
+export type GitBranchesResponse = GitBranchesResponses[keyof GitBranchesResponses]
+
+export type GitCommitsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    limit?: string
+    branch?: string
+  }
+  url: "/git/commits"
+}
+
+export type GitCommitsResponses = {
+  /**
+   * List of commits
+   */
+  200: {
+    commits: Array<{
+      hash: string
+      shortHash: string
+      subject: string
+      author: string
+      date: string
+    }>
+  }
+}
+
+export type GitCommitsResponse = GitCommitsResponses[keyof GitCommitsResponses]
+
+export type ReviewsSaveData = {
+  body?: {
+    id: string
+    metadata: {
+      title: string
+      createdAt: string
+      updatedAt: string
+      status: "draft" | "active" | "completed" | "archived"
+      version: number
+    }
+    source: {
+      type: "branches" | "commit" | "diff" | "staged"
+      sourceBranch?: string
+      targetBranch?: string
+      commitHash?: string
+      customDiff?: string
+      diffContent: string
+      diffFiles: Array<unknown>
+    }
+    analysis: {
+      insights: Array<unknown>
+      hunks: Array<unknown>
+      aiSessionId?: string
+    }
+    comments: Array<{
+      id: string
+      threadId: string
+      parentId?: string
+      sessionId?: string
+      status: "open" | "pending" | "resolved" | "dismissed"
+      createdAt: string
+      updatedAt: string
+      file: string
+      lines: {
+        start: number
+        end: number
+      }
+      type: "issue" | "suggestion" | "praise"
+      severity: "high" | "medium" | "low"
+      message: string
+      fixCode?: string
+      author: {
+        type: "ai" | "user"
+        name: string
+      }
+      responses: Array<{
+        id: string
+        author: {
+          type: "ai" | "user"
+          name: string
+        }
+        content: string
+        createdAt: string
+        sessionId?: string
+      }>
+    }>
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/reviews/save"
+}
+
+export type ReviewsSaveErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ReviewsSaveError = ReviewsSaveErrors[keyof ReviewsSaveErrors]
+
+export type ReviewsSaveResponses = {
+  /**
+   * Review saved successfully
+   */
+  200: {
+    success: boolean
+    id: string
+    filename: string
+  }
+}
+
+export type ReviewsSaveResponse = ReviewsSaveResponses[keyof ReviewsSaveResponses]
+
+export type ReviewsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/reviews"
+}
+
+export type ReviewsListErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    error: string
+  }
+}
+
+export type ReviewsListError = ReviewsListErrors[keyof ReviewsListErrors]
+
+export type ReviewsListResponses = {
+  /**
+   * List of review metadata
+   */
+  200: Array<{
+    id: string
+    title: string
+    createdAt: string
+    updatedAt: string
+    status: "draft" | "active" | "completed" | "archived"
+    version: number
+    filename: string
+  }>
+}
+
+export type ReviewsListResponse = ReviewsListResponses[keyof ReviewsListResponses]
+
+export type ReviewsDeleteData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/reviews/{id}"
+}
+
+export type ReviewsDeleteErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    error: string
+  }
+  /**
+   * Review not found
+   */
+  404: {
+    error: string
+  }
+}
+
+export type ReviewsDeleteError = ReviewsDeleteErrors[keyof ReviewsDeleteErrors]
+
+export type ReviewsDeleteResponses = {
+  /**
+   * Review deleted successfully
+   */
+  200: {
+    success: boolean
+  }
+}
+
+export type ReviewsDeleteResponse = ReviewsDeleteResponses[keyof ReviewsDeleteResponses]
+
+export type ReviewsGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/reviews/{id}"
+}
+
+export type ReviewsGetErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    error: string
+  }
+  /**
+   * Review not found
+   */
+  404: {
+    error: string
+  }
+}
+
+export type ReviewsGetError = ReviewsGetErrors[keyof ReviewsGetErrors]
+
+export type ReviewsGetResponses = {
+  /**
+   * Review data
+   */
+  200: {
+    id: string
+    metadata: {
+      title: string
+      createdAt: string
+      updatedAt: string
+      status: "draft" | "active" | "completed" | "archived"
+      version: number
+    }
+    source: {
+      type: "branches" | "commit" | "diff" | "staged"
+      sourceBranch?: string
+      targetBranch?: string
+      commitHash?: string
+      customDiff?: string
+      diffContent: string
+      diffFiles: Array<unknown>
+    }
+    analysis: {
+      insights: Array<unknown>
+      hunks: Array<unknown>
+      aiSessionId?: string
+    }
+    comments: Array<{
+      id: string
+      threadId: string
+      parentId?: string
+      sessionId?: string
+      status: "open" | "pending" | "resolved" | "dismissed"
+      createdAt: string
+      updatedAt: string
+      file: string
+      lines: {
+        start: number
+        end: number
+      }
+      type: "issue" | "suggestion" | "praise"
+      severity: "high" | "medium" | "low"
+      message: string
+      fixCode?: string
+      author: {
+        type: "ai" | "user"
+        name: string
+      }
+      responses: Array<{
+        id: string
+        author: {
+          type: "ai" | "user"
+          name: string
+        }
+        content: string
+        createdAt: string
+        sessionId?: string
+      }>
+    }>
+  }
+}
+
+export type ReviewsGetResponse = ReviewsGetResponses[keyof ReviewsGetResponses]
+
+export type ReviewsAddCommentResponseData = {
+  body?: {
+    content: string
+    author: {
+      type: "ai" | "user"
+      name: string
+    }
+    sessionId?: string
+  }
+  path: {
+    id: string
+    commentId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/reviews/{id}/comments/{commentId}/respond"
+}
+
+export type ReviewsAddCommentResponseErrors = {
+  /**
+   * Bad request
+   */
+  400: {
+    error: string
+  }
+  /**
+   * Review or comment not found
+   */
+  404: {
+    error: string
+  }
+}
+
+export type ReviewsAddCommentResponseError = ReviewsAddCommentResponseErrors[keyof ReviewsAddCommentResponseErrors]
+
+export type ReviewsAddCommentResponseResponses = {
+  /**
+   * Response added successfully
+   */
+  200: {
+    success: boolean
+    responseId: string
+  }
+}
+
+export type ReviewsAddCommentResponseResponse =
+  ReviewsAddCommentResponseResponses[keyof ReviewsAddCommentResponseResponses]
+
+export type FilesWriteData = {
+  body?: {
+    /**
+     * File path relative to project root
+     */
+    path: string
+    /**
+     * File content to write
+     */
+    content: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/files/write"
+}
+
+export type FilesWriteErrors = {
+  /**
+   * Bad request
+   */
+  400: FileError
+}
+
+export type FilesWriteError = FilesWriteErrors[keyof FilesWriteErrors]
+
+export type FilesWriteResponses = {
+  /**
+   * File written successfully
+   */
+  200: FileWriteResponse
+}
+
+export type FilesWriteResponse = FilesWriteResponses[keyof FilesWriteResponses]
+
+export type FilesReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    /**
+     * File path relative to project root
+     */
+    path: string
+  }
+  url: "/api/files/read"
+}
+
+export type FilesReadErrors = {
+  /**
+   * File not found
+   */
+  404: FileError
+}
+
+export type FilesReadError = FilesReadErrors[keyof FilesReadErrors]
+
+export type FilesReadResponses = {
+  /**
+   * File content
+   */
+  200: FileReadResponse
+}
+
+export type FilesReadResponse = FilesReadResponses[keyof FilesReadResponses]
+
+export type FilesListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    /**
+     * Directory path relative to project root (empty for root)
+     */
+    path?: string
+  }
+  url: "/api/files/list"
+}
+
+export type FilesListErrors = {
+  /**
+   * Directory not found
+   */
+  404: FileError
+}
+
+export type FilesListError = FilesListErrors[keyof FilesListErrors]
+
+export type FilesListResponses = {
+  /**
+   * Directory contents
+   */
+  200: FileListResponse
+}
+
+export type FilesListResponse = FilesListResponses[keyof FilesListResponses]
+
+export type FilesDeleteData = {
+  body?: {
+    /**
+     * Path to file or directory to delete
+     */
+    path: string
+    /**
+     * Type of item to delete
+     */
+    type: "file" | "directory"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/files/delete"
+}
+
+export type FilesDeleteErrors = {
+  /**
+   * File or directory not found
+   */
+  404: FileError
+}
+
+export type FilesDeleteError = FilesDeleteErrors[keyof FilesDeleteErrors]
+
+export type FilesDeleteResponses = {
+  /**
+   * File or directory deleted successfully
+   */
+  200: FileDeleteResponse
+}
+
+export type FilesDeleteResponse = FilesDeleteResponses[keyof FilesDeleteResponses]
+
+export type FilesMkdirData = {
+  body?: {
+    /**
+     * Directory path to create
+     */
+    path: string
+    /**
+     * Create parent directories if they don't exist
+     */
+    recursive?: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/files/mkdir"
+}
+
+export type FilesMkdirErrors = {
+  /**
+   * Bad request
+   */
+  400: FileError
+}
+
+export type FilesMkdirError = FilesMkdirErrors[keyof FilesMkdirErrors]
+
+export type FilesMkdirResponses = {
+  /**
+   * Directory created successfully
+   */
+  200: FileMkdirResponse
+}
+
+export type FilesMkdirResponse = FilesMkdirResponses[keyof FilesMkdirResponses]
+
+export type FilesExistsData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    /**
+     * Path to check
+     */
+    path: string
+  }
+  url: "/api/files/exists"
+}
+
+export type FilesExistsErrors = {
+  /**
+   * Bad request
+   */
+  400: FileError
+}
+
+export type FilesExistsError = FilesExistsErrors[keyof FilesExistsErrors]
+
+export type FilesExistsResponses = {
+  /**
+   * Existence check result
+   */
+  200: FileExistsResponse
+}
+
+export type FilesExistsResponse = FilesExistsResponses[keyof FilesExistsResponses]
 
 export type ConfigMcpData = {
   body?: never
@@ -2937,6 +3886,58 @@ export type AuthSetResponses = {
 
 export type AuthSetResponse = AuthSetResponses[keyof AuthSetResponses]
 
+export type WebsocketConnectionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/websocket/connections"
+}
+
+export type WebsocketConnectionsResponses = {
+  /**
+   * List of active WebSocket connections
+   */
+  200: Array<{
+    id: string
+    sessionId?: string
+    directory?: string
+    subscriptions: Array<string>
+    authenticated: boolean
+    lastActivity: number
+  }>
+}
+
+export type WebsocketConnectionsResponse = WebsocketConnectionsResponses[keyof WebsocketConnectionsResponses]
+
+export type WebsocketConnectionData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/websocket/connection/{id}"
+}
+
+export type WebsocketConnectionResponses = {
+  /**
+   * WebSocket connection info
+   */
+  200: {
+    id: string
+    sessionId?: string
+    directory?: string
+    subscriptions: Array<string>
+    authenticated: boolean
+    lastActivity: number
+  } | null
+}
+
+export type WebsocketConnectionResponse = WebsocketConnectionResponses[keyof WebsocketConnectionResponses]
+
 export type CompletionsGenerateTextData = {
   body?: {
     /**
@@ -2963,11 +3964,13 @@ export type CompletionsGenerateTextData = {
      */
     maxTokens?: number
   }
-  path?: never
+  path: {
+    id: string
+  }
   query?: {
     directory?: string
   }
-  url: "/completions/generate-text"
+  url: "/websocket/connection/{id}"
 }
 
 export type CompletionsGenerateTextErrors = {
