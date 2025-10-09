@@ -3,8 +3,9 @@
  * Extracts logic from scripts/sharded-review-parallel.js
  */
 
-import path from 'path'
+import { join, isAbsolute } from '../utils/browser-path.js'
 import type { IContentSource, IWorkspaceManager } from '../core/interfaces.js'
+import { BrowserConfig } from '../utils/browser-config.js'
 import { FileOperationsClient } from '../services/file-operations-client.js'
 import type {
   SourceContent,
@@ -160,8 +161,7 @@ export class ADOContentSource implements IContentSource {
     }
 
     // Fall back to environment variables (same as original script)
-    const pat = process.env.AZURE_DEVOPS_PAT ||
-                process.env.ADO_PAT
+    const pat = BrowserConfig.getAzureDevOpsPat()
 
     if (!pat) {
       throw new ContentSourceError('Azure DevOps PAT not configured. Please set AZURE_DEVOPS_PAT or ADO_PAT environment variable.')
@@ -829,7 +829,7 @@ export class ADOContentSource implements IContentSource {
     let searchDirs: string[] = []
 
     if (workspaceDir) {
-      if (path.isAbsolute(workspaceDir)) {
+      if (isAbsolute(workspaceDir)) {
         // Full absolute path provided
         searchDirs = [workspaceDir]
       } else if (this.workspaceManager) {
@@ -838,7 +838,7 @@ export class ADOContentSource implements IContentSource {
         if (workspaceRoot) {
           // Try both the exact workspace ID and as a subdirectory
           searchDirs = [
-            path.join(workspaceRoot, workspaceDir),
+            join(workspaceRoot, workspaceDir),
             (this.workspaceManager as any).getWorkspaceDirectory?.(workspaceDir) || workspaceDir
           ]
         } else {
@@ -869,7 +869,7 @@ export class ADOContentSource implements IContentSource {
     for (const dir of searchDirs) {
       try {
         // Try review-results.json first
-        const resultsPath = path.join(dir, 'review-results.json')
+        const resultsPath = join(dir, 'review-results.json')
         try {
           const resultsContent = await this.readFile(resultsPath)
           const resultsData = JSON.parse(resultsContent)
@@ -886,7 +886,7 @@ export class ADOContentSource implements IContentSource {
         }
 
         // Try review-index.json
-        const indexPath = path.join(dir, 'review-index.json')
+        const indexPath = join(dir, 'review-index.json')
         try {
           const indexContent = await this.readFile(indexPath)
           const indexData = JSON.parse(indexContent)
@@ -908,7 +908,7 @@ export class ADOContentSource implements IContentSource {
           for (const entry of entries) {
             // Look for review-workflow- patterns OR any directory in reviews folder
             if (entry.startsWith('review-workflow-') || entry.startsWith('proof-test-') || entry.startsWith('ado-') || entry.startsWith('e2e-test-')) {
-              const subDir = path.join(dir, entry)
+              const subDir = join(dir, entry)
               const comment = await this.findCommentInWorkspace(commentId, subDir)
               if (comment) {
                 return comment
@@ -1057,13 +1057,13 @@ export class ADOContentSource implements IContentSource {
     // Build search directories - handle both full paths and workspace names
     let searchDirs: string[] = []
 
-    if (path.isAbsolute(workspaceDir)) {
+    if (isAbsolute(workspaceDir)) {
       searchDirs = [workspaceDir]
     } else if (this.workspaceManager) {
       const workspaceRoot = (this.workspaceManager as any).getWorkspaceRootDirectory?.()
       if (workspaceRoot) {
         searchDirs = [
-          path.join(workspaceRoot, workspaceDir),
+          join(workspaceRoot, workspaceDir),
           (this.workspaceManager as any).getWorkspaceDirectory?.(workspaceDir) || workspaceDir
         ]
       } else {
@@ -1077,7 +1077,7 @@ export class ADOContentSource implements IContentSource {
 
     for (const dir of searchDirs) {
       // Try to update review-index.json
-      const indexPath = path.join(dir, 'review-index.json')
+      const indexPath = join(dir, 'review-index.json')
       try {
         const indexContent = await this.readFile(indexPath)
         const indexData = JSON.parse(indexContent)
@@ -1104,7 +1104,7 @@ export class ADOContentSource implements IContentSource {
       }
 
       // Also try to update review-results.json
-      const resultsPath = path.join(dir, 'review-results.json')
+      const resultsPath = join(dir, 'review-results.json')
       try {
         const resultsContent = await this.readFile(resultsPath)
         const resultsData = JSON.parse(resultsContent)
@@ -1157,8 +1157,8 @@ export class ADOContentSource implements IContentSource {
 
     if (workspaceDir) {
       // Check if the provided directory has workspace files
-      const reviewResultsPath = path.join(workspaceDir, 'review-results.json')
-      const reviewIndexPath = path.join(workspaceDir, 'review-index.json')
+      const reviewResultsPath = join(workspaceDir, 'review-results.json')
+      const reviewIndexPath = join(workspaceDir, 'review-index.json')
 
       try {
         if (await this.fileExists(reviewResultsPath)) {
@@ -1199,8 +1199,8 @@ export class ADOContentSource implements IContentSource {
         const entries = await this.listDirectory(dir)
         for (const entry of entries) {
           if (entry.startsWith('review-workflow-')) {
-            const subDir = path.join(dir, entry)
-            const reviewResultsPath = path.join(subDir, 'review-results.json')
+            const subDir = join(dir, entry)
+            const reviewResultsPath = join(subDir, 'review-results.json')
             try {
               if (await this.fileExists(reviewResultsPath)) {
                 return reviewResultsPath

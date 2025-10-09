@@ -108,6 +108,12 @@ export interface WorkflowResult {
   metadata: WorkflowMetadata
   statistics: ProcessingStatistics
   workspace?: string
+  content?: {
+    files?: ContentFile[]
+    diffs?: DiffData[]
+    totalSize?: number
+    totalTokens?: number
+  }
 }
 
 /**
@@ -216,6 +222,10 @@ export interface GitDiffConfig {
   toBranch?: string           // For branch diff
   remoteName?: string         // For unpushed changes (default: 'origin')
   baseBranch?: string         // For unpushed changes (default: 'main')
+
+  // File operations and workspace management
+  workspaceManager?: any      // IWorkspaceManager (avoiding import dependency)
+  fileOperationsClient?: any  // FileOperationsClient (avoiding import dependency)
 }
 
 /**
@@ -993,4 +1003,135 @@ export class OperationSubscriptionError extends WorkflowError {
     super(message, 'OPERATION_SUBSCRIPTION_ERROR', context)
     this.name = 'OperationSubscriptionError'
   }
+}
+
+// ========== Review Complete Event Types ==========
+
+/**
+ * Review complete event types
+ */
+export enum ReviewCompleteEventType {
+  REVIEW_COMPLETE = 'review-complete',
+  REVIEW_STARTED = 'review-started',
+  REVIEW_FAILED = 'review-failed'
+}
+
+/**
+ * File version information for review results
+ */
+export interface ReviewFileVersion {
+  /** Original file path */
+  filePath: string
+  /** Safe file name for version storage */
+  safeFileName: string
+  /** Path to old version (.local) */
+  oldVersionPath?: string
+  /** Path to new version (.remote) */
+  newVersionPath?: string
+  /** Path to diff file (.diff) */
+  diffPath?: string
+  /** Change type */
+  changeType: ChangeType
+  /** Added lines count */
+  addedLines: number
+  /** Removed lines count */
+  removedLines: number
+  /** File size in bytes */
+  size: number
+  /** Estimated token count */
+  tokens: number
+}
+
+/**
+ * Review complete event data
+ */
+export interface ReviewCompleteEventData {
+  /** Review session identifier */
+  reviewId: string
+  /** Source content metadata */
+  sourceMetadata: SourceMetadata
+  /** List of files with version information */
+  files: ReviewFileVersion[]
+  /** Review statistics */
+  statistics: {
+    /** Total files processed */
+    totalFiles: number
+    /** Total size of all files */
+    totalSize: number
+    /** Total tokens processed */
+    totalTokens: number
+    /** Processing time in milliseconds */
+    processingTime: number
+    /** Number of shards created */
+    totalShards: number
+    /** Successful shards */
+    successfulShards: number
+    /** Failed shards */
+    failedShards: number
+  }
+  /** Workspace path containing version files */
+  workspacePath: string
+  /** Timestamp when review completed */
+  completedAt: string
+  /** Review result summary */
+  success: boolean
+  /** Error message if review failed */
+  error?: string
+}
+
+/**
+ * Review complete event callback
+ */
+export type ReviewCompleteCallback = (eventData: ReviewCompleteEventData) => void
+
+/**
+ * Project workflow service interface
+ */
+export interface IProjectWorkflowService {
+  /**
+   * Start a git review workflow
+   */
+  startGitReview(config: GitDiffConfig, reviewConfig?: Partial<ReviewConfig>): Promise<string>
+
+  /**
+   * Subscribe to review complete events
+   */
+  onReviewComplete(callback: ReviewCompleteCallback): string
+
+  /**
+   * Unsubscribe from review complete events
+   */
+  unsubscribeReviewComplete(subscriptionId: string): boolean
+
+  /**
+   * Get review status
+   */
+  getReviewStatus(reviewId: string): Promise<ReviewStatus | null>
+
+  /**
+   * Cancel a review
+   */
+  cancelReview(reviewId: string): Promise<boolean>
+}
+
+/**
+ * Review status information
+ */
+export interface ReviewStatus {
+  /** Review identifier */
+  id: string
+  /** Current status */
+  status: 'starting' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  /** Progress percentage (0-100) */
+  progress: number
+  /** Current step description */
+  currentStep: string
+  /** Start time */
+  startTime: string
+  /** End time (if completed) */
+  endTime?: string
+  /** Error message (if failed) */
+  error?: string
+  /** Associated workspace path */
+  workspacePath?: string
 }

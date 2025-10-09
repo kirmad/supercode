@@ -19,10 +19,12 @@ import type {
   ReviewIndex,
   SourceContent,
   ExtractedTagData,
-  NotificationMetadata
+  NotificationMetadata,
+  GitDiffConfig
 } from '../types/index.js'
 import type { IContentSource } from '../core/interfaces.js'
 import { ADOContentSource } from '../sources/ado-content-source.js'
+import { GitContentSource } from '../core/git-content-source.js'
 import { FileBoundaryShardingStrategy } from './file-boundary-sharding-strategy.js'
 import { SessionProcessingEngine } from './session-processing-engine.js'
 import { ReviewResultAggregator } from './review-result-aggregator.js'
@@ -50,7 +52,7 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   private operationSubscriber?: IOperationSubscriber
   private subscriptionId?: string
 
-  constructor(config: ReviewConfig, contentSource?: IContentSource) {
+  constructor(config: ReviewConfig, contentSourceOrGitConfig?: IContentSource | GitDiffConfig) {
     this.config = config
     this.logger.info('Initializing Review Workflow Processor')
 
@@ -65,10 +67,23 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
     // Initialize workspace manager with FileOperationsClient
     this.workspaceManager = new WorkspaceManager(this.fileOperationsClient)
 
-    // Initialize content source - use provided or default to ADO
-    if (contentSource) {
-      this.contentSource = contentSource
+    // Initialize content source - check if it's a GitDiffConfig, IContentSource, or default to ADO
+    if (contentSourceOrGitConfig) {
+      // Check if it's a GitDiffConfig (has repositoryPath property)
+      if ('repositoryPath' in contentSourceOrGitConfig) {
+        // It's a GitDiffConfig, create GitContentSource like ADO pattern
+        const gitConfig = contentSourceOrGitConfig as GitDiffConfig
+        this.contentSource = new GitContentSource({
+          ...gitConfig,
+          workspaceManager: this.workspaceManager,
+          fileOperationsClient: this.fileOperationsClient
+        }, config.baseUrl)
+      } else {
+        // It's an IContentSource
+        this.contentSource = contentSourceOrGitConfig as IContentSource
+      }
     } else {
+      // Default to ADO
       this.contentSource = new ADOContentSource({
         baseUrl: config.baseUrl,
         credentials: config.adoCredentials,
@@ -134,11 +149,13 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
       // Step 6: Aggregate results
       const result = await this.aggregateResults(shardResults, content.metadata, mergedConfig, content.content.adoComments)
 
-      // Step 7: Save workspace if requested
+      // Step 7: Always include workspace path for version files
+      const workspacePath = await this.workspaceManager.getWorkspacePath()
+      result.workspace = workspacePath
+
       if (!mergedConfig.autoCleanup) {
         const stats = await this.workspaceManager.getStatistics()
-        result.workspace = stats.workspaceId
-        this.logger.info(`Workspace preserved: ${stats.workspaceId}`)
+        this.logger.info(`Workspace preserved: ${stats.workspaceId} at ${workspacePath}`)
       }
 
       // Step 8: Performance tracking
@@ -596,5 +613,12 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
         resultAggregator: 'ReviewResultAggregator'
       }
     }
+  }
+
+  /**
+   * Get workspace manager instance
+   */
+  getWorkspaceManager() {
+    return this.workspaceManager
   }
 }

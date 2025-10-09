@@ -15,7 +15,7 @@ import {
   HunkThreadInfo,
   ThreadInfo
 } from '../types/CodeReview'
-import { Hunk } from './CodeReviewService'
+import { Hunk } from './ProjectWorkflowService'
 
 export interface CommentThreadCallbacks {
   onThreadCreated?: (threadInfo: ThreadInfo) => void

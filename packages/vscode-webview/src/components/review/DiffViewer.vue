@@ -9,7 +9,7 @@
         @click="selectedFileIndex = index"
       >
         <Icon name="file-code" :size="14" />
-        <span class="file-name">{{ getFileName(file.path) }}</span>
+        <span class="file-name">{{ getFileName(file.path || file.fileName) }}</span>
         <span v-if="file.additions || file.deletions" class="file-stats">
           <span class="additions">+{{ file.additions || 0 }}</span>
           <span class="deletions">-{{ file.deletions || 0 }}</span>
@@ -23,11 +23,15 @@
       <div v-if="viewMode === 'unified' && currentFile" class="unified-view">
         <div class="file-header">
           <Icon name="file-code" />
-          {{ currentFile.path }}
+          {{ currentFile.path || currentFile.fileName || currentFile.fileName }}
+          <!-- Mode Indicator -->
+          <span v-if="contentMode && contentMode !== 'diff'" class="mode-indicator">
+            Viewing: {{ contentMode === 'local' ? 'Local' : 'Remote' }}
+          </span>
         </div>
 
         <div class="diff-lines">
-          <template v-for="(line, index) in processedLines" :key="index">
+          <template v-for="(line, index) in displayContent" :key="index">
             <!-- Hunk Description (shown before the hunk starts) -->
             <div
               v-if="isHunkStart(line.newNumber || line.oldNumber || 0)"
@@ -93,7 +97,7 @@
             <!-- Diff Line -->
             <div
               :class="['diff-line', line.type]"
-              :data-file="currentFile.path"
+              :data-file="currentFile.path || currentFile.fileName"
               :data-line="line.newNumber || line.oldNumber"
             >
               <!-- Line Numbers -->
@@ -106,7 +110,7 @@
                 <span v-else-if="line.type === 'removed'" class="diff-indicator">-</span>
                 <span v-else class="diff-indicator"> </span>
 
-                <code v-html="highlightSyntax(line.content, currentFile.path)"></code>
+                <code v-html="highlightSyntax(line.content, currentFile.path || currentFile.fileName)"></code>
 
                 <!-- Inline Comments (only on first line) -->
                 <div v-if="hasComment(line.newNumber || line.oldNumber || 0)" class="line-indicators">
@@ -173,71 +177,78 @@
       <div v-else-if="viewMode === 'split' && currentFile" class="split-view">
         <div class="file-header">
           <Icon name="file-code" />
-          {{ currentFile.path }}
+          {{ currentFile.path || currentFile.fileName || currentFile.fileName }}
+          <!-- Mode Indicator -->
+          <span v-if="contentMode && contentMode !== 'diff'" class="mode-indicator">
+            Viewing: {{ contentMode === 'local' ? 'Local' : 'Remote' }}
+          </span>
         </div>
 
-        <div class="split-container">
-          <!-- Old Version -->
-          <div class="split-pane old-pane">
-            <div class="pane-header">Original</div>
-            <div class="diff-lines">
-              <div
-                v-for="(line, index) in splitLines.old"
-                :key="`old-${index}`"
-                :class="['diff-line', line.type]"
-              >
-                <span class="line-number">{{ line.number || '' }}</span>
-                <div class="line-content">
-                  <code v-html="highlightSyntax(line.content, currentFile.path)"></code>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- New Version -->
-          <div class="split-pane new-pane">
-            <div class="pane-header">Modified</div>
-            <div class="diff-lines">
-              <div
-                v-for="(line, index) in splitLines.new"
-                :key="`new-${index}`"
-                :class="['diff-line', line.type]"
-                :data-file="currentFile.path"
-                :data-line="line.number"
-              >
-                <span class="line-number">{{ line.number || '' }}</span>
-                <div class="line-content">
-                  <code v-html="highlightSyntax(line.content, currentFile.path)"></code>
-
-                  <!-- Comments in split view -->
-                  <button
-                    v-if="hasComment(line.number || 0)"
-                    :class="['comment-indicator', getCommentTypeClass(line.number || 0)]"
-                    @click="toggleComment(line.number || 0)"
-                  >
-                    <Icon :name="getCommentTypeIcon(line.number || 0)" :size="14" />
-                  </button>
-                </div>
-
-                <!-- Expandable Comment -->
-                <transition name="slide-down">
-                  <div
-                    v-if="expandedComments[line.number || 0]"
-                    class="inline-comment-container"
-                  >
-                    <CommentCard
-                      v-for="comment in getLineComments(line.number || 0)"
-                      :key="`${comment.file}-${comment.lines.start}`"
-                      :comment="comment"
-                      :inline="true"
-                      @apply-fix="$emit('apply-fix', comment)"
-                    />
+        <template v-if="contentMode === 'diff'">
+          <div class="split-container">
+            <!-- Old Version -->
+            <div class="split-pane old-pane">
+              <div class="pane-header">Original</div>
+              <div class="diff-lines">
+                <div
+                  v-for="(line, index) in splitLines.old"
+                  :key="`old-${index}`"
+                  :class="['diff-line', line.type]"
+                >
+                  <span class="line-number">{{ line.number || '' }}</span>
+                  <div class="line-content">
+                    <code v-html="highlightSyntax(line.content, currentFile.path || currentFile.fileName)"></code>
                   </div>
-                </transition>
+                </div>
+              </div>
+            </div>
+
+            <!-- New Version -->
+            <div class="split-pane new-pane">
+              <div class="pane-header">Modified</div>
+              <div class="diff-lines">
+                <div
+                  v-for="(line, index) in splitLines.new"
+                  :key="`new-${index}`"
+                  :class="['diff-line', line.type]"
+                  :data-file="currentFile.path || currentFile.fileName"
+                  :data-line="line.number"
+                >
+                  <span class="line-number">{{ line.number || '' }}</span>
+                  <div class="line-content">
+                    <code v-html="highlightSyntax(line.content, currentFile.path || currentFile.fileName)"></code>
+
+                    <!-- Comments in split view -->
+                    <button
+                      v-if="hasComment(line.number || 0)"
+                      :class="['comment-indicator', getCommentTypeClass(line.number || 0)]"
+                      @click="toggleComment(line.number || 0)"
+                    >
+                      <Icon :name="getCommentTypeIcon(line.number || 0)" :size="14" />
+                    </button>
+                  </div>
+
+                  <!-- Expandable Comment -->
+                  <transition name="slide-down">
+                    <div
+                      v-if="expandedComments[line.number || 0]"
+                      class="inline-comment-container"
+                    >
+                      <CommentCard
+                        v-for="comment in getLineComments(line.number || 0)"
+                        :key="`${comment.file}-${comment.lines.start}`"
+                        :comment="comment"
+                        :inline="true"
+                        @apply-fix="$emit('apply-fix', comment)"
+                      />
+                    </div>
+                  </transition>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </template>
+        <div v-else class="empty-diff">Split view is only available for diffs.</div>
       </div>
 
       <!-- Empty State -->
@@ -255,7 +266,7 @@ import Icon from '../Icon.vue'
 import CommentCard from './CommentCard.vue'
 import HunkReplyCard from './HunkReplyCard.vue'
 import InlineCommentThread from './InlineCommentThread.vue'
-import type { DiffFile, Comment, Hunk } from '../../services/CodeReviewService'
+import type { DiffFile, Comment, Hunk } from '../../services/ProjectWorkflowService'
 import type { CommentThreadingService } from '../../services/CommentThreadingService'
 import type { ThreadInfo } from '../../types/CodeReview'
 
@@ -264,6 +275,7 @@ interface Props {
   comments: Comment[]
   hunks: Hunk[]
   viewMode: 'unified' | 'split'
+  contentMode?: 'diff' | 'local' | 'remote'
   threadingService?: CommentThreadingService
   threads?: ThreadInfo[]
   isHunkAiTyping?: (hunk: any) => boolean
@@ -345,9 +357,9 @@ const processedLines = computed((): ProcessedLine[] => {
         }
       }
     }
-  } else if (file.diff) {
+  } else if (file.diff || file.diffContent) {
     // Parse unified diff format
-    const diffLines = file.diff.split('\n')
+    const diffLines = (file.diff ?? file.diffContent)!.split('\n')
     let oldLine = 1
     let newLine = 1
     let inHeader = true
@@ -403,7 +415,7 @@ const splitLines = computed((): SplitLines => {
   const oldLines: Array<{ type: string; number?: number; content: string }> = []
   const newLines: Array<{ type: string; number?: number; content: string }> = []
 
-  for (const line of processedLines.value) {
+  for (const line of displayContent.value) {
     if (line.type === 'removed' || line.type === 'unchanged') {
       oldLines.push({
         type: line.type,
@@ -428,7 +440,42 @@ const splitLines = computed((): SplitLines => {
   return { old: oldLines, new: newLines }
 })
 
-function getFileName(path: string): string {
+const displayContent = computed((): ProcessedLine[] => {
+  if (!currentFile.value) return []
+
+  const contentMode = props.contentMode || 'diff'
+  const file = currentFile.value
+
+  if (contentMode === 'local' && file.localContent) {
+    // Split the local content by newlines and return as ProcessedLine array
+    const lines = file.localContent.split('\n')
+    return lines.map((content: string, index: number) => ({
+      type: 'unchanged' as const,
+      oldNumber: index + 1,
+      newNumber: index + 1,
+      content
+    }))
+  }
+
+  if (contentMode === 'remote' && file.remoteContent) {
+    // Split the remote content by newlines and return as ProcessedLine array
+    const lines = file.remoteContent.split('\n')
+    return lines.map((content: string, index: number) => ({
+      type: 'unchanged' as const,
+      oldNumber: index + 1,
+      newNumber: index + 1,
+      content
+    }))
+  }
+
+  // Fall back to existing diff processing for 'diff' mode or when version content is not available
+  return processedLines.value
+})
+
+function getFileName(path: string | undefined): string {
+  if (!path || typeof path !== 'string') {
+    return 'Unknown File'
+  }
   return path.split('/').pop() || path
 }
 
@@ -436,7 +483,7 @@ function hasComment(lineNumber: number): boolean {
   if (!currentFile.value) return false
   // Only show comment indicator on the first line of the comment range
   return props.comments.some(c =>
-    c.file === currentFile.value.path &&
+    c.file === (currentFile.value.path || currentFile.value.fileName) &&
     lineNumber === c.lines.start // Changed from >= start && <= end
   )
 }
@@ -445,7 +492,7 @@ function getLineComments(lineNumber: number): Comment[] {
   if (!currentFile.value) return []
   // Get comments that start at this line
   return props.comments.filter(c =>
-    c.file === currentFile.value.path &&
+    c.file === (currentFile.value.path || currentFile.value.fileName) &&
     lineNumber === c.lines.start // Only get comments that start at this line
   )
 }
@@ -693,6 +740,16 @@ watch(() => props.files, () => {
   border-bottom: 1px solid var(--border-subtle);
   font-size: 0.875rem;
   color: var(--text-primary);
+  font-weight: 500;
+}
+
+.mode-indicator {
+  margin-left: auto;
+  padding: 0.25rem 0.5rem;
+  background: var(--primary-gradient);
+  color: white;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
   font-weight: 500;
 }
 

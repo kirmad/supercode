@@ -2,7 +2,7 @@
  * Code Review TypeScript interfaces matching the server schema
  */
 
-import { Comment, DiffFile, ReviewInsight, Hunk } from '../services/CodeReviewService'
+import { Comment, DiffFile, ReviewInsight, Hunk } from '../services/ProjectWorkflowService'
 
 export interface CommentResponse {
   id: string

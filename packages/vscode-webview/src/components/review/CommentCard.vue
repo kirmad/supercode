@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Icon from '../Icon.vue'
-import type { Comment } from '../../services/CodeReviewService'
+import type { Comment } from '../../services/ProjectWorkflowService'
 
 interface Props {
   comment: Comment

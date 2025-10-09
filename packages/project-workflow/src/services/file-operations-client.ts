@@ -171,7 +171,7 @@ export class FileOperationsClient {
     }
 
     const result = await response.json();
-    return result.files;
+    return result.entries;
   }
 
   /**

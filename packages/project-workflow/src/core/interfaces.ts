@@ -55,6 +55,12 @@ export interface IWorkflowProcessor<TInput extends WorkflowInput, TResult extend
    * @returns Workflow type, version, and capabilities
    */
   getMetadata(): WorkflowMetadata
+
+  /**
+   * Get workspace manager instance
+   * @returns Workspace manager for file operations
+   */
+  getWorkspaceManager(): IWorkspaceManager
 }
 
 /**
@@ -242,6 +248,12 @@ export interface IWorkspaceManager {
    * @returns The workspace root directory path
    */
   getWorkspaceRootDirectory?(): string
+
+  /**
+   * Get the current workspace path
+   * @returns The current workspace path or undefined if no workspace is active
+   */
+  getWorkspacePath(): string | undefined
 }
 
 /**

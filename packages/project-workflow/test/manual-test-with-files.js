@@ -937,6 +937,26 @@ async function testWithFilePreservation(testMode = 'both') {
       // Test ADO comment publishing and replying functionality
       await log('\n' + '='.repeat(80))
       const adoCommentResult = await testADOCommentWorkflow(adoResult)
+      // Test new review workflow file access methods
+      if (adoResult.workspace) {
+        await log('\n' + '='.repeat(80))
+        try {
+          // Import WorkspaceManager for testing the new methods
+          const { WorkspaceManager } = await import('../src/core/workspace-manager.ts')
+          
+          // Create a workspace manager instance (simulating file operations client)
+          const workspaceManager = new WorkspaceManager()
+          // Set the current workspace to the one created by the review
+          workspaceManager.currentWorkspacePath = adoResult.workspace
+          
+          const reviewMethodsResult = await testReviewWorkflowFileMethods(workspaceManager, adoResult.workspace)
+          adoResult.reviewMethodsTest = reviewMethodsResult
+          
+        } catch (methodTestError) {
+          await log(`⚠️ Review workflow methods test failed: ${methodTestError.message}`, 'WARN')
+          adoResult.reviewMethodsTest = { success: false, error: methodTestError.message }
+        }
+      }
 
       // Add ADO test results to the main result
       adoResult.adoCommentTest = adoCommentResult
@@ -1007,6 +1027,196 @@ async function testWithFilePreservation(testMode = 'both') {
       } catch (cleanupError) {
         await log(`⚠️ Operation subscription cleanup failed: ${cleanupError.message}`, 'WARN')
       }
+    }
+  }
+}
+
+/**
+ * Test all new review workflow file access methods
+ */
+async function testReviewWorkflowFileMethods(workspaceManager, workspacePath) {
+  await log('🔄 Testing Review Workflow File Access Methods')
+  await log('============================================')
+
+  const results = {
+    getReviewIndex: null,
+    getReviewResults: null,
+    getVersionFiles: null,
+    getVersionFilesForPath: null,
+    getAllVersionFiles: null,
+    checkReviewFiles: null
+  }
+
+  try {
+    // Test 1: getReviewIndex()
+    await log('📄 Testing getReviewIndex()...')
+    try {
+      const reviewIndex = await workspaceManager.getReviewIndex()
+      if (reviewIndex) {
+        await log(`✅ getReviewIndex() success - Found review index with ${reviewIndex.totalFiles || 0} files`)
+        await log(`   PR: ${reviewIndex.pullRequest?.id || 'N/A'} - ${reviewIndex.pullRequest?.title || 'N/A'}`)
+        await log(`   ADO Comments: ${reviewIndex.adoComments?.length || 0}`)
+        results.getReviewIndex = { success: true, data: reviewIndex }
+      } else {
+        await log('⚠️ getReviewIndex() returned null - review-index.json not found')
+        results.getReviewIndex = { success: false, message: 'File not found' }
+      }
+    } catch (error) {
+      await log(`❌ getReviewIndex() failed: ${error.message}`, 'ERROR')
+      results.getReviewIndex = { success: false, error: error.message }
+    }
+
+    // Test 2: getReviewResults()
+    await log('📄 Testing getReviewResults()...')
+    try {
+      const reviewResults = await workspaceManager.getReviewResults()
+      if (reviewResults) {
+        await log(`✅ getReviewResults() success - Found ${reviewResults.insights?.length || 0} insights`)
+        await log(`   Hunks: ${reviewResults.hunks?.length || 0}`)
+        await log(`   Comments: ${reviewResults.comments?.length || 0}`)
+        results.getReviewResults = { success: true, data: reviewResults }
+      } else {
+        await log('⚠️ getReviewResults() returned null - review-results.json not found')
+        results.getReviewResults = { success: false, message: 'File not found' }
+      }
+    } catch (error) {
+      await log(`❌ getReviewResults() failed: ${error.message}`, 'ERROR')
+      results.getReviewResults = { success: false, error: error.message }
+    }
+
+    // Test 3: getVersionFiles()
+    await log('📁 Testing getVersionFiles()...')
+    try {
+      const versionFiles = await workspaceManager.getVersionFiles()
+      await log(`✅ getVersionFiles() success - Found ${versionFiles.length} version files`)
+      if (versionFiles.length > 0) {
+        await log(`   Sample files: ${versionFiles.slice(0, 5).join(', ')}`)
+        if (versionFiles.length > 5) {
+          await log(`   ... and ${versionFiles.length - 5} more`)
+        }
+      }
+      results.getVersionFiles = { success: true, count: versionFiles.length, files: versionFiles }
+    } catch (error) {
+      await log(`❌ getVersionFiles() failed: ${error.message}`, 'ERROR')
+      results.getVersionFiles = { success: false, error: error.message }
+    }
+
+    // Test 4: getVersionFilesForPath() - Test with the first file if we have version files
+    await log('📂 Testing getVersionFilesForPath()...')
+    try {
+      let testFilePath = 'test/example.js' // Default test path
+      
+      // If we have actual version files, use the first one to determine a real path
+      if (results.getVersionFiles?.files?.length > 0) {
+        const firstVersionFile = results.getVersionFiles.files[0]
+        // Extract base name by removing extensions
+        if (firstVersionFile.endsWith('.local')) {
+          testFilePath = firstVersionFile.slice(0, -6).replace(/_/g, '/')
+        } else if (firstVersionFile.endsWith('.remote')) {
+          testFilePath = firstVersionFile.slice(0, -7).replace(/_/g, '/')
+        } else if (firstVersionFile.endsWith('.diff')) {
+          testFilePath = firstVersionFile.slice(0, -5).replace(/_/g, '/')
+        }
+      }
+
+      const versionContent = await workspaceManager.getVersionFilesForPath(testFilePath)
+      await log(`✅ getVersionFilesForPath('${testFilePath}') success`)
+      await log(`   Local: ${versionContent.local ? 'Found' : 'Not found'}`)
+      await log(`   Remote: ${versionContent.remote ? 'Found' : 'Not found'}`)
+      await log(`   Diff: ${versionContent.diff ? 'Found' : 'Not found'}`)
+      
+      results.getVersionFilesForPath = { 
+        success: true, 
+        testPath: testFilePath,
+        hasLocal: !!versionContent.local,
+        hasRemote: !!versionContent.remote,
+        hasDiff: !!versionContent.diff
+      }
+    } catch (error) {
+      await log(`❌ getVersionFilesForPath() failed: ${error.message}`, 'ERROR')
+      results.getVersionFilesForPath = { success: false, error: error.message }
+    }
+
+    // Test 5: getAllVersionFiles()
+    await log('📚 Testing getAllVersionFiles()...')
+    try {
+      const allVersionFiles = await workspaceManager.getAllVersionFiles()
+      await log(`✅ getAllVersionFiles() success - Found ${allVersionFiles.length} file groups`)
+      
+      let totalVersions = 0
+      for (let i = 0; i < allVersionFiles.length; i++) {
+        const fileGroup = allVersionFiles[i]
+        if (i < 3) { // Show details for first 3 files
+          const versions = []
+          if (fileGroup.local) versions.push('local')
+          if (fileGroup.remote) versions.push('remote')
+          if (fileGroup.diff) versions.push('diff')
+          totalVersions += versions.length
+
+          await log(`   ${i+1}. ${fileGroup.filePath} (${versions.join(', ')})`)
+        }
+      }
+      
+      if (allVersionFiles.length > 3) {
+        await log(`   ... and ${allVersionFiles.length - 3} more files`)
+      }
+      
+      results.getAllVersionFiles = { 
+        success: true, 
+        fileGroups: allVersionFiles.length,
+        totalVersions: totalVersions,
+        sample: allVersionFiles.slice(0, 3).map(f => ({
+          filePath: f.filePath,
+          hasLocal: !!f.local,
+          hasRemote: !!f.remote,
+          hasDiff: !!f.diff
+        }))
+      }
+    } catch (error) {
+      await log(`❌ getAllVersionFiles() failed: ${error.message}`, 'ERROR')
+      results.getAllVersionFiles = { success: false, error: error.message }
+    }
+
+    // Test 6: checkReviewFiles()
+    await log('🔍 Testing checkReviewFiles()...')
+    try {
+      const reviewFileStatus = await workspaceManager.checkReviewFiles()
+      await log(`✅ checkReviewFiles() success`)
+      await log(`   Review Index: ${reviewFileStatus.hasReviewIndex ? 'Found' : 'Not found'}`)
+      await log(`   Review Results: ${reviewFileStatus.hasReviewResults ? 'Found' : 'Not found'}`)
+      await log(`   Version Files: ${reviewFileStatus.hasVersionFiles ? `Found (${reviewFileStatus.versionFileCount})` : 'Not found'}`)
+      
+      results.checkReviewFiles = { success: true, status: reviewFileStatus }
+    } catch (error) {
+      await log(`❌ checkReviewFiles() failed: ${error.message}`, 'ERROR')
+      results.checkReviewFiles = { success: false, error: error.message }
+    }
+
+    // Summary
+    const successCount = Object.values(results).filter(r => r?.success).length
+    const totalTests = Object.keys(results).length
+    
+    await log(`\n📊 Review Workflow File Methods Test Summary: ${successCount}/${totalTests} successful`)
+    
+    console.log('\n=== REVIEW WORKFLOW FILE METHODS TEST RESULTS ===')
+    console.log(JSON.stringify(results, null, 2))
+
+    return {
+      success: successCount > 0,
+      results,
+      summary: {
+        total: totalTests,
+        successful: successCount,
+        failed: totalTests - successCount
+      }
+    }
+
+  } catch (error) {
+    await log(`💥 Review workflow file methods test failed: ${error.message}`, 'ERROR')
+    return {
+      success: false,
+      error: error.message,
+      results
     }
   }
 }

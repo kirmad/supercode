@@ -100,45 +100,89 @@
 
           <!-- Branch/Commit Input -->
           <div v-if="selectedReviewType === 'branches'" class="branch-inputs">
-            <div class="input-group">
-              <label class="input-label">Source Branch:</label>
-              <select v-model="sourceBranch" class="text-input">
-                <option value="">Select a branch...</option>
-                <option v-for="branch in availableBranches" :key="branch" :value="branch">
-                  {{ branch }} {{ branch === currentBranch ? '(current)' : '' }}
-                </option>
-              </select>
+            <div v-if="isLoadingGitData" class="loading-state">
+              <Icon name="loader" class="spinning" />
+              <span>Loading git data...</span>
             </div>
-            <div class="input-group">
-              <label class="input-label">Target Branch:</label>
-              <select v-model="targetBranch" class="text-input">
-                <option value="">Select a branch...</option>
-                <option v-for="branch in availableBranches" :key="branch" :value="branch">
-                  {{ branch }} {{ branch === 'main' || branch === 'master' ? '(default)' : '' }}
-                </option>
-              </select>
+            <div v-else-if="gitDataError" class="error-state">
+              <Icon name="alert-circle" />
+              <span>{{ gitDataError }}</span>
+              <button @click="fetchGitData" class="retry-button">
+                <Icon name="refresh-cw" />
+                Retry
+              </button>
+            </div>
+            <div v-else class="branch-selection">
+              <div class="input-group">
+                <label class="input-label">Source Branch:</label>
+                <select v-model="sourceBranch" class="text-input" :disabled="availableBranches.length === 0">
+                  <option value="">Select a branch...</option>
+                  <option v-for="branch in availableBranches" :key="branch" :value="branch">
+                    {{ branch }} {{ branch === currentBranch ? '(current)' : '' }}
+                  </option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Target Branch:</label>
+                <select v-model="targetBranch" class="text-input" :disabled="availableBranches.length === 0">
+                  <option value="">Select a branch...</option>
+                  <option v-for="branch in availableBranches" :key="branch" :value="branch">
+                    {{ branch }} {{ branch === 'main' || branch === 'master' ? '(default)' : '' }}
+                  </option>
+                </select>
+              </div>
             </div>
           </div>
 
           <div v-else-if="selectedReviewType === 'commit'" class="commit-input">
-            <div class="input-group">
-              <label class="input-label">Select Commit:</label>
-              <select v-model="commitHash" class="text-input">
-                <option value="">Select a commit...</option>
-                <option v-for="commit in recentCommits" :key="commit.hash" :value="commit.hash">
-                  {{ commit.shortHash }} - {{ commit.subject }} ({{ commit.date }})
-                </option>
-              </select>
+            <div v-if="isLoadingGitData" class="loading-state">
+              <Icon name="loader" class="spinning" />
+              <span>Loading commits...</span>
             </div>
-            <div class="input-group" v-if="commitHash">
-              <label class="input-label">Or enter hash directly:</label>
+            <div v-else-if="gitDataError" class="error-state">
+              <Icon name="alert-circle" />
+              <span>{{ gitDataError }}</span>
+              <button @click="fetchGitData" class="retry-button">
+                <Icon name="refresh-cw" />
+                Retry
+              </button>
+            </div>
+            <div v-else class="commit-selection">
+              <div class="input-group">
+                <label class="input-label">Select Commit:</label>
+                <select v-model="commitHash" class="text-input" :disabled="recentCommits.length === 0">
+                  <option value="">{{ recentCommits.length === 0 ? 'No commits found' : 'Select a commit...' }}</option>
+                  <option v-for="commit in recentCommits" :key="commit.hash" :value="commit.hash">
+                    {{ commit.shortHash }} - {{ commit.subject }} ({{ commit.date }})
+                  </option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Or enter hash directly:</label>
+                <input
+                  v-model="commitHash"
+                  type="text"
+                  class="text-input"
+                  placeholder="abc123def456..."
+                  @keydown.enter="startReview"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="selectedReviewType === 'pr'" class="pr-input">
+            <div class="input-group">
+              <label class="input-label">Pull Request URL:</label>
               <input
-                v-model="commitHash"
-                type="text"
+                v-model="pullRequestUrl"
+                type="url"
                 class="text-input"
-                placeholder="abc123def..."
+                placeholder="https://github.com/user/repo/pull/123"
                 @keydown.enter="startReview"
               />
+              <p class="input-help">
+                Supports GitHub, GitLab, and Bitbucket pull request URLs
+              </p>
             </div>
           </div>
 
@@ -280,6 +324,34 @@
             Code Changes & Comments
           </h3>
 
+          <!-- Content Mode Selector -->
+          <div v-if="versionFiles.length > 0 && versionFiles.some(f => f.localContent || f.remoteContent)" class="content-mode-selector">
+            <label class="mode-label">View Mode:</label>
+            <div class="mode-buttons">
+              <button
+                @click="contentDisplayMode = 'diff'"
+                :class="['mode-button', { active: contentDisplayMode === 'diff' }]"
+              >
+                <Icon name="git-compare" />
+                Unified Diff
+              </button>
+              <button
+                @click="contentDisplayMode = 'local'"
+                :class="['mode-button', { active: contentDisplayMode === 'local' }]"
+              >
+                <Icon name="file-text" />
+                Local Version
+              </button>
+              <button
+                @click="contentDisplayMode = 'remote'"
+                :class="['mode-button', { active: contentDisplayMode === 'remote' }]"
+              >
+                <Icon name="cloud" />
+                Remote Version
+              </button>
+            </div>
+          </div>
+
           <!-- View Mode Toggle -->
           <div class="view-mode-toggle">
             <button
@@ -296,13 +368,14 @@
           <!-- Diff Content -->
           <div class="diff-content">
             <DiffViewer
-              v-if="currentDiffFiles.length > 0"
+              v-if="displayFiles.length && displayFiles.some(f => f.localContent || f.remoteContent)"
               ref="diffViewerRef"
-              :files="currentDiffFiles"
+              :files="displayFiles"
               :comments="reviewResult.comments"
               :hunks="reviewResult.hunks"
               :viewMode="selectedViewMode as 'unified' | 'split'"
-              :threading-service="threadingService || undefined"
+              :content-mode="contentDisplayMode"
+              :threading-service="threadingService as any"
               :threads="getAllThreads()"
               :is-hunk-ai-typing="isHunkAITyping"
               :get-hunk-streaming-response="getHunkStreamingResponse"
@@ -373,13 +446,9 @@
 
     <!-- Saved Reviews Tab -->
     <div v-if="activeTab === 'saved'" class="saved-reviews-content">
-      <ReviewListManager
-        :persistence-service="persistenceService"
-        @review-selected="handleReviewSelected"
-        @new-review="handleNewReview"
-        @review-loaded="handleReviewLoaded"
-        @review-deleted="handleReviewDeleted"
-      />
+      <div class="text-center p-8">
+        <p class="text-gray-400">Review persistence has been disabled.</p>
+      </div>
     </div>
 
     <!-- Save Review Dialog -->
@@ -388,7 +457,7 @@
       :is-visible="showSaveDialog"
       :review-result="reviewResult"
       :insights="insights"
-      @save="handleManualSave"
+      @save="handleManualSave as any"
       @cancel="showSaveDialog = false"
     />
   </div>
@@ -396,16 +465,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { CodeReviewService, ReviewInsight, ReviewResult, DiffFile, Comment } from '../../services/CodeReviewService'
-import { ReviewPersistenceService } from '../../services/ReviewPersistenceService'
+import { ProjectWorkflowService, ReviewInsight, ReviewResult, DiffFile, Comment } from '../../services/ProjectWorkflowService'
 import { CommentThreadingService } from '../../services/CommentThreadingService'
-import { type SavedCodeReview, type ReviewMetadata } from '../../types/CodeReview'
+// import { type SavedCodeReview } from '../../types/CodeReview'
 import GlassCard from '../shared/GlassCard.vue'
 import ActionButton from '../shared/ActionButton.vue'
 import Icon from '../Icon.vue'
 import DiffViewer from '../review/DiffViewer.vue'
 import CommentThreadCard from '../review/CommentThreadCard.vue'
-import ReviewListManager from '../review/ReviewListManager.vue'
 import ReviewSaveDialog from '../review/ReviewSaveDialog.vue'
 
 // Collapse states
@@ -424,8 +491,7 @@ interface Props {
 const props = defineProps<Props>()
 
 // Service instances
-const reviewService = ref<CodeReviewService | null>(null)
-const persistenceService = ref<ReviewPersistenceService | null>(null)
+const reviewService = ref<ProjectWorkflowService | null>(null)
 const threadingService = ref<CommentThreadingService | null>(null)
 
 // Threading state for reactivity
@@ -439,6 +505,7 @@ const streamingResponses = ref<Map<string, string>>(new Map())
 const reviewTypes = [
   { id: 'branches', label: 'Compare Branches', icon: 'git-branch' },
   { id: 'commit', label: 'Review Commit', icon: 'git-commit' },
+  { id: 'pr', label: 'Pull Request URL', icon: 'git-pull-request' },
   { id: 'diff', label: 'Review Diff', icon: 'file-diff' }
 ]
 
@@ -474,18 +541,25 @@ const sourceBranch = ref('')
 const targetBranch = ref('main')
 const commitHash = ref('')
 const customDiff = ref('')
+const pullRequestUrl = ref('')
 
 const isReviewing = ref(false)
 const progressMessage = ref('')
 const insights = ref<ReviewInsight[]>([])
 const reviewResult = ref<ReviewResult | null>(null)
 const currentDiffFiles = ref<DiffFile[]>([])
+const versionFiles = ref<DiffFile[]>([])
+const contentDisplayMode = ref<'diff' | 'local' | 'remote'>('diff')
 
 // Git data
 const availableBranches = ref<string[]>([])
 const currentBranch = ref('')
 const recentCommits = ref<Array<{ hash: string; shortHash: string; subject: string; author: string; date: string }>>([])
 const gitStatus = ref<any>(null)
+
+// Loading states
+const isLoadingGitData = ref(false)
+const gitDataError = ref<string | null>(null)
 
 // Computed
 const canStartReview = computed(() => {
@@ -494,6 +568,8 @@ const canStartReview = computed(() => {
       return sourceBranch.value && targetBranch.value
     case 'commit':
       return commitHash.value
+    case 'pr':
+      return pullRequestUrl.value && isValidUrl(pullRequestUrl.value)
     case 'diff':
       return customDiff.value
     default:
@@ -501,16 +577,34 @@ const canStartReview = computed(() => {
   }
 })
 
+// Helper function to validate URL
+function isValidUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url)
+    // Check if it's a known git hosting service
+    const validHosts = ['github.com', 'gitlab.com', 'bitbucket.org']
+    const isValidHost = validHosts.some(host => urlObj.hostname.includes(host))
+    const isValidPrUrl = url.includes('/pull/') || url.includes('/merge_requests/')
+    return isValidHost && isValidPrUrl
+  } catch {
+    return false
+  }
+}
+
 const filteredComments = computed(() => {
   if (!reviewResult.value) return []
   return getFilteredComments(selectedCommentFilter.value)
 })
 
-// Save state computed properties
-const currentReviewInfo = computed(() => {
-  if (!reviewService.value) return null
-  return reviewService.value.getCurrentReviewInfo()
+const displayFiles = computed(() => {
+  return versionFiles.value.length > 0 ? versionFiles.value : currentDiffFiles.value
 })
+
+// Save state computed properties (currently unused)
+// const currentReviewInfo = computed(() => {
+//   if (!reviewService.value) return null
+//   return reviewService.value.getCurrentReviewInfo()
+// })
 
 // Methods
 function getFilteredComments(filterId: string) {
@@ -562,6 +656,9 @@ async function startReview() {
     case 'commit':
       options.commitHash = commitHash.value
       break
+    case 'pr':
+      options.pullRequestUrl = pullRequestUrl.value
+      break
     case 'diff':
       options.diff = customDiff.value
       break
@@ -599,31 +696,40 @@ function scrollToFile(file: string, line: number) {
   }
 }
 
-function scrollToComment(comment: Comment) {
-  scrollToFile(comment.file, comment.lines.start)
-}
+// Unused function - kept for potential future use
+// function scrollToComment(comment: Comment) {
+//   scrollToFile(comment.file, comment.lines.start)
+// }
 
 function handleCommentClick(comment: Comment) {
   // Handle comment click in diff viewer
   console.log('Comment clicked:', comment)
 }
 
-function applyFix(comment: Comment) {
-  if (!comment.fixCode) return
-
-  // Implement fix application
-  console.log('Applying fix for comment:', comment)
-  // This would integrate with the editor to apply the suggested fix
-}
+// Unused function - kept for potential future use
+// function applyFix(comment: Comment) {
+//   if (!comment.fixCode) return
+//
+//   // Implement fix application
+//   console.log('Applying fix for comment:', comment)
+//   // This would integrate with the editor to apply the suggested fix
+// }
 
 async function fetchGitData() {
   if (!reviewService.value) return
 
+  isLoadingGitData.value = true
+  gitDataError.value = null
+
   try {
+    console.log('[CodeReviewTab] Starting git data fetch...')
+
     // Fetch branches
+    console.log('[CodeReviewTab] Fetching branches...')
     const branchData = await reviewService.value.fetchGitBranches()
     availableBranches.value = branchData.branches
     currentBranch.value = branchData.current
+    console.log('[CodeReviewTab] Branches fetched:', branchData)
 
     // Set default source branch to current branch
     if (!sourceBranch.value && currentBranch.value) {
@@ -631,69 +737,94 @@ async function fetchGitData() {
     }
 
     // Fetch recent commits
+    console.log('[CodeReviewTab] Fetching commits...')
     recentCommits.value = await reviewService.value.fetchRecentCommits(20)
+    console.log('[CodeReviewTab] Commits fetched:', recentCommits.value.length)
 
     // Fetch git status
+    console.log('[CodeReviewTab] Fetching git status...')
     gitStatus.value = await reviewService.value.fetchGitStatus()
+    console.log('[CodeReviewTab] Git status fetched:', gitStatus.value)
+
+    console.log('[CodeReviewTab] Git data fetch completed successfully')
   } catch (error) {
-    console.error('Failed to fetch git data:', error)
+    console.error('[CodeReviewTab] Failed to fetch git data:', error)
+    gitDataError.value = error instanceof Error ? error.message : 'Failed to load git data'
+
+    // Set some fallback data to allow basic functionality
+    if (availableBranches.value.length === 0) {
+      availableBranches.value = ['main', 'master', 'develop']
+      currentBranch.value = 'main'
+      if (!sourceBranch.value) {
+        sourceBranch.value = 'main'
+      }
+    }
+  } finally {
+    isLoadingGitData.value = false
   }
 }
 
-// New methods for tab integration
-function handleReviewSelected(review: SavedCodeReview): void {
-  // Switch to current review tab and load the review
-  activeTab.value = 'current'
-  if (reviewService.value) {
-    reviewService.value.loadSavedReview(review.id!)
-  }
-}
+// Unused methods - kept for potential future use when persistence is re-enabled
+// function handleReviewSelected(review: SavedCodeReview): void {
+//   // Switch to current review tab and load the review
+//   activeTab.value = 'current'
+//   if (reviewService.value) {
+//     reviewService.value.loadSavedReview(review.id!)
+//   }
+// }
 
-function handleNewReview(): void {
-  // Switch to current review tab for new review
-  activeTab.value = 'current'
-  clearCurrentReview()
-}
+// function handleNewReview(): void {
+//   // Switch to current review tab for new review
+//   activeTab.value = 'current'
+//   clearCurrentReview()
+// }
 
-function handleReviewLoaded(review: SavedCodeReview): void {
-  console.log('Review loaded:', review.metadata.title)
-  updateSaveState()
-}
+// function handleReviewLoaded(review: SavedCodeReview): void {
+//   console.log('Review loaded:', review.metadata.title)
+//   updateSaveState()
+// }
 
-function handleReviewDeleted(reviewId: string): void {
-  console.log('Review deleted:', reviewId)
-  updateSavedReviewsCount()
-}
+// function handleReviewDeleted(reviewId: string): void {
+//   console.log('Review deleted:', reviewId)
+//   updateSavedReviewsCount()
+// }
 
-function clearCurrentReview(): void {
-  reviewResult.value = null
-  insights.value = []
-  currentDiffFiles.value = []
-  lastSaveTime.value = null
-  hasUnsavedChanges.value = false
-}
+// Unused function - kept for potential future use
+// function clearCurrentReview(): void {
+//   reviewResult.value = null
+//   insights.value = []
+//   currentDiffFiles.value = []
+//   lastSaveTime.value = null
+//   hasUnsavedChanges.value = false
+// }
 
-function updateSaveState(): void {
-  if (reviewService.value) {
-    const info = reviewService.value.getCurrentReviewInfo()
-    lastSaveTime.value = info.lastSaveTime
-    hasUnsavedChanges.value = info.hasUnsavedChanges
-    autoSaveEnabled.value = info.autoSaveEnabled
-  }
-}
+// Unused function - kept for potential future use
+// function updateSaveState(): void {
+//   if (reviewService.value) {
+//     const info = reviewService.value.getCurrentReviewInfo()
+//     // Note: getCurrentReviewInfo returns limited info, save features are disabled
+//     // lastSaveTime.value = info.lastSaveTime
+//     // hasUnsavedChanges.value = info.hasUnsavedChanges
+//     // autoSaveEnabled.value = info.autoSaveEnabled
+//     console.log('Review info:', info)
+//   }
+// }
 
 async function updateSavedReviewsCount(): Promise<void> {
-  if (reviewService.value) {
-    const reviews = await reviewService.value.getSavedReviews()
-    savedReviewsCount.value = reviews.length
-  }
+  // Review persistence is disabled
+  savedReviewsCount.value = 0
+  // if (reviewService.value) {
+  //   const reviews = await reviewService.value.getSavedReviews()
+  //   savedReviewsCount.value = reviews.length
+  // }
 }
 
 function toggleAutoSave(): void {
   autoSaveEnabled.value = !autoSaveEnabled.value
-  if (reviewService.value) {
-    reviewService.value.setAutoSaveEnabled(autoSaveEnabled.value)
-  }
+  // Auto-save features are disabled
+  // if (reviewService.value) {
+  //   reviewService.value.setAutoSaveEnabled(autoSaveEnabled.value)
+  // }
 }
 
 function formatSaveTime(time: Date): string {
@@ -715,28 +846,28 @@ function formatSaveTime(time: Date): string {
   }
 }
 
-async function handleManualSave(saveData: {
-  title: string
-  description?: string
-  status: 'draft' | 'active' | 'completed'
-}): Promise<void> {
+async function handleManualSave(saveData: any): Promise<void> {
   if (!reviewService.value) return
 
-  try {
-    const savedId = await reviewService.value.saveReview(
-      saveData.title,
-      saveData.description,
-      saveData.status
-    )
-
-    if (savedId) {
-      showSaveDialog.value = false
-      updateSaveState()
-      updateSavedReviewsCount()
-    }
-  } catch (error) {
-    console.error('Failed to save review:', error)
-  }
+  // Review persistence is disabled
+  console.log('Save requested but persistence is disabled:', saveData)
+  showSaveDialog.value = false
+  
+  // try {
+  //   const savedId = await reviewService.value.saveReview(
+  //     saveData.title,
+  //     saveData.description,
+  //     saveData.status
+  //   )
+  //
+  //   if (savedId) {
+  //     showSaveDialog.value = false
+  //     updateSaveState()
+  //     updateSavedReviewsCount()
+  //   }
+  // } catch (error) {
+  //   console.error('Failed to save review:', error)
+  // }
 }
 
 // Threading integration methods
@@ -767,7 +898,7 @@ function getThreadStatus(comment: Comment): 'open' | 'resolved' | 'dismissed' {
   if (!threadingService.value) return 'open'
   const threadId = `${comment.file}-${comment.lines.start}-${comment.lines.end}`
   const thread = threadingService.value.getThread(threadId)
-  return thread?.status || 'open'
+  return (thread as any)?.status || 'open'
 }
 
 function isAITyping(comment: Comment): boolean {
@@ -799,7 +930,7 @@ function getCodeContext(comment: Comment): string {
   // Find the patch that contains the comment lines
   for (const patch of file.patches) {
     if (comment.lines.start >= patch.newStart &&
-        comment.lines.start <= patch.newStart + patch.newLines) {
+        comment.lines.start <= patch.newStart + (patch.newLines || patch.lines.length)) {
       // Return a snippet of the patch around the comment
       const startIndex = Math.max(0, comment.lines.start - patch.newStart - 2)
       const endIndex = Math.min(patch.lines.length, comment.lines.start - patch.newStart + 3)
@@ -841,7 +972,7 @@ async function handleCommentReply(comment: Comment, reply: string): Promise<void
     const savedComment = convertToSavedComment(comment)
 
     // Find or create thread for this comment
-    const thread = await threadingService.value.findOrCreateThreadForComment(savedComment, reply)
+    await threadingService.value.findOrCreateThreadForComment(savedComment, reply)
 
     // Force reactivity update
     threadUpdateTrigger.value++
@@ -875,8 +1006,7 @@ function handleThreadToggle(comment: Comment, collapsed: boolean): void {
 onMounted(async () => {
   if (props.wsClient) {
     // Initialize services
-    reviewService.value = new CodeReviewService(props.wsClient)
-    persistenceService.value = new ReviewPersistenceService()
+    reviewService.value = new ProjectWorkflowService(props.wsClient)
 
     // Initialize threading first
     reviewService.value.initializeCommentThreading()
@@ -889,14 +1019,19 @@ onMounted(async () => {
       onInsightReceived: (insight) => {
         insights.value.push(insight)
       },
-      onReviewComplete: (result) => {
+      onReviewComplete: (result, filesWithVersions) => {
         reviewResult.value = result
         isReviewing.value = false
         progressMessage.value = ''
         hasUnsavedChanges.value = true
 
-        // If we have diff files from the review, update them
-        if (result && reviewService.value) {
+        // Store version-enriched files
+        versionFiles.value = filesWithVersions || []
+
+        // Update currentDiffFiles to use enriched files if available, otherwise fall back to service files
+        if (filesWithVersions && filesWithVersions.length > 0) {
+          currentDiffFiles.value = filesWithVersions
+        } else if (result && reviewService.value) {
           const files = reviewService.value.getCurrentFiles()
           if (files && files.length > 0) {
             currentDiffFiles.value = files
@@ -910,11 +1045,6 @@ onMounted(async () => {
         console.error('Review error:', error)
         isReviewing.value = false
         progressMessage.value = ''
-      },
-      onReviewSaved: (reviewId, filename) => {
-        console.log('Review saved:', reviewId, filename)
-        updateSaveState()
-        updateSavedReviewsCount()
       },
       onThreadCreated: (threadInfo) => {
         console.log('Thread created in UI:', threadInfo.threadId)
@@ -944,7 +1074,7 @@ onMounted(async () => {
         // Trigger reactive update
         threadUpdateTrigger.value++
       },
-      onAIResponseComplete: (fullContent, threadId) => {
+      onAIResponseComplete: (_fullContent, threadId) => {
         console.log('AI response complete:', threadId)
         // Clear streaming and typing states
         aiTypingThreads.value.delete(threadId)
@@ -967,9 +1097,6 @@ onUnmounted(() => {
   if (reviewService.value) {
     reviewService.value.cancelReview()
     reviewService.value.cleanup()
-  }
-  if (persistenceService.value) {
-    persistenceService.value.cleanup()
   }
   if (threadingService.value) {
     threadingService.value.cleanup()
@@ -1207,10 +1334,68 @@ onUnmounted(() => {
 }
 
 .branch-inputs,
-.commit-input {
+.commit-input,
+.pr-input {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.loading-state,
+.error-state {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  width: 100%;
+}
+
+.loading-state {
+  color: var(--text-secondary);
+}
+
+.error-state {
+  color: var(--error-color);
+  background: var(--error-alpha-5);
+  border-color: var(--error-color);
+}
+
+.retry-button {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--error-color);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: auto;
+}
+
+.retry-button:hover {
+  background: var(--error-color-dark);
+  transform: translateY(-1px);
+}
+
+.branch-selection,
+.commit-selection {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.input-help {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-top: 0.375rem;
+  line-height: 1.4;
 }
 
 .input-group {
@@ -1504,6 +1689,29 @@ onUnmounted(() => {
   color: white;
 }
 
+.content-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+}
+
+.mode-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .diff-content {
   margin-top: 1rem;
 }
@@ -1706,6 +1914,8 @@ onUnmounted(() => {
   --primary-alpha-10: rgba(99, 102, 241, 0.1);
   --success-alpha-10: rgba(34, 197, 94, 0.1);
   --warning-alpha-10: rgba(245, 158, 11, 0.1);
+  --error-alpha-5: rgba(239, 68, 68, 0.05);
+  --error-color-dark: #dc2626;
 }
 
 /* Responsive adjustments for tabs */

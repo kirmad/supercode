@@ -4,19 +4,21 @@
  */
 
 import type {
-  IContentSource,
   SourceContent,
   SourceMetadata,
   ContentFetchOptions,
-  SourceType,
   ContentData,
   ContentFile,
   DiffData,
   GitDiffConfig,
   GitReviewIndex
 } from '../types/index.js'
-import { GitError, GitRepositoryError, ChangeType } from '../types/index.js'
+import { GitError, GitRepositoryError, ChangeType, SourceType } from '../types/index.js'
+import type { IContentSource, IWorkspaceManager } from './interfaces.js'
 import { GitApiClient } from './git-client.js'
+import { FileOperationsClient } from '../services/file-operations-client.js'
+import { join } from '../utils/browser-path.js'
+import { createLogger } from './utils.js'
 
 /**
  * Git Content Source for fetching git diff content
@@ -25,11 +27,16 @@ export class GitContentSource implements IContentSource {
   private config: GitDiffConfig
   private gitClient: GitApiClient
   private baseUrl: string
+  private readonly logger = createLogger('GitContentSource')
+  private readonly workspaceManager?: IWorkspaceManager
+  private readonly fileOperationsClient?: FileOperationsClient
 
   constructor(config: GitDiffConfig, baseUrl: string) {
     this.config = config
     this.baseUrl = baseUrl
     this.gitClient = new GitApiClient(baseUrl, config.repositoryPath)
+    this.workspaceManager = config.workspaceManager
+    this.fileOperationsClient = config.fileOperationsClient || (baseUrl ? new FileOperationsClient({ baseUrl, timeout: 30000 }) : undefined)
   }
 
   /**
@@ -47,7 +54,7 @@ export class GitContentSource implements IContentSource {
       const diffResponse = await this.gitClient.getDiff(this.config)
 
       // Parse diff into structured content
-      const contentData = await this.parseDiffContent(diffResponse)
+      const contentData = await this.parseDiffContent(diffResponse, options?.saveDirectory)
 
       // Get additional metadata
       const metadata = await this.buildMetadata(identifier, options)
@@ -168,7 +175,10 @@ export class GitContentSource implements IContentSource {
   /**
    * Parse git diff response into structured content data
    */
-  private async parseDiffContent(diffResponse: { diff: string; files: Array<{ path: string; additions: number; deletions: number }> }): Promise<ContentData> {
+  private async parseDiffContent(
+    diffResponse: { diff: string; files: Array<{ path: string; additions: number; deletions: number }> },
+    saveDirectory?: string
+  ): Promise<ContentData> {
     const files: ContentFile[] = []
     const diffs: DiffData[] = []
     let totalSize = 0
@@ -210,6 +220,34 @@ export class GitContentSource implements IContentSource {
 
       totalSize += fileSize
       totalTokens += fileTokens
+
+      // Save file versions if we have workspace manager
+      // If saveDirectory is not provided, use workspace path + /versions
+      if (this.workspaceManager) {
+        const actualSaveDirectory = saveDirectory || (this.workspaceManager.getWorkspacePath() + '/versions')
+        try {
+          const safeFileName = fileStat.path.replace(/[\/\\:*?"<>|]/g, '_').replace(/^_+/, '')
+
+          // Save old version (.local for "from" version) if we have content
+          if (beforeContent !== null && beforeContent !== undefined) {
+            const localPath = await this.workspaceManager.saveContent(`versions/${safeFileName}.local`, beforeContent)
+            this.logger.info(`Saved old version: ${localPath}`)
+          }
+
+          // Save new version (.remote for "to" version) if we have content
+          if (afterContent !== null && afterContent !== undefined) {
+            const remotePath = await this.workspaceManager.saveContent(`versions/${safeFileName}.remote`, afterContent)
+            this.logger.info(`Saved new version: ${remotePath}`)
+          }
+
+          // Always save the diff (even if it's a placeholder)
+          const fileDiff = this.extractFileDiff(diffResponse.diff, fileStat.path)
+          const diffPath = await this.workspaceManager.saveContent(`versions/${safeFileName}.diff`, fileDiff)
+          this.logger.info(`Saved diff: ${diffPath}`)
+        } catch (saveError) {
+          this.logger.error(`Failed to save version files for ${fileStat.path}: ${saveError}`)
+        }
+      }
     }
 
     return {

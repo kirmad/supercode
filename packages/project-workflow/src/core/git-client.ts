@@ -275,18 +275,20 @@ export class GitApiClient {
         method,
         headers: {
           'Content-Type': 'application/json',
-        },
+        } as Record<string, string>,
       }
 
       if (body && method !== 'GET') {
         requestOptions.body = JSON.stringify(body)
       }
 
-      // Set working directory for git commands
-      // Note: This assumes the API respects the working directory
-      // We might need to pass repository path as a parameter to the API
-      if (process.cwd() !== this.repositoryPath) {
-        process.chdir(this.repositoryPath)
+      // In browser/webview environment, we can't change working directory
+      // Instead, include repository path in headers for the API to use
+      if (this.repositoryPath && this.repositoryPath !== '.') {
+        requestOptions.headers = {
+          ...requestOptions.headers,
+          'X-Repository-Path': this.repositoryPath
+        }
       }
 
       const response = await fetch(url, requestOptions)

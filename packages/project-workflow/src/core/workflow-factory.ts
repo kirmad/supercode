@@ -23,7 +23,7 @@ import { WorkflowType } from '../types/index.js'
 import { ReviewWorkflowProcessor } from '../review/review-workflow-processor.js'
 import { OperationSubscriber } from './operation-subscriber.js'
 import { ValidationError, createLogger } from './utils.js'
-import { GitContentSource } from './git-content-source.js'
+import { BrowserConfig } from '../utils/browser-config.js'
 
 /**
  * Configuration options for workflow creation
@@ -152,8 +152,7 @@ export class WorkflowFactory {
     // Validate git configuration
     this.validateGitConfig(gitConfig)
 
-    // Create GitContentSource
-    const gitContentSource = new GitContentSource(gitConfig, this.config.baseUrl)
+    // GitContentSource will be created in ReviewWorkflowProcessor with workspace manager (like ADO)
 
     // Create sub-configurations (similar to regular review workflow)
     const shardingConfig: ShardingConfig = {
@@ -213,11 +212,12 @@ export class WorkflowFactory {
       ],
       maxFileSize: overrides?.maxFileSize ?? this.config.defaults?.maxFileSize ?? 1024 * 1024, // 1MB
       // Note: No ADO credentials needed for git workflows
-      saveVersions: overrides?.saveVersions ?? this.config.defaults?.saveVersions ?? false
+      // Default saveVersions to true for git workflows since version files are useful for git diffs
+      saveVersions: overrides?.saveVersions ?? this.config.defaults?.saveVersions ?? true
     }
 
-    // Create ReviewWorkflowProcessor with git content source
-    return new ReviewWorkflowProcessor(reviewConfig, gitContentSource)
+    // Create ReviewWorkflowProcessor with git config (it will create GitContentSource internally like ADO)
+    return new ReviewWorkflowProcessor(reviewConfig, gitConfig)
   }
 
   /**
@@ -353,16 +353,23 @@ export class WorkflowFactory {
   /**
    * Create a factory with environment-based configuration
    * Convenient method for common setup patterns
+   * Works in both browser and Node.js environments
    */
   static createFromEnvironment(overrides?: Partial<WorkflowFactoryConfig>): WorkflowFactory {
-    const envBaseUrl = process.env['OPENCODE_BASE_URL']
+    // Try BrowserConfig first, then fallback to process.env if available (Node.js)
+    const envBaseUrl = BrowserConfig.getConfig('OPENCODE_BASE_URL') ||
+                      (typeof process !== 'undefined' && process.env ? process.env['OPENCODE_BASE_URL'] : undefined)
     const baseUrl = envBaseUrl !== undefined ? envBaseUrl : 'http://localhost:3000'
     console.log('🚨 WORKFLOWFACTORY: OPENCODE_BASE_URL env var:', envBaseUrl)
     console.log('🚨 WORKFLOWFACTORY: Using baseUrl:', baseUrl)
-    const adoToken = process.env['ADO_PAT'] || process.env['AZURE_DEVOPS_PAT']
+
+    // Use BrowserConfig method for Azure DevOps PAT (handles both env var names)
+    const adoToken = BrowserConfig.getAzureDevOpsPat() ||
+                    (typeof process !== 'undefined' && process.env ?
+                     (process.env['ADO_PAT'] || process.env['AZURE_DEVOPS_PAT']) : undefined)
 
     if (!adoToken) {
-      throw new Error('ADO_PAT or AZURE_DEVOPS_PAT environment variable is required')
+      throw new Error('Azure DevOps PAT is required. Set via BrowserConfig or ADO_PAT/AZURE_DEVOPS_PAT environment variable')
     }
 
     const config: WorkflowFactoryConfig = {

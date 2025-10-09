@@ -3,9 +3,8 @@
  * Updated to match test expectations for workspace ID-based operations
  */
 
-import fs from 'fs/promises'
-import path from 'path'
-import os from 'os'
+import { join, dirname, relative } from '../utils/browser-path.js'
+import { BrowserConfig } from '../utils/browser-config.js'
 import type { IWorkspaceManager } from './interfaces.js'
 import type { WorkspaceConfig, WorkspaceStatistics, SourceContent } from '../types/index.js'
 import { ChangeType } from '../types/index.js'
@@ -27,7 +26,8 @@ export class WorkspaceManager implements IWorkspaceManager {
       this.workspaceRoot = '.supercode-workspaces/project-workflow'
     } else {
       // Use a base directory for all workspaces in temp directory for local fs
-      this.workspaceRoot = path.join(os.tmpdir(), 'project-workflow')
+      const tempDir = BrowserConfig.getConfigWithDefault('TEMP_DIR', '/tmp')
+      this.workspaceRoot = join(tempDir, 'project-workflow')
     }
     this.fileOperationsClient = fileOperationsClient
   }
@@ -50,13 +50,13 @@ export class WorkspaceManager implements IWorkspaceManager {
       const randomSuffix = Math.random().toString(36).substring(2, 8)
       const workspaceId = `${workspaceConfig.prefix}-${timestamp}-${randomSuffix}`
 
-      const workspacePath = path.join(this.workspaceRoot, workspaceId)
+      const workspacePath = join(this.workspaceRoot, workspaceId)
 
       // Create workspace directory structure
       await this.createDirectory(workspacePath, { recursive: true })
-      await this.createDirectory(path.join(workspacePath, 'source'), { recursive: true })
-      await this.createDirectory(path.join(workspacePath, 'shards'), { recursive: true })
-      await this.createDirectory(path.join(workspacePath, 'versions'), { recursive: true })
+      await this.createDirectory(join(workspacePath, 'source'), { recursive: true })
+      await this.createDirectory(join(workspacePath, 'shards'), { recursive: true })
+      await this.createDirectory(join(workspacePath, 'versions'), { recursive: true })
 
       // Store current workspace for stateful operations
       this.currentWorkspaceId = workspaceId
@@ -95,7 +95,7 @@ export class WorkspaceManager implements IWorkspaceManager {
   async loadContent(workspaceId: string): Promise<SourceContent>
   async loadContent(pathOrId: string): Promise<string | SourceContent> {
     // Check if this looks like a workspace ID (has the workspace directory structure)
-    const workspacePath = path.join(this.workspaceRoot, pathOrId)
+    const workspacePath = join(this.workspaceRoot, pathOrId)
 
     try {
       // Check if this is a workspace directory by looking for the workspace structure
@@ -106,13 +106,8 @@ export class WorkspaceManager implements IWorkspaceManager {
           return this.loadSourceContentImpl(pathOrId)
         }
       } else {
-        try {
-          await fs.access(workspacePath)
-          // This looks like a workspace ID, try to load as SourceContent
-          return this.loadSourceContentImpl(pathOrId)
-        } catch {
-          // Fall through to raw content loading
-        }
+        // For local file system, we don't have an equivalent to fs.access when using FileOperationsClient
+        // Fall through to attempting SourceContent loading
       }
 
       // If not a workspace directory, treat as raw content loading
@@ -141,7 +136,7 @@ export class WorkspaceManager implements IWorkspaceManager {
    * Save SourceContent to workspace (private implementation)
    */
   private async saveSourceContentImpl(workspaceId: string, sourceContent: SourceContent): Promise<void> {
-    const workspacePath = path.join(this.workspaceRoot, workspaceId)
+    const workspacePath = join(this.workspaceRoot, workspaceId)
 
     try {
       // Verify workspace exists
@@ -149,10 +144,10 @@ export class WorkspaceManager implements IWorkspaceManager {
 
       // Save each file in the source content
       for (const file of sourceContent.content.files) {
-        const filePath = path.join(workspacePath, 'source', file.path)
+        const filePath = join(workspacePath, 'source', file.path)
 
         // Ensure directory exists
-        const directory = path.dirname(filePath)
+        const directory = dirname(filePath)
         await this.createDirectory(directory, { recursive: true })
 
         // Write file content
@@ -160,7 +155,7 @@ export class WorkspaceManager implements IWorkspaceManager {
       }
 
       // Save metadata
-      const metadataPath = path.join(workspacePath, 'metadata.json')
+      const metadataPath = join(workspacePath, 'metadata.json')
       await this.writeFile(metadataPath, JSON.stringify(sourceContent.metadata, null, 2), { encoding: 'utf8', createDirs: true })
 
       this.logger.debug(`Saved content to workspace: ${workspaceId}`)
@@ -175,7 +170,7 @@ export class WorkspaceManager implements IWorkspaceManager {
    * Load SourceContent from workspace (private implementation)
    */
   private async loadSourceContentImpl(workspaceId: string): Promise<SourceContent> {
-    const workspacePath = path.join(this.workspaceRoot, workspaceId)
+    const workspacePath = join(this.workspaceRoot, workspaceId)
 
     try {
       // Verify workspace exists
@@ -184,7 +179,7 @@ export class WorkspaceManager implements IWorkspaceManager {
       // Load metadata
       let metadata
       try {
-        const metadataPath = path.join(workspacePath, 'metadata.json')
+        const metadataPath = join(workspacePath, 'metadata.json')
         const metadataContent = await this.readFile(metadataPath, { encoding: 'utf8' })
         metadata = JSON.parse(metadataContent)
       } catch {
@@ -200,14 +195,14 @@ export class WorkspaceManager implements IWorkspaceManager {
 
       // Load files from source directory
       const files = []
-      const sourcePath = path.join(workspacePath, 'source')
+      const sourcePath = join(workspacePath, 'source')
 
       try {
         await this.checkAccess(sourcePath)
         const fileList = await this.getAllFiles(sourcePath)
 
         for (const filePath of fileList) {
-          const relativePath = path.relative(sourcePath, filePath)
+          const relativePath = relative(sourcePath, filePath)
           const content = await this.readFile(filePath, { encoding: 'utf8' })
           const stats = await this.getStats(filePath)
 
@@ -248,10 +243,10 @@ export class WorkspaceManager implements IWorkspaceManager {
     }
 
     try {
-      const absolutePath = path.join(this.currentWorkspacePath, relativePath)
+      const absolutePath = join(this.currentWorkspacePath, relativePath)
 
       // Ensure directory exists
-      const directory = path.dirname(absolutePath)
+      const directory = dirname(absolutePath)
       await this.createDirectory(directory, { recursive: true })
 
       // Write content
@@ -275,7 +270,7 @@ export class WorkspaceManager implements IWorkspaceManager {
     }
 
     try {
-      const absolutePath = path.join(this.currentWorkspacePath, relativePath)
+      const absolutePath = join(this.currentWorkspacePath, relativePath)
       const content = await this.readFile(absolutePath, { encoding: 'utf8' })
 
       this.logger.debug(`Loaded raw content from: ${relativePath}`)
@@ -301,7 +296,7 @@ export class WorkspaceManager implements IWorkspaceManager {
   }
 
   private async getWorkspaceStatistics(workspaceId: string): Promise<WorkspaceStatistics> {
-    const workspacePath = path.join(this.workspaceRoot, workspaceId)
+    const workspacePath = join(this.workspaceRoot, workspaceId)
 
     try {
       // Verify workspace exists
@@ -321,7 +316,7 @@ export class WorkspaceManager implements IWorkspaceManager {
       }
 
       // Count files in source directory
-      const sourcePath = path.join(workspacePath, 'source')
+      const sourcePath = join(workspacePath, 'source')
       try {
         await this.checkAccess(sourcePath)
         const fileList = await this.getAllFiles(sourcePath)
@@ -359,7 +354,7 @@ export class WorkspaceManager implements IWorkspaceManager {
       return
     }
 
-    const workspacePath = path.join(this.workspaceRoot, targetWorkspaceId)
+    const workspacePath = join(this.workspaceRoot, targetWorkspaceId)
 
     try {
       await this.deleteDirectory(workspacePath)
@@ -385,11 +380,11 @@ export class WorkspaceManager implements IWorkspaceManager {
     }
 
     try {
-      const relativePath = path.join(subdirectory, fileName)
-      const absolutePath = path.join(this.currentWorkspacePath, relativePath)
+      const relativePath = join(subdirectory, fileName)
+      const absolutePath = join(this.currentWorkspacePath, relativePath)
 
       // Ensure directory exists
-      const directory = path.dirname(absolutePath)
+      const directory = dirname(absolutePath)
       await this.createDirectory(directory, { recursive: true })
 
       // Write content
@@ -416,7 +411,7 @@ export class WorkspaceManager implements IWorkspaceManager {
    * This provides a consistent way to resolve workspace paths
    */
   getWorkspaceDirectory(workspaceId: string): string {
-    return path.join(this.workspaceRoot, workspaceId)
+    return join(this.workspaceRoot, workspaceId)
   }
 
   /**
@@ -439,23 +434,13 @@ export class WorkspaceManager implements IWorkspaceManager {
 
       for (const entry of entries) {
         if (entry.type === 'file') {
-          files.push(path.join(dir, entry.name))
+          files.push(join(dir, entry.name))
         }
       }
     } else {
-      // Use local file system
-      const entries = await fs.readdir(dir, { withFileTypes: true })
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
-
-        if (entry.isDirectory()) {
-          const subFiles = await this.getAllFiles(fullPath)
-          files.push(...subFiles)
-        } else {
-          files.push(fullPath)
-        }
-      }
+      // Note: When using FileOperationsClient, all file operations should go through the client
+      // This fallback is only for cases where FileOperationsClient is not available
+      throw new Error('Local file system access not available in browser mode')
     }
 
     return files
@@ -468,12 +453,12 @@ export class WorkspaceManager implements IWorkspaceManager {
     if (this.fileOperationsClient) {
       await this.fileOperationsClient.createDirectory(dirPath, options)
     } else {
-      await fs.mkdir(dirPath, options)
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 
   /**
-   * Write file with fallback to local fs
+   * Write file using FileOperationsClient
    */
   private async writeFile(filePath: string, content: string | Buffer, options: { encoding?: string; createDirs?: boolean } = {}): Promise<void> {
     if (this.fileOperationsClient) {
@@ -484,13 +469,202 @@ export class WorkspaceManager implements IWorkspaceManager {
         createDirs: options.createDirs
       })
     } else {
-      const encoding = (options.encoding as BufferEncoding) || 'utf8'
-      await fs.writeFile(filePath, content, encoding)
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 
   /**
-   * Read file with fallback to local fs
+   * Get review-index.json content from the current workspace
+   * @returns Parsed review index data or null if not found
+   */
+  async getReviewIndex(): Promise<any | null> {
+    try {
+      const content = await this.readFile('review-index.json')
+      return JSON.parse(content)
+    } catch (error) {
+      this.logger.debug(`Review index not found: ${error}`)
+      return null
+    }
+  }
+
+  /**
+   * Get review-results.json content from the current workspace
+   * @returns Parsed review results data or null if not found
+   */
+  async getReviewResults(): Promise<any | null> {
+    try {
+      const content = await this.readFile('review-results.json')
+      return JSON.parse(content)
+    } catch (error) {
+      this.logger.debug(`Review results not found: ${error}`)
+      return null
+    }
+  }
+
+  /**
+   * List all files in the versions directory
+   * @returns Array of version file names
+   */
+  async getVersionFiles(): Promise<string[]> {
+    try {
+      const workspacePath = this.getWorkspacePath()
+      if (!workspacePath) {
+        this.logger.debug('No workspace path available')
+        return []
+      }
+      const versionDir = join(workspacePath, 'versions')
+      return await this.listDirectory(versionDir)
+    } catch (error) {
+      this.logger.debug(`Versions directory not found: ${error}`)
+      return []
+    }
+  }
+
+  /**
+   * Get version files for a specific file path (.local, .remote, .diff)
+   * @param filePath - Original file path
+   * @returns Object with local, remote, and diff content (null if not found)
+   */
+  async getVersionFilesForPath(filePath: string): Promise<{
+    local: string | null
+    remote: string | null
+    diff: string | null
+  }> {
+    const safeFileName = filePath.replace(/[\/\\]/g, '_')
+    
+    const result = {
+      local: null as string | null,
+      remote: null as string | null,
+      diff: null as string | null
+    }
+
+    try {
+      result.local = await this.readFile(join(this.currentWorkspacePath!, `versions/${safeFileName}.local`))
+    } catch (error) {
+      this.logger.debug(`Local version not found for ${filePath}: ${error}`)
+    }
+
+    try {
+      result.remote = await this.readFile(join(this.currentWorkspacePath!, `versions/${safeFileName}.remote`))
+    } catch (error) {
+      this.logger.debug(`Remote version not found for ${filePath}: ${error}`)
+    }
+
+    try {
+      result.diff = await this.readFile(join(this.currentWorkspacePath!, `versions/${safeFileName}.diff`))
+    } catch (error) {
+      this.logger.debug(`Diff not found for ${filePath}: ${error}`)
+    }
+
+    return result
+  }
+
+  /**
+   * Check if review workflow files exist in the workspace
+   * @returns Object indicating which review files are available
+   */
+  async checkReviewFiles(): Promise<{
+    hasReviewIndex: boolean
+    hasReviewResults: boolean
+    hasVersionFiles: boolean
+    versionFileCount: number
+  }> {
+    const [indexExists, resultsExists, versionFiles] = await Promise.all([
+      this.checkFileExists('review-index.json'),
+      this.checkFileExists('review-results.json'),
+      this.getVersionFiles()
+    ])
+
+    return {
+      hasReviewIndex: indexExists,
+      hasReviewResults: resultsExists,
+      hasVersionFiles: versionFiles.length > 0,
+      versionFileCount: versionFiles.length
+    }
+  }
+
+  /**
+   * Get comprehensive list of all version files with their actual file paths
+   * @returns Array of objects with file path and version content
+   */
+  async getAllVersionFiles(): Promise<Array<{
+    filePath: string
+    local: string | null
+    remote: string | null
+    diff: string | null
+  }>> {
+    try {
+      const versionFiles = await this.getVersionFiles()
+      
+      // Group files by their base name (without .local, .remote, .diff extensions)
+      const fileGroups = new Map<string, {
+        filePath: string
+        local: string | null
+        remote: string | null
+        diff: string | null
+      }>()
+
+      for (const fileName of versionFiles) {
+        let baseName: string
+        let type: 'local' | 'remote' | 'diff'
+        
+        if (fileName.endsWith('.local')) {
+          baseName = fileName.slice(0, -6) // Remove '.local'
+          type = 'local'
+        } else if (fileName.endsWith('.remote')) {
+          baseName = fileName.slice(0, -7) // Remove '.remote'
+          type = 'remote'
+        } else if (fileName.endsWith('.diff')) {
+          baseName = fileName.slice(0, -5) // Remove '.diff'
+          type = 'diff'
+        } else {
+          continue // Skip unknown file types
+        }
+
+        // Convert sanitized filename back to original path
+        const originalPath = baseName.replace(/_/g, '/')
+
+        if (!fileGroups.has(baseName)) {
+          fileGroups.set(baseName, {
+            filePath: originalPath,
+            local: null,
+            remote: null,
+            diff: null
+          })
+        }
+
+        const group = fileGroups.get(baseName)!
+        
+        try {
+          const content = await this.readFile(join(this.currentWorkspacePath!, `versions/${fileName}`))
+          group[type] = content
+        } catch (error) {
+          this.logger.debug(`Failed to read version file ${fileName}: ${error}`)
+          group[type] = null
+        }
+      }
+
+      return Array.from(fileGroups.values())
+    } catch (error) {
+      this.logger.debug(`Failed to get all version files: ${error}`)
+      return []
+    }
+  }
+
+  /**
+   * List directory contents using FileOperationsClient
+   */
+  private async listDirectory(dirPath: string): Promise<string[]> {
+    if (this.fileOperationsClient) {
+      const entries = await this.fileOperationsClient.listDirectory(dirPath)
+      return entries.map(entry => entry.name)
+    } else {
+      throw new Error('Local file system access not available in browser mode')
+    }
+  }
+
+  /**
+   * Read file using FileOperationsClient
    */
   private async readFile(filePath: string, options: { encoding?: string } = {}): Promise<string> {
     if (this.fileOperationsClient) {
@@ -498,24 +672,23 @@ export class WorkspaceManager implements IWorkspaceManager {
         encoding: (options.encoding as 'utf8' | 'base64') || 'utf8'
       })
     } else {
-      const encoding = (options.encoding as BufferEncoding) || 'utf8'
-      return await fs.readFile(filePath, encoding)
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 
   /**
-   * Delete directory with fallback to local fs
+   * Delete directory using FileOperationsClient
    */
   private async deleteDirectory(dirPath: string): Promise<void> {
     if (this.fileOperationsClient) {
       await this.fileOperationsClient.deleteDirectory(dirPath)
     } else {
-      await fs.rm(dirPath, { recursive: true, force: true })
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 
   /**
-   * Check file/directory access with fallback to local fs
+   * Check file/directory access using FileOperationsClient
    */
   private async checkAccess(targetPath: string): Promise<void> {
     if (this.fileOperationsClient) {
@@ -524,12 +697,22 @@ export class WorkspaceManager implements IWorkspaceManager {
         throw new Error(`Path does not exist: ${targetPath}`)
       }
     } else {
-      await fs.access(targetPath)
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 
   /**
-   * Get file/directory stats with fallback to local fs
+   * Check if file/directory exists using FileOperationsClient
+   */
+  private async checkFileExists(targetPath: string): Promise<boolean> {
+    if (this.fileOperationsClient) {
+      return await this.fileOperationsClient.exists(targetPath)
+    }
+    return false
+  }
+
+  /**
+   * Get file/directory stats using FileOperationsClient
    */
   private async getStats(targetPath: string): Promise<{ size?: number; modified?: string; birthtime?: Date }> {
     if (this.fileOperationsClient) {
@@ -539,12 +722,7 @@ export class WorkspaceManager implements IWorkspaceManager {
         modified: stats.modified
       }
     } else {
-      const stats = await fs.stat(targetPath)
-      return {
-        size: Number(stats.size),
-        modified: stats.mtime.toISOString(),
-        birthtime: stats.birthtime
-      }
+      throw new Error('Local file system access not available in browser mode')
     }
   }
 }

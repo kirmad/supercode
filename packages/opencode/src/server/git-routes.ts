@@ -80,23 +80,23 @@ export function createGitRoutes() {
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer
         })
 
-        // Get file stats
-        const { stdout: stats } = await execAsync(`${diffCommand} --stat`, {
+        // Get file stats using --numstat for accurate full paths
+        const { stdout: stats } = await execAsync(`${diffCommand} --numstat`, {
           maxBuffer: 1024 * 1024,
         })
 
         // Parse file stats
         const files: Array<{ path: string; additions: number; deletions: number }> = []
-        const statLines = stats.split('\n').filter(line => line.includes('|'))
+        const statLines = stats.split('\n').filter(line => line.trim() && line.includes('\t'))
 
         for (const line of statLines) {
-          const match = line.match(/^\s*(.+?)\s+\|\s+(\d+)\s+([\+\-]+)/)
-          if (match) {
-            const [, filePath] = match
-            const additions = (match[3].match(/\+/g) || []).length
-            const deletions = (match[3].match(/\-/g) || []).length
+          const parts = line.split('\t')
+          if (parts.length >= 3) {
+            const additions = parseInt(parts[0]) || 0
+            const deletions = parseInt(parts[1]) || 0
+            const filePath = parts[2]
             files.push({
-              path: filePath.trim(),
+              path: filePath,
               additions,
               deletions,
             })

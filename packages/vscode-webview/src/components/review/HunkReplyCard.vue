@@ -211,7 +211,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { type CommentResponse, type ThreadInfo } from '../../types/CodeReview'
-import { type Hunk } from '../../services/CodeReviewService'
+import { type Hunk } from '../../services/ProjectWorkflowService'
 import Icon from '../Icon.vue'
 import ActionButton from '../shared/ActionButton.vue'
 
