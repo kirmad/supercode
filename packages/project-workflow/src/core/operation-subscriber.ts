@@ -15,7 +15,12 @@ import type {
   NotificationMetadata,
   OperationCallback,
   SuperCodeWebSocketEvent,
-  ProcessedMessage
+  ProcessedMessage,
+  CustomEventType,
+  CustomEventData,
+  CustomEventCallback,
+  GenericEventData,
+  GenericEventCallback
 } from '../types/index.js'
 import { OperationSubscriptionError } from '../types/index.js'
 import type { IOperationSubscriber } from './interfaces.js'
@@ -113,6 +118,7 @@ export class OperationSubscriber implements IOperationSubscriber {
       topicId,
       tags: validatedTags,
       callback,
+      eventType: 'xml-tag',
       createdAt: new Date().toISOString(),
       isActive: true
     }
@@ -126,6 +132,7 @@ export class OperationSubscriber implements IOperationSubscriber {
         sessions: new Set(),
         subscriptions: new Map(),
         aggregatedData: {},
+        customEvents: [],
         lastUpdate: new Date().toISOString()
       }
     }
@@ -141,6 +148,157 @@ export class OperationSubscriber implements IOperationSubscriber {
     })
 
     return subscriptionId
+  }
+
+  /**
+   * Subscribe to custom events with type safety
+   *
+   * Note: The callback receives GenericEventData<TPayload> with structure:
+   * { type: 'custom', data: CustomEventData<TPayload> }
+   * To access the payload, use: eventData.data.payload
+   */
+  subscribeToCustomEvents<TPayload>(
+    topicId: string,
+    eventTypes: CustomEventType<TPayload>[],
+    callback: (eventData: GenericEventData<TPayload>, metadata: NotificationMetadata) => void
+  ): string {
+    const subscriptionId = generateId('custom-subscription')
+
+    // Create subscription
+    const subscription: OperationSubscription = {
+      id: subscriptionId,
+      topicId,
+      tags: [], // Empty for custom events
+      genericCallback: callback as GenericEventCallback,
+      eventType: 'custom',
+      customEventTypes: eventTypes,
+      createdAt: new Date().toISOString(),
+      isActive: true
+    }
+
+    // Store subscription
+    this.subscriptions.set(subscriptionId, subscription)
+
+    // Initialize topic if needed
+    if (!this.topics[topicId]) {
+      this.topics[topicId] = {
+        sessions: new Set(),
+        subscriptions: new Map(),
+        aggregatedData: {},
+        customEvents: [],
+        lastUpdate: new Date().toISOString()
+      }
+    }
+
+    // Add subscription to topic
+    this.topics[topicId].subscriptions.set(subscriptionId, subscription)
+
+    this.logger.info('Custom event subscription created', {
+      subscriptionId,
+      topicId,
+      eventTypes: eventTypes.map(et => et.name),
+      totalSubscriptions: this.subscriptions.size
+    })
+
+    return subscriptionId
+  }
+
+  /**
+   * Emit a custom event with type safety
+   */
+  emitCustomEvent<TPayload>(
+    topicId: string,
+    eventType: CustomEventType<TPayload>,
+    payload: TPayload,
+    sessionId?: string
+  ): void {
+    // Create custom event data
+    const eventData: CustomEventData<TPayload> = {
+      eventType,
+      payload,
+      timestamp: new Date().toISOString(),
+      sessionId
+    }
+
+    // Initialize topic if needed
+    if (!this.topics[topicId]) {
+      this.topics[topicId] = {
+        sessions: new Set(),
+        subscriptions: new Map(),
+        aggregatedData: {},
+        customEvents: [],
+        lastUpdate: new Date().toISOString()
+      }
+    }
+
+    // Store event in topic
+    this.topics[topicId].customEvents.push(eventData)
+    this.topics[topicId].lastUpdate = new Date().toISOString()
+
+    // Find subscriptions interested in this event type
+    const interestedSubscriptions = Array.from(this.topics[topicId].subscriptions.values())
+      .filter(sub => {
+        return sub.eventType === 'custom' &&
+               sub.customEventTypes?.some(et => et.name === eventType.name)
+      })
+
+    // Create notification metadata
+    const metadata: NotificationMetadata = {
+      topicId,
+      sessionId,
+      timestamp: eventData.timestamp,
+      source: 'complete',
+      hasNewData: true
+    }
+
+    // Notify interested subscribers
+    interestedSubscriptions.forEach(subscription => {
+      try {
+        if (subscription.genericCallback) {
+          const genericEvent: GenericEventData<TPayload> = {
+            type: 'custom',
+            data: eventData
+          }
+          subscription.genericCallback(genericEvent, metadata)
+        }
+      } catch (error) {
+        this.logger.error('Error in custom event callback', {
+          error,
+          subscriptionId: subscription.id,
+          topicId,
+          eventType: eventType.name
+        })
+      }
+    })
+
+    this.logger.info('Custom event emitted', {
+      topicId,
+      eventType: eventType.name,
+      sessionId,
+      interestedSubscriptions: interestedSubscriptions.length
+    })
+  }
+
+  /**
+   * Get custom events for a topic with optional filtering
+   */
+  getCustomEvents<TPayload>(
+    topicId: string,
+    eventType?: CustomEventType<TPayload>
+  ): CustomEventData<TPayload>[] {
+    const topic = this.topics[topicId]
+    if (!topic) {
+      return []
+    }
+
+    let events = topic.customEvents
+
+    // Filter by event type if provided
+    if (eventType) {
+      events = events.filter(event => event.eventType.name === eventType.name)
+    }
+
+    return events as CustomEventData<TPayload>[]
   }
 
   /**
@@ -187,6 +345,7 @@ export class OperationSubscriber implements IOperationSubscriber {
         sessions: new Set(),
         subscriptions: new Map(),
         aggregatedData: {},
+        customEvents: [],
         lastUpdate: new Date().toISOString()
       }
     }
@@ -461,18 +620,33 @@ export class OperationSubscriber implements IOperationSubscriber {
 
     for (const subscription of topic.subscriptions.values()) {
       try {
-        // Filter data to only include tags this subscription is interested in
-        const filteredData: ExtractedTagData = {}
-        for (const tag of subscription.tags) {
-          if (aggregatedData[tag]) {
-            filteredData[tag] = aggregatedData[tag]
+        if (subscription.eventType === 'xml-tag') {
+          // Handle XML tag subscriptions (legacy and new generic)
+          const filteredData: ExtractedTagData = {}
+          for (const tag of subscription.tags) {
+            if (aggregatedData[tag]) {
+              filteredData[tag] = aggregatedData[tag]
+            }
+          }
+
+          // Only notify if there's relevant data
+          if (Object.keys(filteredData).length > 0) {
+            // Call legacy callback if present
+            if (subscription.callback) {
+              subscription.callback(filteredData, metadata)
+            }
+
+            // Call generic callback if present
+            if (subscription.genericCallback) {
+              const genericEvent: GenericEventData = {
+                type: 'xml-tag',
+                data: filteredData
+              }
+              subscription.genericCallback(genericEvent, metadata)
+            }
           }
         }
-
-        // Only notify if there's relevant data
-        if (Object.keys(filteredData).length > 0) {
-          subscription.callback(filteredData, metadata)
-        }
+        // Custom events are handled in emitCustomEvent method
 
       } catch (error) {
         this.logger.error('Error in subscription callback', {

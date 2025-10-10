@@ -28,7 +28,12 @@ import type {
   GitDiffConfig,
   GitWorkflowConfig,
   GitDiffType,
-  GitReviewIndex
+  GitReviewIndex,
+  CustomEventType,
+  CustomEventData,
+  CustomEventCallback,
+  GenericEventData,
+  NotificationMetadata
 } from '../types/index.js'
 
 /**
@@ -319,4 +324,42 @@ export interface IOperationSubscriber {
    * @returns true if listening, false otherwise
    */
   isListening(): boolean
+
+  /**
+   * Subscribe to custom events with type safety
+   * @param topicId - Topic identifier (typically workflow ID)
+   * @param eventTypes - Custom event types to monitor
+   * @param callback - Type-safe callback function for custom event notifications
+   * @returns Unique subscription ID
+   */
+  subscribeToCustomEvents<TPayload>(
+    topicId: string,
+    eventTypes: CustomEventType<TPayload>[],
+    callback: (eventData: GenericEventData<TPayload>, metadata: NotificationMetadata) => void
+  ): string
+
+  /**
+   * Emit a custom event with type safety
+   * @param topicId - Topic identifier
+   * @param eventType - Custom event type to emit
+   * @param payload - Event payload (type-checked against event type)
+   * @param sessionId - Optional session ID for event context
+   */
+  emitCustomEvent<TPayload>(
+    topicId: string,
+    eventType: CustomEventType<TPayload>,
+    payload: TPayload,
+    sessionId?: string
+  ): void
+
+  /**
+   * Get custom events for a topic with optional filtering
+   * @param topicId - Topic identifier
+   * @param eventType - Optional event type filter
+   * @returns Array of custom events (typed based on event type)
+   */
+  getCustomEvents<TPayload>(
+    topicId: string,
+    eventType?: CustomEventType<TPayload>
+  ): CustomEventData<TPayload>[]
 }

@@ -15,32 +15,17 @@
           {{ threadStatus }}
         </span>
         <span class="response-count">{{ responses.length }} response{{ responses.length !== 1 ? 's' : '' }}</span>
+        <button
+          v-if="threadStatus !== 'dismissed'"
+          @click.stop="showReplyInput"
+          class="reply-button"
+          title="Reply"
+        >
+          <Icon name="message-square" :size="14" />
+        </button>
       </div>
 
       <div class="thread-actions">
-        <button
-          v-if="threadStatus === 'open'"
-          @click.stop="resolveThread"
-          class="action-button resolve"
-          title="Mark as resolved"
-        >
-          <Icon name="check" :size="14" />
-        </button>
-        <button
-          v-if="threadStatus === 'resolved'"
-          @click.stop="reopenThread"
-          class="action-button reopen"
-          title="Reopen thread"
-        >
-          <Icon name="rotate-ccw" :size="14" />
-        </button>
-        <button
-          @click.stop="dismissThread"
-          class="action-button dismiss"
-          title="Dismiss thread"
-        >
-          <Icon name="x" :size="14" />
-        </button>
         <button
           @click.stop="toggleCollapsed"
           class="action-button collapse"
@@ -137,46 +122,20 @@
     </div>
 
     <!-- User Input Section -->
-    <div v-if="!isCollapsed && threadStatus !== 'dismissed'" class="user-input-section">
+    <div v-if="!isCollapsed && threadStatus !== 'dismissed' && showReply" class="user-input-section">
       <div class="input-container">
-        <div class="input-header">
-          <Icon name="user" :size="16" />
-          <span class="input-label">Add response:</span>
-        </div>
+        <textarea
+          v-model="userInput"
+          ref="inputRef"
+          class="input-field"
+          placeholder="Type your response or question..."
+          rows="3"
+          @keydown.ctrl.enter="submitResponse"
+          @keydown.meta.enter="submitResponse"
+          @input="adjustTextareaHeight"
+          :disabled="isSubmitting || threadStatus === 'dismissed'"
+        />
 
-        <div class="input-field-container">
-          <textarea
-            v-model="userInput"
-            ref="inputRef"
-            class="input-field"
-            placeholder="Type your response or question..."
-            rows="3"
-            @keydown.ctrl.enter="submitResponse"
-            @keydown.meta.enter="submitResponse"
-            @input="adjustTextareaHeight"
-            :disabled="isSubmitting || threadStatus === 'dismissed'"
-          />
-
-          <div class="input-actions">
-            <span v-if="userInput" class="char-count">{{ userInput.length }}</span>
-            <ActionButton
-              @click="submitResponse"
-              :disabled="!userInput.trim() || isSubmitting || threadStatus === 'dismissed'"
-              :loading="isSubmitting"
-              variant="primary"
-              size="small"
-              class="submit-button"
-            >
-              <Icon v-if="!isSubmitting" name="send" />
-              {{ isSubmitting ? 'Sending...' : 'Send' }}
-            </ActionButton>
-          </div>
-        </div>
-
-        <div class="input-hint">
-          <Icon name="info" :size="12" />
-          <span>Press Ctrl+Enter to send</span>
-        </div>
       </div>
     </div>
 
@@ -245,6 +204,7 @@ const emit = defineEmits<{
 const userInput = ref('')
 const isSubmitting = ref(false)
 const isCollapsed = ref(props.collapsed)
+const showReply = ref(false)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 
 // Computed properties
@@ -257,6 +217,14 @@ const threadTitle = computed(() => {
 const responses = computed(() => props.responses || [])
 
 // Methods
+function showReplyInput() {
+  showReply.value = !showReply.value
+  if (showReply.value) {
+    nextTick(() => {
+      inputRef.value?.focus()
+    })
+  }
+}
 function getFileName(path: string): string {
   return path.split('/').pop() || path
 }
@@ -435,11 +403,14 @@ onUnmounted(() => {
 
 <style scoped>
 .comment-thread-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
   transition: all 0.3s ease;
   overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  margin-bottom: 0.5rem;
 }
 
 .comment-thread-card.inline {
@@ -478,7 +449,7 @@ onUnmounted(() => {
 }
 
 .thread-header:hover {
-  background: var(--glass-bg-hover);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .thread-meta {
@@ -570,9 +541,30 @@ onUnmounted(() => {
   color: var(--error-color);
 }
 
+.reply-button {
+  padding: 0.25rem 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.reply-button:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
 /* Original Comment */
 .original-comment {
-  padding: 0 1rem 1rem 1rem;
+  padding: 0 1rem 0.5rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -675,12 +667,12 @@ onUnmounted(() => {
 
 /* Thread Responses */
 .thread-responses {
-  padding: 1rem;
+  padding: 1rem 1rem 0.25rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .response-item {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   padding: 0.75rem;
   background: var(--glass-bg-darker);
   border-radius: 0.5rem;
@@ -816,7 +808,7 @@ onUnmounted(() => {
 
 /* User Input Section */
 .user-input-section {
-  padding: 1rem;
+  padding: 0.5rem 1rem 0.75rem 1rem;
 }
 
 .input-container {
@@ -893,7 +885,7 @@ onUnmounted(() => {
 
 /* Quick Actions */
 .quick-actions {
-  padding: 1rem;
+  padding: 0.5rem 1rem 0.75rem 1rem;
   display: flex;
   justify-content: center;
 }

@@ -91,11 +91,20 @@ export class XMLTagParser {
     // Extract paired tags
     let match: RegExpExecArray | null
     while ((match = pairedTagRegex.exec(content)) !== null) {
-      const tagContent = match[1]?.trim()
-      if (tagContent && tagContent.length > 0) {
-        // Filter out instruction examples and template content
-        if (!this.isInstructionExample(tagContent)) {
-          values.push(tagContent)
+      // For hunk and comment tags, return full tag to preserve attributes
+      if (tagName === 'hunk' || tagName === 'comment') {
+        const fullTag = match[0]?.trim()
+        if (fullTag && !this.isInstructionExample(fullTag)) {
+          values.push(fullTag)
+        }
+      } else {
+        // For other tags, return inner content as before
+        const tagContent = match[1]?.trim()
+        if (tagContent && tagContent.length > 0) {
+          // Filter out instruction examples and template content
+          if (!this.isInstructionExample(tagContent)) {
+            values.push(tagContent)
+          }
         }
       }
     }

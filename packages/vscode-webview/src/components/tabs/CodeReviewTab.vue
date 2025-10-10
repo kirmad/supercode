@@ -1,78 +1,7 @@
 <template>
   <div class="code-review-tab">
-    <!-- Tab Navigation -->
-    <div class="tab-navigation">
-      <GlassCard :elevation="1" :hoverable="false" class="nav-card">
-        <div class="tab-buttons">
-          <button
-            @click="activeTab = 'current'"
-            :class="['tab-button', { active: activeTab === 'current' }]"
-          >
-            <Icon name="activity" />
-            Current Review
-            <span v-if="hasUnsavedChanges" class="unsaved-indicator" title="Unsaved changes">
-              <Icon name="circle" :size="6" />
-            </span>
-          </button>
-          <button
-            @click="activeTab = 'saved'"
-            :class="['tab-button', { active: activeTab === 'saved' }]"
-          >
-            <Icon name="archive" />
-            Saved Reviews
-            <span v-if="savedReviewsCount > 0" class="review-count-badge">
-              {{ savedReviewsCount }}
-            </span>
-          </button>
-        </div>
-
-        <!-- Save Status & Actions -->
-        <div v-if="activeTab === 'current'" class="save-status-section">
-          <div class="save-status">
-            <div v-if="lastSaveTime" class="save-info">
-              <Icon name="check-circle" :size="14" class="save-icon" />
-              <span class="save-text">Saved {{ formatSaveTime(lastSaveTime) }}</span>
-            </div>
-            <div v-else-if="hasUnsavedChanges" class="unsaved-info">
-              <Icon name="clock" :size="14" class="unsaved-icon" />
-              <span class="unsaved-text">Unsaved changes</span>
-            </div>
-          </div>
-
-          <div class="save-actions">
-            <ActionButton
-              v-if="reviewResult"
-              @click="showSaveDialog = true"
-              variant="ghost"
-              size="small"
-              class="save-button"
-            >
-              <Icon name="save" />
-              Save Review
-            </ActionButton>
-            <button
-              v-if="autoSaveEnabled"
-              @click="toggleAutoSave"
-              class="auto-save-toggle active"
-              title="Auto-save is enabled"
-            >
-              <Icon name="zap" :size="14" />
-            </button>
-            <button
-              v-else
-              @click="toggleAutoSave"
-              class="auto-save-toggle"
-              title="Auto-save is disabled"
-            >
-              <Icon name="zap-off" :size="14" />
-            </button>
-          </div>
-        </div>
-      </GlassCard>
-    </div>
-
-    <!-- Current Review Tab -->
-    <div v-if="activeTab === 'current'" class="current-review-content">
+    <!-- Review Content -->
+    <div class="review-content">
       <!-- Input Section -->
       <div class="review-input-section">
       <GlassCard :elevation="1" :hoverable="false" class="input-card">
@@ -227,213 +156,284 @@
       </GlassCard>
     </div>
 
-    <!-- Progress Section -->
+    <!-- Micro Status Bar -->
     <TransitionGroup name="fade">
-      <div v-if="progressMessage" key="progress" class="progress-section">
-        <GlassCard :elevation="1" :hoverable="false">
-          <div class="progress-content">
-            <Icon name="loader" class="spinning" />
-            <span class="progress-message">{{ progressMessage }}</span>
+      <div v-if="progressMessage || insights.length > 0 || hunks.length > 0 || comments.length > 0" key="status" class="micro-status-bar">
+        <!-- Progress with micro icons -->
+        <div v-if="progressMessage" class="status-group">
+          <Icon name="loader" class="micro-icon spinning" />
+          <span class="micro-text">{{ progressMessage.replace('Loading ', '').replace('Processing ', '') }}</span>
+        </div>
+
+        <!-- Review Status Icons with counts -->
+        <div class="status-icons">
+          <div
+            v-if="insights.length > 0 || isLoadingInsights"
+            :class="['status-icon-group', { active: !insightsCollapsed, loading: isLoadingInsights }]"
+            @click="insightsCollapsed = !insightsCollapsed"
+          >
+            <Icon name="zap" class="micro-icon pulse" />
+            <span class="micro-count">{{ insights.length }}</span>
+            <div v-if="insights.length > 0" class="severity-dots">
+              <span v-if="insights.filter(i => i.severity === 'high').length > 0" class="dot high"></span>
+              <span v-if="insights.filter(i => i.severity === 'medium').length > 0" class="dot medium"></span>
+              <span v-if="insights.filter(i => i.severity === 'low').length > 0" class="dot low"></span>
+            </div>
           </div>
-        </GlassCard>
+
+          <div
+            v-if="hunks.length > 0 || isLoadingHunks"
+            :class="['status-icon-group', { active: !hunksCollapsed, loading: isLoadingHunks }]"
+            @click="hunksCollapsed = !hunksCollapsed"
+          >
+            <Icon name="git-commit" class="micro-icon pulse" />
+            <span class="micro-count">{{ hunks.length }}</span>
+            <div v-if="hunks.length > 0" class="risk-dots">
+              <span v-if="hunks.filter(h => h.risk === 'high').length > 0" class="dot high"></span>
+              <span v-if="hunks.filter(h => h.risk === 'medium').length > 0" class="dot medium"></span>
+              <span v-if="hunks.filter(h => h.risk === 'low').length > 0" class="dot low"></span>
+            </div>
+          </div>
+
+          <div
+            v-if="displayFiles.length > 0"
+            :class="['status-icon-group', { active: !diffViewerCollapsed }]"
+            @click="diffViewerCollapsed = !diffViewerCollapsed"
+          >
+            <Icon name="code" class="micro-icon" />
+            <span class="micro-count">{{ displayFiles.length }}</span>
+          </div>
+
+          <div
+            v-if="comments.length > 0 || isLoadingComments"
+            :class="['status-icon-group', { loading: isLoadingComments }]"
+          >
+            <Icon name="message-square" class="micro-icon" />
+            <span class="micro-count">{{ comments.length }}</span>
+          </div>
+        </div>
       </div>
     </TransitionGroup>
 
-    <!-- Insights Section -->
+    <!-- Insights Section - Compact with Summary -->
     <TransitionGroup name="slide-up">
-      <div v-if="insights.length > 0" key="insights" class="insights-section">
-        <GlassCard :elevation="1" :hoverable="false">
-          <h3 class="section-title collapsible" @click="insightsCollapsed = !insightsCollapsed">
-            <Icon :name="insightsCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-icon" />
-            <Icon name="zap" />
-            Review Insights ({{ insights.length }})
-          </h3>
-
-          <div v-show="!insightsCollapsed" class="insights-grid">
-            <TransitionGroup name="fade-scale">
-              <div
-                v-for="(insight, index) in insights"
-                :key="index"
-                :class="['insight-card', `severity-${insight.severity}`, `type-${insight.type}`]"
-              >
-                <div class="insight-header">
-                  <Icon :name="getInsightIcon(insight.type)" />
-                  <span class="insight-type">{{ insight.type }}</span>
-                  <span :class="['severity-badge', insight.severity]">
-                    {{ insight.severity }}
-                  </span>
-                </div>
-                <div class="insight-message">{{ insight.message }}</div>
+      <div v-if="insights.length > 0 || isLoadingInsights" key="insights" class="compact-section">
+        <div class="section-card" @click="insightsCollapsed = !insightsCollapsed">
+          <!-- Always visible summary bar -->
+          <div class="summary-bar">
+            <div class="section-indicator">
+              <Icon name="zap" class="section-icon insights-icon" />
+              <div v-if="insights.length > 0" class="severity-dots">
+                <span v-if="insights.filter(i => i.severity === 'high').length > 0" class="dot high"></span>
+                <span v-if="insights.filter(i => i.severity === 'medium').length > 0" class="dot medium"></span>
+                <span v-if="insights.filter(i => i.severity === 'low').length > 0" class="dot low"></span>
               </div>
-            </TransitionGroup>
+            </div>
+
+            <div class="latest-status">
+              <Icon v-if="isLoadingInsights" name="loader" class="spinning status-loader" />
+              <span v-if="isLoadingInsights" class="status-text">Analyzing code patterns...</span>
+              <span v-else-if="insights.length > 0" class="latest-message">
+                {{ insights[insights.length - 1].message }}
+              </span>
+            </div>
+            <div v-if="insights.length > 0 && !isLoadingInsights" class="summary-count">
+              <span class="summary-badge">{{ insights.length }}</span>
+            </div>
+
+            <Icon :name="insightsCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-arrow" />
           </div>
-        </GlassCard>
+
+          <!-- Expandable content -->
+          <div v-show="!insightsCollapsed" class="section-content">
+            <div class="insights-list">
+              <TransitionGroup name="fade-scale">
+                <div
+                  v-for="(insight, index) in insights"
+                  :key="index"
+                  :class="['insight-item', `severity-${insight.severity}`]"
+                >
+                  <Icon :name="getInsightIcon(insight.type)" class="item-icon" />
+                  <div class="item-content">
+                    <span class="item-message">{{ insight.message }}</span>
+                    <span :class="['severity-tag', insight.severity]">{{ insight.severity }}</span>
+                  </div>
+                </div>
+              </TransitionGroup>
+            </div>
+          </div>
+        </div>
       </div>
     </TransitionGroup>
 
-    <!-- Review Results Section -->
+    <!-- Hunks Section - Compact with Summary -->
     <TransitionGroup name="slide-up">
-      <div v-if="reviewResult" key="results" class="results-section">
-        <!-- Hunks Overview -->
-        <GlassCard :elevation="1" :hoverable="false" class="hunks-section">
-          <h3 class="section-title collapsible" @click="hunksCollapsed = !hunksCollapsed">
-            <Icon :name="hunksCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-icon" />
-            <Icon name="git-commit" />
-            Change Hunks ({{ reviewResult.hunks.length }})
-          </h3>
+      <div v-if="hunks.length > 0 || isLoadingHunks" key="hunks" class="compact-section">
+        <div class="section-card" @click="hunksCollapsed = !hunksCollapsed">
+          <!-- Always visible summary bar -->
+          <div class="summary-bar">
+            <div class="section-indicator">
+              <Icon name="git-commit" class="section-icon hunks-icon" />
+              <div v-if="hunks.length > 0" class="risk-dots">
+                <span v-if="hunks.filter(h => h.risk === 'high').length > 0" class="dot high"></span>
+                <span v-if="hunks.filter(h => h.risk === 'medium').length > 0" class="dot medium"></span>
+                <span v-if="hunks.filter(h => h.risk === 'low').length > 0" class="dot low"></span>
+              </div>
+            </div>
 
-          <div v-show="!hunksCollapsed" class="hunks-list">
-            <div
-              v-for="(hunk, index) in reviewResult.hunks"
-              :key="index"
-              :class="['hunk-card', { 'needs-attention': hunk.needsAttention }]"
-              @click="scrollToFile(hunk.file, hunk.start)"
-            >
-              <div class="hunk-header">
-                <div class="hunk-file">
-                  <Icon name="file-code" />
-                  {{ hunk.file }}
+            <div class="latest-status">
+              <Icon v-if="isLoadingHunks" name="loader" class="spinning status-loader" />
+              <span v-if="isLoadingHunks" class="status-text">Reviewing code changes...</span>
+              <span v-else-if="hunks.length > 0" class="latest-message">
+                {{ hunks[hunks.length - 1].file.split('/').pop() }}: {{ hunks[hunks.length - 1].description }}
+              </span>
+            </div>
+            <div v-if="hunks.length > 0 && !isLoadingHunks" class="summary-count">
+              <span class="summary-badge">{{ hunks.length }}</span>
+            </div>
+
+            <Icon :name="hunksCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-arrow" />
+          </div>
+
+          <!-- Expandable content -->
+          <div v-show="!hunksCollapsed" class="section-content">
+            <div class="hunks-list">
+              <TransitionGroup name="slide-fade">
+                <div
+                  v-for="(hunk, index) in hunks"
+                  :key="`${hunk.file}-${hunk.start}-${hunk.end}`"
+                  :class="['hunk-item', { 'needs-attention': hunk.needsAttention }]"
+                  @click="scrollToFile(hunk.file, hunk.start)"
+                >
+                  <Icon name="file-code" class="item-icon" />
+                  <div class="item-content">
+                    <div class="item-header">
+                      <span class="file-name">{{ hunk.file.split('/').pop() }}</span>
+                      <span :class="['risk-tag', hunk.risk]">{{ hunk.risk }}</span>
+                    </div>
+                    <span class="item-message">{{ hunk.description }}</span>
+                    <span class="line-info">Lines {{ hunk.start }}-{{ hunk.end }}</span>
+                  </div>
                 </div>
-                <div class="hunk-meta">
-                  <span :class="['category-badge', hunk.category]">
-                    {{ hunk.category }}
-                  </span>
-                  <span :class="['risk-badge', hunk.risk]">
-                    {{ hunk.risk }} risk
-                  </span>
-                  <span v-if="hunk.needsAttention" class="attention-badge">
-                    <Icon name="alert-triangle" />
-                    Needs Attention
-                  </span>
-                </div>
-              </div>
-              <div class="hunk-description">
-                {{ hunk.description }}
-              </div>
-              <div class="hunk-lines">
-                Lines {{ hunk.start }}-{{ hunk.end }}
-              </div>
+              </TransitionGroup>
             </div>
           </div>
-        </GlassCard>
-
-        <!-- Diff Viewer with Comments -->
-        <GlassCard :elevation="1" :hoverable="false" class="diff-viewer-section">
-          <h3 class="section-title">
-            <Icon name="code" />
-            Code Changes & Comments
-          </h3>
-
-          <!-- Content Mode Selector -->
-          <div v-if="versionFiles.length > 0 && versionFiles.some(f => f.localContent || f.remoteContent)" class="content-mode-selector">
-            <label class="mode-label">View Mode:</label>
-            <div class="mode-buttons">
-              <button
-                @click="contentDisplayMode = 'diff'"
-                :class="['mode-button', { active: contentDisplayMode === 'diff' }]"
-              >
-                <Icon name="git-compare" />
-                Unified Diff
-              </button>
-              <button
-                @click="contentDisplayMode = 'local'"
-                :class="['mode-button', { active: contentDisplayMode === 'local' }]"
-              >
-                <Icon name="file-text" />
-                Local Version
-              </button>
-              <button
-                @click="contentDisplayMode = 'remote'"
-                :class="['mode-button', { active: contentDisplayMode === 'remote' }]"
-              >
-                <Icon name="cloud" />
-                Remote Version
-              </button>
-            </div>
-          </div>
-
-          <!-- View Mode Toggle -->
-          <div class="view-mode-toggle">
-            <button
-              v-for="mode in viewModes"
-              :key="mode.id"
-              @click="selectedViewMode = mode.id"
-              :class="['mode-button', { active: selectedViewMode === mode.id }]"
-            >
-              <Icon :name="mode.icon" />
-              {{ mode.label }}
-            </button>
-          </div>
-
-          <!-- Diff Content -->
-          <div class="diff-content">
-            <DiffViewer
-              v-if="displayFiles.length && displayFiles.some(f => f.localContent || f.remoteContent)"
-              ref="diffViewerRef"
-              :files="displayFiles"
-              :comments="reviewResult.comments"
-              :hunks="reviewResult.hunks"
-              :viewMode="selectedViewMode as 'unified' | 'split'"
-              :content-mode="contentDisplayMode"
-              :threading-service="threadingService as any"
-              :threads="getAllThreads()"
-              :is-hunk-ai-typing="isHunkAITyping"
-              :get-hunk-streaming-response="getHunkStreamingResponse"
-              @comment-click="handleCommentClick"
-              @hunk-question="handleHunkQuestion"
-              @comment-reply="handleCommentReply"
-            />
-            <div v-else class="no-diff-message">
-              <Icon name="file-x" />
-              <p>No diff data available. Please provide a diff or select branches to compare.</p>
-            </div>
-          </div>
-        </GlassCard>
-
-        <!-- Comments Summary -->
-        <GlassCard :elevation="1" :hoverable="false" class="comments-section">
-          <h3 class="section-title">
-            <Icon name="message-square" />
-            Review Comments ({{ reviewResult.comments.length }})
-          </h3>
-
-          <!-- Comment Filters -->
-          <div class="comment-filters">
-            <button
-              v-for="filter in commentFilters"
-              :key="filter.id"
-              @click="selectedCommentFilter = filter.id"
-              :class="['filter-button', { active: selectedCommentFilter === filter.id }]"
-            >
-              {{ filter.label }}
-              <span class="filter-count">{{ getFilteredComments(filter.id).length }}</span>
-            </button>
-          </div>
-
-          <!-- Comments with Threading -->
-          <div class="comments-list">
-            <TransitionGroup name="fade">
-              <CommentThreadCard
-                v-for="comment in filteredComments"
-                :key="`thread-${comment.file}-${comment.lines.start}`"
-                :original-comment="convertToSavedComment(comment)"
-                :responses="getThreadResponses(comment)"
-                :thread-status="getThreadStatus(comment)"
-                :code-context="getCodeContext(comment)"
-                :is-a-i-typing="isAITyping(comment)"
-                :streaming-response="getStreamingResponse(comment)"
-                @user-response="handleUserResponse(comment, $event)"
-                @status-change="handleThreadStatusChange(comment, $event)"
-                @toggle-collapsed="handleThreadToggle(comment, $event)"
-              />
-            </TransitionGroup>
-          </div>
-        </GlassCard>
+        </div>
       </div>
+    </TransitionGroup>
+
+    <!-- Diff Viewer Section - Compact with Summary -->
+      <TransitionGroup name="slide-up">
+        <div v-if="displayFiles.length > 0" key="diff-viewer" class="compact-section">
+          <div class="section-card section-card--seamless">
+            <!-- Always visible summary bar -->
+            <div class="summary-bar" @click="diffViewerCollapsed = !diffViewerCollapsed">
+              <div class="section-indicator">
+                <Icon name="code" class="section-icon diff-icon" />
+                <div class="count-details">
+                  <span class="total-count">{{ displayFiles.length }}</span>
+                  <div class="breakdown-counts">
+                    <span class="count-item files">files</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="latest-status">
+                <span class="latest-message">
+                  {{ displayFiles.length }} file{{ displayFiles.length !== 1 ? 's' : '' }} ready for review
+                </span>
+              </div>
+
+              <Icon :name="diffViewerCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-arrow" />
+            </div>
+
+            <!-- Expandable content -->
+            <div v-show="!diffViewerCollapsed" class="section-content diff-content" @click.stop>
+              <!-- Diff Content -->
+              <div class="diff-content">
+                <DiffViewer
+                  ref="diffViewerRef"
+                  :files="displayFiles"
+                  :comments="comments"
+                  :hunks="hunks"
+                  :viewMode="selectedViewMode as 'unified' | 'split'"
+                  :content-mode="contentDisplayMode"
+                  :threading-service="threadingService as any"
+                  :threads="getAllThreads()"
+                  :is-hunk-ai-typing="isHunkAITyping"
+                  :get-hunk-streaming-response="getHunkStreamingResponse"
+                  v-model:selectedFileIndex="selectedFileIndex"
+                  @update:content-mode="contentDisplayMode = $event"
+                  @update:view-mode="selectedViewMode = $event"
+                  @comment-click="handleCommentClick"
+                  @hunk-question="handleHunkQuestion"
+                  @comment-reply="handleCommentReply"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </TransitionGroup>
+
+      <!-- Comments Section - Compact with Summary -->
+      <TransitionGroup name="slide-up">
+        <div v-if="comments.length > 0 || isLoadingComments" key="comments" class="compact-section">
+          <div class="section-card">
+            <!-- Always visible summary bar -->
+            <div class="summary-bar" @click="commentsCollapsed = !commentsCollapsed">
+              <div class="section-indicator">
+                <Icon name="message-square" class="section-icon comments-icon" />
+                <div class="count-details">
+                  <span class="total-count">{{ comments.length }}</span>
+                  <div v-if="comments.length > 0" class="breakdown-counts">
+                    <span v-if="comments.filter(c => c.type === 'issue').length > 0" class="count-item issue">
+                      {{ comments.filter(c => c.type === 'issue').length }}I
+                    </span>
+                    <span v-if="comments.filter(c => c.type === 'suggestion').length > 0" class="count-item suggestion">
+                      {{ comments.filter(c => c.type === 'suggestion').length }}S
+                    </span>
+                    <span v-if="comments.filter(c => c.type === 'praise').length > 0" class="count-item praise">
+                      {{ comments.filter(c => c.type === 'praise').length }}P
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="latest-status">
+                <Icon v-if="isLoadingComments" name="loader" class="spinning status-loader" />
+                <span v-if="isLoadingComments" class="status-text">Generating feedback...</span>
+                <span v-else-if="comments.length > 0" class="latest-message">
+                  {{ comments.length }} comment{{ comments.length !== 1 ? 's' : '' }} available
+                </span>
+              </div>
+
+              <Icon :name="commentsCollapsed ? 'chevron-right' : 'chevron-down'" class="collapse-arrow" />
+            </div>
+
+            <!-- Expandable comments content -->
+            <div v-show="!commentsCollapsed" class="section-content" @click.stop>
+              <TransitionGroup name="fade">
+                <CommentThreadCard
+                  v-for="comment in filteredComments"
+                  :key="`thread-${comment.file}-${comment.lines.start}`"
+                  :original-comment="convertToSavedComment(comment)"
+                  :responses="getThreadResponses(comment)"
+                  :thread-status="getThreadStatus(comment)"
+                  :code-context="getCodeContext(comment)"
+                  :is-a-i-typing="isAITyping(comment)"
+                  :streaming-response="getStreamingResponse(comment)"
+                  @user-response="handleUserResponse(comment, $event)"
+                  @status-change="handleThreadStatusChange(comment, $event)"
+                  @toggle-collapsed="handleThreadToggle(comment, $event)"
+                />
+              </TransitionGroup>
+            </div>
+          </div>
+        </div>
       </TransitionGroup>
 
       <!-- Empty State -->
-      <div v-if="!isReviewing && !reviewResult && insights.length === 0" class="empty-state">
+      <div v-if="!isReviewing && !reviewResult && insights.length === 0 && hunks.length === 0 && comments.length === 0" class="empty-state">
         <GlassCard :elevation="1" :hoverable="false">
           <div class="empty-content">
             <Icon name="code-review" class="empty-icon" />
@@ -441,13 +441,6 @@
             <p>Select a review type above and provide the necessary information to start your code review.</p>
           </div>
         </GlassCard>
-      </div>
-    </div>
-
-    <!-- Saved Reviews Tab -->
-    <div v-if="activeTab === 'saved'" class="saved-reviews-content">
-      <div class="text-center p-8">
-        <p class="text-gray-400">Review persistence has been disabled.</p>
       </div>
     </div>
 
@@ -470,14 +463,17 @@ import { CommentThreadingService } from '../../services/CommentThreadingService'
 // import { type SavedCodeReview } from '../../types/CodeReview'
 import GlassCard from '../shared/GlassCard.vue'
 import ActionButton from '../shared/ActionButton.vue'
+// import ProgressBar from '../shared/ProgressBar.vue' // Unused
 import Icon from '../Icon.vue'
 import DiffViewer from '../review/DiffViewer.vue'
 import CommentThreadCard from '../review/CommentThreadCard.vue'
 import ReviewSaveDialog from '../review/ReviewSaveDialog.vue'
 
 // Collapse states
-const insightsCollapsed = ref(false)
-const hunksCollapsed = ref(false)
+const insightsCollapsed = ref(true)
+const hunksCollapsed = ref(true)
+const commentsCollapsed = ref(true)
+const diffViewerCollapsed = ref(false) // Auto-collapse when review starts
 
 // Component refs
 const diffViewerRef = ref<InstanceType<typeof DiffViewer> | null>(null)
@@ -501,6 +497,9 @@ const threadUpdateTrigger = ref(0)
 const aiTypingThreads = ref<Set<string>>(new Set())
 const streamingResponses = ref<Map<string, string>>(new Map())
 
+// Selected file index for DiffViewer
+const selectedFileIndex = ref(0)
+
 // Review types
 const reviewTypes = [
   { id: 'branches', label: 'Compare Branches', icon: 'git-branch' },
@@ -509,27 +508,14 @@ const reviewTypes = [
   { id: 'diff', label: 'Review Diff', icon: 'file-diff' }
 ]
 
-// View modes
-const viewModes = [
-  { id: 'unified', label: 'Unified', icon: 'align-left' },
-  { id: 'split', label: 'Side-by-Side', icon: 'columns' }
-]
+// View modes - moved to DiffViewer component
+// Comment filters - unused for now
 
-// Comment filters
-const commentFilters = [
-  { id: 'all', label: 'All' },
-  { id: 'issues', label: 'Issues' },
-  { id: 'suggestions', label: 'Suggestions' },
-  { id: 'praise', label: 'Praise' },
-  { id: 'high', label: 'High Severity' }
-]
-
-// Tab state
-const activeTab = ref<'current' | 'saved'>('current')
+// Save dialog state (keeping for potential future use)
 const showSaveDialog = ref(false)
 const savedReviewsCount = ref(0)
-const autoSaveEnabled = ref(true)
-const lastSaveTime = ref<Date | null>(null)
+// const autoSaveEnabled = ref(true) // Unused
+// const lastSaveTime = ref<Date | null>(null) // Unused
 const hasUnsavedChanges = ref(false)
 
 // Review state
@@ -546,10 +532,20 @@ const pullRequestUrl = ref('')
 const isReviewing = ref(false)
 const progressMessage = ref('')
 const insights = ref<ReviewInsight[]>([])
+const hunks = ref<any[]>([])
+const comments = ref<Comment[]>([])
 const reviewResult = ref<ReviewResult | null>(null)
-const currentDiffFiles = ref<DiffFile[]>([])
-const versionFiles = ref<DiffFile[]>([])
+// File state - both arrays are kept in sync for consistent UI during streaming and after completion
+// versionFiles is the primary source, populated immediately on onFilesReady and enriched on onReviewComplete
+const currentDiffFiles = ref<DiffFile[]>([])  // Legacy, kept for backward compatibility
+const versionFiles = ref<DiffFile[]>([])  // Primary file array
 const contentDisplayMode = ref<'diff' | 'local' | 'remote'>('diff')
+
+// Loading states
+const isLoadingFiles = ref(false)
+const isLoadingInsights = ref(false)
+const isLoadingHunks = ref(false)
+const isLoadingComments = ref(false)
 
 // Git data
 const availableBranches = ref<string[]>([])
@@ -592,13 +588,15 @@ function isValidUrl(url: string): boolean {
 }
 
 const filteredComments = computed(() => {
-  if (!reviewResult.value) return []
   return getFilteredComments(selectedCommentFilter.value)
 })
 
 const displayFiles = computed(() => {
   return versionFiles.value.length > 0 ? versionFiles.value : currentDiffFiles.value
 })
+
+// Content availability computeds moved to DiffViewer
+
 
 // Save state computed properties (currently unused)
 // const currentReviewInfo = computed(() => {
@@ -608,23 +606,21 @@ const displayFiles = computed(() => {
 
 // Methods
 function getFilteredComments(filterId: string) {
-  if (!reviewResult.value) return []
-
-  const comments = reviewResult.value.comments
+  const allComments = comments.value // Use progressive array instead of reviewResult
 
   switch (filterId) {
     case 'all':
-      return comments
+      return allComments
     case 'issues':
-      return comments.filter(c => c.type === 'issue')
+      return allComments.filter(c => c.type === 'issue')
     case 'suggestions':
-      return comments.filter(c => c.type === 'suggestion')
+      return allComments.filter(c => c.type === 'suggestion')
     case 'praise':
-      return comments.filter(c => c.type === 'praise')
+      return allComments.filter(c => c.type === 'praise')
     case 'high':
-      return comments.filter(c => c.severity === 'high')
+      return allComments.filter(c => c.severity === 'high')
     default:
-      return comments
+      return allComments
   }
 }
 
@@ -643,8 +639,16 @@ async function startReview() {
   if (!canStartReview.value || isReviewing.value || !reviewService.value) return
 
   insights.value = []
+  hunks.value = []
+  comments.value = []
   reviewResult.value = null
   isReviewing.value = true
+  isLoadingFiles.value = true
+  isLoadingInsights.value = true
+  isLoadingHunks.value = true
+  isLoadingComments.value = true
+  // Auto-collapse diff viewer when review starts to save space
+  diffViewerCollapsed.value = true
 
   const options: any = {}
 
@@ -672,6 +676,13 @@ function cancelReview() {
   reviewService.value.cancelReview()
   isReviewing.value = false
   progressMessage.value = ''
+  insights.value = []
+  hunks.value = []
+  comments.value = []
+  isLoadingFiles.value = false
+  isLoadingInsights.value = false
+  isLoadingHunks.value = false
+  isLoadingComments.value = false
 }
 
 function scrollToFile(file: string, line: number) {
@@ -705,6 +716,7 @@ function handleCommentClick(comment: Comment) {
   // Handle comment click in diff viewer
   console.log('Comment clicked:', comment)
 }
+
 
 // Unused function - kept for potential future use
 // function applyFix(comment: Comment) {
@@ -819,32 +831,7 @@ async function updateSavedReviewsCount(): Promise<void> {
   // }
 }
 
-function toggleAutoSave(): void {
-  autoSaveEnabled.value = !autoSaveEnabled.value
-  // Auto-save features are disabled
-  // if (reviewService.value) {
-  //   reviewService.value.setAutoSaveEnabled(autoSaveEnabled.value)
-  // }
-}
-
-function formatSaveTime(time: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - time.getTime()
-  const diffMinutes = Math.floor(diffMs / (1000 * 60))
-
-  if (diffMinutes < 1) {
-    return 'just now'
-  } else if (diffMinutes < 60) {
-    return `${diffMinutes}m ago`
-  } else {
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) {
-      return `${diffHours}h ago`
-    } else {
-      return time.toLocaleDateString()
-    }
-  }
-}
+// Unused functions removed - toggleAutoSave, formatSaveTime
 
 async function handleManualSave(saveData: any): Promise<void> {
   if (!reviewService.value) return
@@ -930,7 +917,7 @@ function getCodeContext(comment: Comment): string {
   // Find the patch that contains the comment lines
   for (const patch of file.patches) {
     if (comment.lines.start >= patch.newStart &&
-        comment.lines.start <= patch.newStart + (patch.newLines || patch.lines.length)) {
+        comment.lines.start <= patch.newStart + patch.lines.length) {
       // Return a snippet of the patch around the comment
       const startIndex = Math.max(0, comment.lines.start - patch.newStart - 2)
       const endIndex = Math.min(patch.lines.length, comment.lines.start - patch.newStart + 3)
@@ -1018,23 +1005,69 @@ onMounted(async () => {
     reviewService.value.setCallbacks({
       onInsightReceived: (insight) => {
         insights.value.push(insight)
+        if (isLoadingInsights.value) {
+          isLoadingInsights.value = false
+        }
+        console.log('[CodeReviewTab] Insight received:', insight.type, insight.severity)
+      },
+      onHunkReceived: (hunk) => {
+        hunks.value.push(hunk)
+        if (isLoadingHunks.value) {
+          isLoadingHunks.value = false
+        }
+        console.log('[CodeReviewTab] Hunk received:', hunk.file, hunk.start, hunk.end)
+      },
+      onCommentReceived: (comment) => {
+        comments.value.push(comment)
+        if (isLoadingComments.value) {
+          isLoadingComments.value = false
+        }
+        console.log('[CodeReviewTab] Comment received:', comment.file, comment.type)
       },
       onReviewComplete: (result, filesWithVersions) => {
         reviewResult.value = result
         isReviewing.value = false
         progressMessage.value = ''
         hasUnsavedChanges.value = true
+        isLoadingFiles.value = false
+        isLoadingInsights.value = false
+        isLoadingHunks.value = false
+        isLoadingComments.value = false
 
-        // Store version-enriched files
-        versionFiles.value = filesWithVersions || []
+        // Merge hunks - add any from result that weren't received progressively
+        const existingHunkIds = new Set(hunks.value.map(h => `${h.file}-${h.start}-${h.end}`))
+        const newHunks = result.hunks.filter(h => !existingHunkIds.has(`${h.file}-${h.start}-${h.end}`))
+        hunks.value.push(...newHunks)
 
-        // Update currentDiffFiles to use enriched files if available, otherwise fall back to service files
+        // Merge comments - add any from result that weren't received progressively
+        const existingCommentIds = new Set(comments.value.map(c => `${c.file}-${c.lines.start}-${c.lines.end}`))
+        const newComments = result.comments.filter(c => !existingCommentIds.has(`${c.file}-${c.lines.start}-${c.lines.end}`))
+        comments.value.push(...newComments)
+
+        // Merge version-enriched files with existing files
         if (filesWithVersions && filesWithVersions.length > 0) {
-          currentDiffFiles.value = filesWithVersions
+          // Update versionFiles with enriched data, preserving any files already loaded
+          const enrichedMap = new Map(filesWithVersions.map(f => [f.path || f.fileName, f]))
+          versionFiles.value = versionFiles.value.map(f => {
+            const enriched = enrichedMap.get(f.path || f.fileName)
+            return enriched ? { ...f, ...enriched } : f
+          })
+          // Also add any new files from enriched data
+          const existingPaths = new Set(versionFiles.value.map(f => f.path || f.fileName))
+          const newFiles = filesWithVersions.filter(f => !existingPaths.has(f.path || f.fileName))
+          versionFiles.value.push(...newFiles)
+
+          currentDiffFiles.value = versionFiles.value
         } else if (result && reviewService.value) {
           const files = reviewService.value.getCurrentFiles()
           if (files && files.length > 0) {
-            currentDiffFiles.value = files
+            // Merge with existing files
+            const fileMap = new Map(files.map(f => [f.path || f.fileName, f]))
+            versionFiles.value = versionFiles.value.map(f => {
+              const updated = fileMap.get(f.path || f.fileName)
+              return updated ? { ...f, ...updated } : f
+            })
+            currentDiffFiles.value = versionFiles.value
           }
         }
       },
@@ -1045,6 +1078,14 @@ onMounted(async () => {
         console.error('Review error:', error)
         isReviewing.value = false
         progressMessage.value = ''
+        isLoadingFiles.value = false
+      },
+      onFilesReady: (files) => {
+        console.log('[CodeReviewTab] Files ready:', files.length)
+        currentDiffFiles.value = files
+        versionFiles.value = files  // Populate versionFiles immediately for consistent UI
+        isLoadingFiles.value = false
+        progressMessage.value = 'Processing review...'
       },
       onThreadCreated: (threadInfo) => {
         console.log('Thread created in UI:', threadInfo.threadId)
@@ -1107,163 +1148,50 @@ onUnmounted(() => {
 
 <style scoped>
 .code-review-tab {
-  padding: 1.5rem;
+  padding: 0.75rem;
   max-width: 100%;
   animation: fadeIn 0.3s ease;
 }
 
-/* Tab Navigation */
-.tab-navigation {
-  margin-bottom: 1.5rem;
-}
-
-.nav-card {
-  padding: 1rem;
-}
-
-.tab-buttons {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.tab-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.tab-button:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--primary-color);
-  transform: translateY(-1px);
-}
-
-.tab-button.active {
-  background: var(--primary-gradient);
-  border-color: transparent;
-  color: white;
-}
-
-.unsaved-indicator {
-  color: var(--warning-color);
-  animation: pulse 2s infinite;
-}
-
-.review-count-badge {
-  padding: 0.125rem 0.375rem;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 1rem;
-  font-size: 0.625rem;
-  font-weight: 600;
-  min-width: 1.25rem;
-  text-align: center;
-}
-
-.tab-button:not(.active) .review-count-badge {
-  background: var(--primary-alpha-10);
-  color: var(--primary-color);
-}
-
-/* Save Status Section */
-.save-status-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.save-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.save-info {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-  color: var(--success-color);
-}
-
-.save-icon {
-  color: var(--success-color);
-}
-
-.unsaved-info {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-  color: var(--warning-color);
-}
-
-.unsaved-icon {
-  color: var(--warning-color);
-  animation: pulse 2s infinite;
-}
-
-.save-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.auto-save-toggle {
-  padding: 0.375rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.375rem;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.auto-save-toggle:hover {
-  background: var(--glass-bg-hover);
-  transform: translateY(-1px);
-}
-
-.auto-save-toggle.active {
-  background: var(--success-alpha-10);
-  border-color: var(--success-color);
-  color: var(--success-color);
-}
 
 /* Content Sections */
-.current-review-content,
-.saved-reviews-content {
+.review-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
   animation: fadeIn 0.3s ease;
 }
 
-/* Input Section */
+/* Professional Input Section */
 .review-input-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .input-card {
-  padding: 1.5rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.input-card:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
 }
 
 .section-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 1.125rem;
+  gap: 0.75rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 1.5rem;
+  letter-spacing: -0.025em;
 }
 
 .section-title.collapsible {
@@ -1276,29 +1204,53 @@ onUnmounted(() => {
   opacity: 0.8;
 }
 
+/* Ultra Compact Titles */
+.compact-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.compact-title.collapsible {
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.compact-title.collapsible:hover {
+  opacity: 0.8;
+}
+
 .collapse-icon {
   transition: transform 0.3s ease;
   flex-shrink: 0;
+  font-size: 0.75rem;
 }
 
 .input-options {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .review-type-selector {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .input-label {
   font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
   margin-bottom: 0.5rem;
   display: block;
+  letter-spacing: -0.025em;
 }
 
 .type-buttons {
@@ -1311,26 +1263,30 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.625rem 1rem;
+  padding: 0.75rem 1rem;
   background: var(--glass-bg);
   border: 1px solid var(--border-subtle);
   border-radius: 0.5rem;
   font-size: 0.875rem;
+  font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .type-button:hover {
   background: var(--glass-bg-hover);
   border-color: var(--primary-color);
   transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .type-button.active {
   background: var(--primary-gradient);
   border-color: transparent;
   color: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .branch-inputs,
@@ -1405,19 +1361,20 @@ onUnmounted(() => {
 
 .text-input {
   width: 100%;
-  padding: 0.625rem 1rem;
+  padding: 0.75rem 1rem;
   background: var(--glass-bg);
   border: 1px solid var(--border-subtle);
   border-radius: 0.5rem;
   font-size: 0.875rem;
   color: var(--text-primary);
   transition: all 0.2s ease;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 .text-input:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-alpha-10);
+  box-shadow: 0 0 0 3px var(--primary-alpha-10), 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .diff-textarea {
@@ -1445,16 +1402,49 @@ onUnmounted(() => {
   margin-top: 0.5rem;
 }
 
-/* Progress Section */
+/* Progress Section - Ultra Compact */
 .progress-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.compact-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background: var(--glass-bg);
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.progress-indicators {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.indicator {
+  font-size: 0.75rem;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.indicator.done {
+  opacity: 1;
 }
 
 .progress-content {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem;
+  padding: 0.875rem;
   color: var(--text-secondary);
 }
 
@@ -1464,38 +1454,42 @@ onUnmounted(() => {
 
 /* Insights Section */
 .insights-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .insights-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .insight-card {
-  padding: 1rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.375rem;
   transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  margin-bottom: 0.375rem;
 }
 
 .insight-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px var(--shadow-color);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .insight-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
 }
 
 .insight-type {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -1503,9 +1497,9 @@ onUnmounted(() => {
 }
 
 .severity-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 1rem;
-  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.75rem;
+  font-size: 0.5rem;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1526,8 +1520,8 @@ onUnmounted(() => {
 }
 
 .insight-message {
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 0.75rem;
+  line-height: 1.4;
   color: var(--text-primary);
 }
 
@@ -1553,27 +1547,31 @@ onUnmounted(() => {
 
 /* Hunks Section */
 .hunks-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .hunks-list {
   display: grid;
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
 }
 
 .hunk-card {
-  padding: 1rem;
-  background: var(--glass-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.375rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  margin-bottom: 0.375rem;
 }
 
 .hunk-card:hover {
-  background: var(--glass-bg-hover);
+  background: rgba(255, 255, 255, 0.16);
   transform: translateX(4px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
 }
 
 .hunk-card.needs-attention {
@@ -1585,30 +1583,30 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .hunk-file {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
+  gap: 0.375rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .hunk-meta {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.375rem;
   flex-wrap: wrap;
 }
 
 .category-badge,
 .risk-badge,
 .attention-badge {
-  padding: 0.25rem 0.5rem;
+  padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
-  font-size: 0.625rem;
+  font-size: 0.5rem;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1642,37 +1640,37 @@ onUnmounted(() => {
 }
 
 .hunk-description {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
 }
 
 .hunk-lines {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   color: var(--text-tertiary);
   font-family: 'Monaco', 'Courier New', monospace;
 }
 
 /* Diff Viewer Section */
 .diff-viewer-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .view-mode-toggle {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: 0.375rem;
+  margin-bottom: 0.5rem;
 }
 
 .mode-button {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
   background: var(--glass-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  font-size: 0.625rem;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1689,19 +1687,35 @@ onUnmounted(() => {
   color: white;
 }
 
-.content-mode-selector {
+.mode-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-button:disabled:hover {
+  transform: none;
+}
+
+.controls-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 1.5rem;
+  margin-bottom: 0.5rem;
   padding: 0.75rem;
   background: var(--glass-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
+  border-radius: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.content-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .mode-label {
-  font-size: 0.75rem;
+  font-size: 0.625rem;
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -1713,7 +1727,7 @@ onUnmounted(() => {
 }
 
 .diff-content {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 
 .no-diff-message {
@@ -1734,25 +1748,25 @@ onUnmounted(() => {
 
 /* Comments Section */
 .comments-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .comment-filters {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.375rem;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .filter-button {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
   background: var(--glass-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 1.5rem;
-  font-size: 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.625rem;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1770,20 +1784,20 @@ onUnmounted(() => {
 }
 
 .filter-count {
-  padding: 0.125rem 0.375rem;
+  padding: 0.075rem 0.25rem;
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 1rem;
-  font-size: 0.625rem;
+  border-radius: 0.75rem;
+  font-size: 0.5rem;
   font-weight: 600;
 }
 
 .comments-list {
   display: grid;
-  gap: 1rem;
-  margin-top: 1rem;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
 }
 
-/* Empty State */
+/* Professional Empty State */
 .empty-state {
   display: flex;
   justify-content: center;
@@ -1795,10 +1809,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
   padding: 3rem;
   text-align: center;
   color: var(--text-secondary);
+  background: var(--glass-bg);
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-subtle);
 }
 
 .empty-icon {
@@ -1831,22 +1849,57 @@ onUnmounted(() => {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.025em;
 }
 
 .empty-content p {
-  font-size: 0.875rem;
+  font-size: 1rem;
   max-width: 400px;
-  line-height: 1.5;
+  line-height: 1.6;
+  color: var(--text-secondary);
 }
 
 /* Animations */
+/* Professional Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.section-card {
+  animation: slideInUp 0.3s ease;
+}
+
+.status-icon-group {
+  animation: scaleIn 0.2s ease;
 }
 
 @keyframes spinning {
@@ -1909,35 +1962,951 @@ onUnmounted(() => {
   transform: scale(0.95);
 }
 
-/* CSS Variables for new features */
-:root {
-  --primary-alpha-10: rgba(99, 102, 241, 0.1);
-  --success-alpha-10: rgba(34, 197, 94, 0.1);
-  --warning-alpha-10: rgba(245, 158, 11, 0.1);
-  --error-alpha-5: rgba(239, 68, 68, 0.05);
-  --error-color-dark: #dc2626;
+/* Section loader icon */
+.section-loader {
+  margin-left: auto;
+  color: var(--primary-color);
+  font-size: 1rem;
 }
 
-/* Responsive adjustments for tabs */
+/* Compact loader */
+.compact-loader {
+  margin-left: auto;
+  color: var(--primary-color);
+  font-size: 0.75rem;
+}
+
+/* Loading more indicator */
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+/* Compact Summary Styles */
+.section-summary {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--glass-bg);
+}
+
+.summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.summary-stats {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  padding: 0.1rem 0.375rem;
+  border-radius: 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.stat-item.high {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.stat-item.medium {
+  background: var(--warning-alpha-10);
+  color: var(--warning-color);
+}
+
+.stat-item.low {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+.stat-item.attention {
+  background: var(--warning-bg);
+  color: var(--warning-color);
+}
+
+.latest-insight,
+.latest-hunk {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.insight-icon,
+.hunk-icon {
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.insight-preview,
+.hunk-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+/* Slide-fade transition for hunks */
+.slide-fade-enter-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.slide-fade-enter-from {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+.slide-fade-leave-to {
+  transform: translateY(10px);
+  opacity: 0;
+}
+
+/* Prevent layout shift - min heights for sections */
+.insights-grid,
+.hunks-list,
+.comments-list {
+  min-height: 60px;
+  transition: min-height 0.3s ease;
+}
+
+.insights-section,
+.hunks-section,
+.comments-section {
+  transition: all 0.3s ease;
+}
+
+/* Smooth height transitions */
+.insights-grid > *,
+.hunks-list > *,
+.comments-list > * {
+  transition: all 0.3s ease;
+}
+
+/* Ultra Compact UI Styles */
+
+/* Professional Card Sections */
+.compact-section {
+  margin-bottom: 0.5rem;
+}
+
+.section-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.2), 0 1px 3px 0 rgba(0, 0, 0, 0.12);
+}
+
+.section-card:hover {
+  border-color: rgba(99, 102, 241, 0.6);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.25), 0 2px 6px -1px rgba(0, 0, 0, 0.18);
+  transform: translateY(-1px);
+}
+
+/* Professional Summary Bar */
+.summary-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 3.5rem;
+}
+
+.summary-bar:hover {
+  background: var(--glass-bg-hover);
+}
+
+.section-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.section-icon {
+  font-size: 1.125rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+}
+
+.insights-icon {
+  color: var(--warning-color);
+  background: var(--warning-alpha-10);
+}
+
+.hunks-icon {
+  color: var(--info-color);
+  background: var(--info-alpha-10);
+}
+
+.diff-icon {
+  color: var(--primary-color);
+  background: var(--primary-alpha-10);
+}
+
+.comments-icon {
+  color: var(--success-color);
+  background: var(--success-alpha-10);
+}
+
+/* Count Details Layout */
+.count-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+
+.total-count {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.breakdown-counts {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.count-item {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.count-item.high {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.count-item.medium {
+  background: var(--warning-alpha-10);
+  color: var(--warning-color);
+}
+
+.count-item.low {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+.count-item.attention {
+  background: var(--warning-bg);
+  color: var(--warning-color);
+}
+
+.count-item.issue {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.count-item.suggestion {
+  background: var(--info-bg);
+  color: var(--info-color);
+}
+
+.count-item.praise {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+.count-item.files {
+  background: var(--primary-alpha-10);
+  color: var(--primary-color);
+}
+
+.latest-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+  min-width: 0;
+  flex: 1;
+}
+
+.summary-count {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+}
+
+.summary-badge {
+  padding: 0.25rem 0.75rem;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(99, 102, 241, 1);
+  backdrop-filter: blur(4px);
+}
+
+.latest-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.4;
+}
+
+.status-loader {
+  font-size: 0.875rem;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.status-text {
+  font-size: 0.875rem;
+  color: var(--primary-color);
+  font-style: italic;
+  animation: pulse 2s ease-in-out infinite;
+  line-height: 1.2;
+}
+
+.latest-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-weight: 400;
+}
+
+.collapse-arrow {
+  font-size: 0.875rem;
+  color: var(--text-tertiary);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+}
+
+.collapse-arrow:hover {
+  background: var(--glass-bg-hover);
+  color: var(--text-secondary);
+  transform: scale(1.05);
+}
+
+/* Professional Section Content */
+.section-content {
+  padding: 0 1rem 1rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.diff-content {
+  padding: 0.75rem;
+}
+
+/* Lists */
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Items */
+.insight-item,
+.hunk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  margin-bottom: 0.75rem;
+}
+
+.insight-item:hover,
+.hunk-item:hover {
+  background: var(--glass-bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-color: var(--primary-color);
+}
+
+.insight-item.severity-high {
+  border-left: 4px solid var(--error-color);
+  background: linear-gradient(to right, var(--error-alpha-5), var(--glass-bg));
+}
+
+.insight-item.severity-medium {
+  border-left: 4px solid var(--warning-color);
+  background: linear-gradient(to right, var(--warning-alpha-5), var(--glass-bg));
+}
+
+.insight-item.severity-low {
+  border-left: 4px solid var(--success-color);
+  background: linear-gradient(to right, var(--success-alpha-5), var(--glass-bg));
+}
+
+.hunk-item.needs-attention {
+  border-left: 3px solid var(--warning-color);
+  background: var(--warning-alpha-5);
+}
+
+.item-icon {
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.file-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.item-message {
+  color: var(--text-secondary);
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+.line-info {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+/* Tags */
+.severity-tag,
+.risk-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  flex-shrink: 0;
+  letter-spacing: 0.025em;
+}
+
+.severity-tag.high,
+.risk-tag.high {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.severity-tag.medium,
+.risk-tag.medium {
+  background: var(--warning-alpha-10);
+  color: var(--warning-color);
+}
+
+.severity-tag.low,
+.risk-tag.low {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+/* Professional Status Bar */
+.micro-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+}
+
+.micro-status-bar:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+}
+
+.status-icons {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.status-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.status-icon-group:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.status-icon-group.active {
+  background: var(--primary-alpha-10);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.status-icon-group.loading .micro-icon {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.micro-icon {
+  font-size: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.micro-icon.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.micro-icon.spinning {
+  animation: spinning 1s linear infinite;
+}
+
+.micro-count {
+  font-size: 0.625rem;
+  font-weight: 600;
+  min-width: 1rem;
+  text-align: center;
+}
+
+.micro-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Severity/Risk Dots */
+.severity-dots,
+.risk-dots {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  animation: dotPulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.dot.high {
+  background: var(--error-color);
+  animation-delay: 0s;
+}
+
+.dot.medium {
+  background: var(--warning-color);
+  animation-delay: 0.3s;
+}
+
+.dot.low {
+  background: var(--success-color);
+  animation-delay: 0.6s;
+}
+
+/* Minimal Sections */
+.minimal-section {
+  margin-bottom: 0.375rem;
+}
+
+/* Minimal Insights */
+.minimal-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.micro-insight {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.25rem;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+}
+
+.micro-insight:hover {
+  background: var(--glass-bg-hover);
+  transform: translateX(2px);
+}
+
+.micro-insight.severity-high {
+  border-left: 2px solid var(--error-color);
+}
+
+.micro-insight.severity-medium {
+  border-left: 2px solid var(--warning-color);
+}
+
+.micro-insight.severity-low {
+  border-left: 2px solid var(--success-color);
+}
+
+.insight-micro-icon {
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.insight-micro-text {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.micro-severity {
+  font-size: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+
+.micro-severity.high {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.micro-severity.medium {
+  background: var(--warning-alpha-10);
+  color: var(--warning-color);
+}
+
+.micro-severity.low {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+/* Minimal Hunks */
+.minimal-hunks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.micro-hunk {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+}
+
+.micro-hunk:hover {
+  background: var(--glass-bg-hover);
+  transform: translateX(2px);
+}
+
+.micro-hunk.needs-attention {
+  border-left: 2px solid var(--warning-color);
+  background: var(--warning-alpha-5);
+}
+
+.hunk-micro-icon {
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.hunk-micro-file {
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 4rem;
+  flex-shrink: 0;
+}
+
+.hunk-micro-desc {
+  flex: 1;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+.micro-risk {
+  font-size: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+}
+
+.micro-risk.high {
+  background: var(--error-alpha-10);
+  color: var(--error-color);
+}
+
+.micro-risk.medium {
+  background: var(--warning-alpha-10);
+  color: var(--warning-color);
+}
+
+.micro-risk.low {
+  background: var(--success-alpha-10);
+  color: var(--success-color);
+}
+
+/* Minimal Diff Viewer */
+.minimal-diff-viewer {
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+}
+
+.minimal-diff-content {
+  margin-top: 0.375rem;
+}
+
+/* Minimal Comments */
+.minimal-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+/* Microanimations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes statusGlow {
+  0%, 100% {
+    box-shadow: 0 0 5px transparent;
+  }
+  50% {
+    box-shadow: 0 0 10px var(--primary-alpha-10);
+  }
+}
+
+.status-icon-group.active {
+  animation: statusGlow 3s ease-in-out infinite;
+}
+
+/* Enhanced hover effects */
+.micro-insight:hover .insight-micro-icon,
+.micro-hunk:hover .hunk-micro-icon {
+  transform: scale(1.1);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* =============================================
+   PROFESSIONAL RESPONSIVE DESIGN
+   ============================================= */
+
 @media (max-width: 768px) {
-  .tab-buttons {
-    flex-direction: column;
-    gap: 0.5rem;
+  .code-review-tab {
+    padding: var(--pro-space-4);
   }
 
-  .tab-button {
-    width: 100%;
-    justify-content: center;
+  .summary-bar {
+    grid-template-columns: auto 1fr;
+    gap: var(--pro-space-3);
+    padding: var(--pro-space-4);
   }
 
-  .save-status-section {
+  .collapse-arrow {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .micro-status-bar {
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--pro-space-3);
     align-items: stretch;
   }
 
-  .save-actions {
-    justify-content: center;
+  .status-icons {
+    justify-content: space-around;
   }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .section-card {
+    border-width: 2px;
+  }
+
+  .status-icon-group {
+    border-width: 2px;
+  }
+}
+
+/* Seamless Section Card - Blends with page background */
+.section-card--seamless {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.section-card--seamless:hover {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.section-card--seamless .summary-bar {
+  border-bottom: none !important;
+  background: transparent !important;
+}
+
+.section-card--seamless .summary-bar:hover {
+  background: var(--glass-bg-hover) !important;
+  border-radius: 0.5rem !important;
+}
+
+.section-card--seamless .section-content {
+  background: transparent !important;
+  border-top: none !important;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
+/* Loading States - Legacy (keeping for compatibility) */
+/* Professional Loading States */
+.loading-states {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1.5rem;
+  background: var(--glass-bg);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.loading-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  transition: all 0.3s ease;
+}
+
+.loading-item.completed {
+  color: var(--success-color);
+  opacity: 0.7;
+}
+
+.loading-icon {
+  font-size: 1rem;
+}
+
+.loading-item.completed .loading-icon {
+  filter: grayscale(1);
 }
 </style>

@@ -20,7 +20,8 @@ export type {
   IShardingStrategy,
   IProcessingEngine,
   IResultAggregator,
-  IWorkspaceManager
+  IWorkspaceManager,
+  IOperationSubscriber
 } from './core/interfaces.js'
 
 // Type definitions
@@ -66,12 +67,27 @@ export type {
   // Credential types
   ADOCredentials,
 
+  // Generic Event System types
+  CustomEventType,
+  CustomEventData,
+  CustomEventCallback,
+  GenericEventCallback,
+  GenericEventData,
+
+  // Event payload types
+  FilesReadyPayload,
+  ReviewStartedPayload,
+  ReviewProgressPayload,
+  ReviewCompletePayload,
+  ReviewErrorPayload,
+
 } from './types/index.js'
 
 // Enum values (not types) for runtime usage
 export {
   WorkflowType,
   SourceType,
+  GitDiffType,
   ShardingStrategyType,
   ProcessingStatus,
   InsightType,
@@ -79,7 +95,8 @@ export {
   RiskLevel,
   CommentType,
   HunkCategory,
-  ChangeType
+  ChangeType,
+  CustomEvents
 } from './types/index.js'
 
 // Concrete implementations for advanced usage
@@ -89,6 +106,9 @@ export { FileBoundaryShardingStrategy } from './review/file-boundary-sharding-st
 export { SessionProcessingEngine } from './review/session-processing-engine.js'
 export { ReviewResultAggregator } from './review/review-result-aggregator.js'
 export { WorkspaceManager } from './core/workspace-manager.js'
+export { XMLTagParser } from './core/xml-tag-parser.js'
+export { OperationSubscriber } from './core/operation-subscriber.js'
+export { GitApiClient } from './core/git-client.js'
 
 // Utility functions
 export {

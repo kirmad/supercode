@@ -463,7 +463,7 @@ export class WorkspaceManager implements IWorkspaceManager {
   private async writeFile(filePath: string, content: string | Buffer, options: { encoding?: string; createDirs?: boolean } = {}): Promise<void> {
     if (this.fileOperationsClient) {
       const encoding = options.encoding || 'utf8'
-      const stringContent = typeof content === 'string' ? content : content.toString(encoding as BufferEncoding)
+      const stringContent = typeof content === 'string' ? content : content.toString(encoding as any)
       await this.fileOperationsClient.writeFile(filePath, stringContent, {
         encoding: encoding as 'utf8' | 'base64',
         createDirs: options.createDirs

@@ -755,8 +755,14 @@ export interface OperationSubscription {
   topicId: string
   /** XML tags to monitor */
   tags: string[]
-  /** Notification callback function */
-  callback: OperationCallback
+  /** Notification callback function (legacy) */
+  callback?: OperationCallback
+  /** Generic event callback */
+  genericCallback?: GenericEventCallback
+  /** Event type discriminator */
+  eventType: 'xml-tag' | 'custom'
+  /** Custom event types to monitor (for custom subscriptions) */
+  customEventTypes?: CustomEventType<any>[]
   /** Subscription creation timestamp */
   createdAt: string
   /** Whether subscription is active */
@@ -774,6 +780,8 @@ export interface TopicRegistry {
     subscriptions: Map<string, OperationSubscription>
     /** Current aggregated data */
     aggregatedData: ExtractedTagData
+    /** Custom events for this topic */
+    customEvents: CustomEventData<any>[]
     /** Last update timestamp */
     lastUpdate: string
   }
@@ -1083,6 +1091,123 @@ export interface ReviewCompleteEventData {
  * Review complete event callback
  */
 export type ReviewCompleteCallback = (eventData: ReviewCompleteEventData) => void
+
+// ========== Generic Event System Types ==========
+
+/**
+ * Base interface for custom event types with generic payload type support
+ */
+export interface CustomEventType<TPayload = any> {
+  readonly name: string
+  readonly __payloadType?: TPayload  // Phantom type for compile-time checking
+}
+
+/**
+ * Custom event data with generic payload
+ */
+export interface CustomEventData<TPayload = any> {
+  eventType: CustomEventType<TPayload>
+  payload: TPayload
+  timestamp: string
+  sessionId?: string
+}
+
+/**
+ * Payload interfaces for concrete event types
+ */
+export interface FilesReadyPayload {
+  files: ReviewFileVersion[]
+  workspacePath: string
+  reviewId: string
+}
+
+export interface ReviewStartedPayload {
+  reviewId: string
+  reviewType: string
+  timestamp: string
+}
+
+export interface ReviewProgressPayload {
+  reviewId: string
+  message: string
+  progress?: number
+}
+
+export interface ReviewCompletePayload {
+  reviewId: string
+  success: boolean
+  result?: ReviewResult
+}
+
+export interface ReviewErrorPayload {
+  reviewId: string
+  error: string
+  context?: any
+}
+
+/**
+ * Event type constants with type branding
+ */
+const FILES_READY: CustomEventType<FilesReadyPayload> = { name: 'files-ready' }
+const REVIEW_STARTED: CustomEventType<ReviewStartedPayload> = { name: 'review-started' }
+const REVIEW_PROGRESS: CustomEventType<ReviewProgressPayload> = { name: 'review-progress' }
+const REVIEW_COMPLETE: CustomEventType<ReviewCompletePayload> = { name: 'review-complete' }
+const REVIEW_ERROR: CustomEventType<ReviewErrorPayload> = { name: 'review-error' }
+
+/**
+ * Export as namespace for organized access
+ */
+export const CustomEvents = {
+  FILES_READY,
+  REVIEW_STARTED,
+  REVIEW_PROGRESS,
+  REVIEW_COMPLETE,
+  REVIEW_ERROR
+} as const
+
+/**
+ * Generic event data as discriminated union
+ */
+/**
+ * Generic event data wrapper used by OperationSubscriber.
+ * - 'xml-tag' type is used for XML tag subscriptions
+ * - 'custom' type is used for custom events emitted via emitCustomEvent
+ */
+export type GenericEventData<TPayload = any> =
+  | { type: 'xml-tag'; data: ExtractedTagData }
+  | { type: 'custom'; data: CustomEventData<TPayload> }
+
+/**
+ * Type-safe callback types
+ */
+
+/**
+ * Direct CustomEventData callback (not currently used by subscribeToCustomEvents).
+ * This type receives CustomEventData directly without wrapping.
+ */
+export type CustomEventCallback<TPayload> = (
+  eventData: CustomEventData<TPayload>,
+  metadata: NotificationMetadata
+) => void
+
+/**
+ * Generic event callback used by OperationSubscriber methods.
+ * Receives GenericEventData<TPayload> with structure { type: 'custom', data: CustomEventData<TPayload> }.
+ * To access payload in custom events, use: event.data.payload
+ */
+export type GenericEventCallback = <TPayload>(
+  event: GenericEventData<TPayload>,
+  metadata: NotificationMetadata
+) => void
+
+/**
+ * Convenience callback type for direct payload access.
+ * Simplifies callback signatures by unwrapping the payload directly.
+ */
+export type UnwrappedCustomEventCallback<TPayload> = (
+  payload: TPayload,
+  metadata: NotificationMetadata
+) => void
 
 /**
  * Project workflow service interface

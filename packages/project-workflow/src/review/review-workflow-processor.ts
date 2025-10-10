@@ -20,7 +20,9 @@ import type {
   SourceContent,
   ExtractedTagData,
   NotificationMetadata,
-  GitDiffConfig
+  GitDiffConfig,
+  ReviewFileVersion,
+  FilesReadyPayload
 } from '../types/index.js'
 import type { IContentSource } from '../core/interfaces.js'
 import { ADOContentSource } from '../sources/ado-content-source.js'
@@ -31,7 +33,7 @@ import { ReviewResultAggregator } from './review-result-aggregator.js'
 import { WorkspaceManager } from '../core/workspace-manager.js'
 import { ValidationError, ProcessingError, createLogger, formatDuration, generateId } from '../core/utils.js'
 import { FileOperationsClient } from '../services/file-operations-client.js'
-import { ChangeType } from '../types/index.js'
+import { ChangeType, CustomEvents } from '../types/index.js'
 import { OperationSubscriber } from '../core/operation-subscriber.js'
 
 /**
@@ -51,6 +53,14 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   private readonly fileOperationsClient?: FileOperationsClient
   private operationSubscriber?: IOperationSubscriber
   private subscriptionId?: string
+  private externalOperationSubscriber?: IOperationSubscriber
+
+  /**
+   * Set external operation subscriber to use for this processor
+   */
+  setOperationSubscriber(operationSubscriber: IOperationSubscriber): void {
+    this.externalOperationSubscriber = operationSubscriber
+  }
 
   constructor(config: ReviewConfig, contentSourceOrGitConfig?: IContentSource | GitDiffConfig) {
     this.config = config
@@ -114,7 +124,7 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   async process(input: ReviewInput, config?: Partial<ReviewConfig>): Promise<ReviewResult> {
     const startTime = Date.now()
     const mergedConfig = { ...this.config, ...config }
-    const workflowId = generateId('review-workflow')
+    const workflowId = input.identifier
 
     this.logger.info(`Starting review workflow for: ${input.identifier}`)
 
@@ -129,11 +139,16 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
 
       // Step 2.5: Set up operation subscription if enabled
       if (mergedConfig.operationSubscription?.enabled) {
-        await this.setupOperationSubscription(workflowId, mergedConfig)
+        await this.setupOperationSubscription(workflowId, mergedConfig, this.externalOperationSubscriber)
       }
 
       // Step 3: Fetch content
       const content = await this.fetchContent(input, mergedConfig)
+
+      // Step 3.5: Emit FILES_READY event if operation subscriber is available
+      if (this.externalOperationSubscriber && mergedConfig.saveVersions) {
+        await this.emitFilesReadyEvent(workflowId, content, mergedConfig)
+      }
 
       // Step 4: Create shards
       const shards = await this.createShards(content, mergedConfig)
@@ -525,14 +540,16 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
   /**
    * Set up operation subscription for real-time workflow monitoring
    */
-  private async setupOperationSubscription(workflowId: string, config: ReviewConfig): Promise<void> {
+  private async setupOperationSubscription(workflowId: string, config: ReviewConfig, operationSubscriber?: IOperationSubscriber): Promise<void> {
     if (!config.operationSubscription?.enabled) {
       return
     }
 
     try {
-      // Create operation subscriber if not already created
-      if (!this.operationSubscriber) {
+      // Use provided operation subscriber or create one if not already created
+      if (operationSubscriber) {
+        this.operationSubscriber = operationSubscriber
+      } else if (!this.operationSubscriber) {
         // Get or create operation subscriber from base URL
         const factory = await import('../core/workflow-factory.js')
         const tempFactory = new factory.WorkflowFactory({
@@ -612,6 +629,63 @@ export class ReviewWorkflowProcessor implements IWorkflowProcessor<ReviewInput, 
         processingEngine: this.processingEngine.getStatus(),
         resultAggregator: 'ReviewResultAggregator'
       }
+    }
+  }
+
+  /**
+   * Emit FILES_READY event after preparing version files
+   */
+  private async emitFilesReadyEvent(
+    workflowId: string,
+    content: SourceContent,
+    config: ReviewConfig
+  ): Promise<void> {
+    if (!this.externalOperationSubscriber) {
+      return
+    }
+
+    try {
+      // Get workspace path
+      const workspacePath = await this.workspaceManager.getWorkspacePath()
+      if (!workspacePath) {
+        this.logger.warn('No workspace path available for FILES_READY event')
+        return
+      }
+
+      // Transform content files to ReviewFileVersion format
+      const reviewFiles: ReviewFileVersion[] = content.content.files.map(file => {
+        const safeFileName = file.path.replace(/[^a-zA-Z0-9._-]/g, '_')
+        return {
+          filePath: file.path,
+          safeFileName,
+          oldVersionPath: `${workspacePath}/versions/${safeFileName}.local`,
+          newVersionPath: `${workspacePath}/versions/${safeFileName}.remote`,
+          diffPath: `${workspacePath}/versions/${safeFileName}.diff`,
+          changeType: 'modify' as ChangeType, // Default, could be enhanced based on file.changeType
+          addedLines: 0, // Not available in ContentFile, could be enhanced
+          removedLines: 0, // Not available in ContentFile, could be enhanced
+          size: file.size || 0,
+          tokens: file.tokens || 0
+        }
+      })
+
+      // Create FILES_READY payload
+      const payload: FilesReadyPayload = {
+        files: reviewFiles,
+        workspacePath,
+        reviewId: workflowId
+      }
+
+      // Emit the event
+      this.externalOperationSubscriber.emitCustomEvent(
+        workflowId,
+        CustomEvents.FILES_READY,
+        payload
+      )
+
+      this.logger.info(`Emitted FILES_READY event with ${reviewFiles.length} files for workflow: ${workflowId}`)
+    } catch (error) {
+      this.logger.error('Failed to emit FILES_READY event:', error)
     }
   }
 

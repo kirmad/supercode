@@ -1,29 +1,93 @@
 <template>
   <div class="diff-viewer">
-    <!-- File Tabs -->
-    <div v-if="files.length > 1" class="file-tabs">
-      <button
-        v-for="(file, index) in files"
-        :key="index"
-        :class="['file-tab', { active: selectedFileIndex === index }]"
-        @click="selectedFileIndex = index"
-      >
-        <Icon name="file-code" :size="14" />
-        <span class="file-name">{{ getFileName(file.path || file.fileName) }}</span>
-        <span v-if="file.additions || file.deletions" class="file-stats">
-          <span class="additions">+{{ file.additions || 0 }}</span>
-          <span class="deletions">-{{ file.deletions || 0 }}</span>
-        </span>
-      </button>
-    </div>
+    <!-- Sidebar Layout -->
+    <div v-if="files.length > 0" class="diff-layout">
+      <!-- File Tree Sidebar -->
+      <div :class="['file-sidebar', { collapsed: fileTreeCollapsed }]">
+        <div class="sidebar-header">
+          <div class="sidebar-title">
+            <FolderOpen :size="16" />
+            <span v-if="!fileTreeCollapsed">Files</span>
+          </div>
+          <button
+            @click.stop="fileTreeCollapsed = !fileTreeCollapsed"
+            class="sidebar-toggle"
+            :title="fileTreeCollapsed ? 'Expand file tree' : 'Collapse file tree'"
+          >
+            <ChevronRight v-if="fileTreeCollapsed" :size="16" />
+            <ChevronLeft v-else :size="16" />
+          </button>
+        </div>
+        <div v-if="!fileTreeCollapsed" class="sidebar-content">
+          <!-- Content Mode Selector -->
+          <div class="content-mode-selector">
+            <div class="mode-buttons">
+              <button
+                @click.stop="$emit('update:contentMode', 'diff')"
+                :class="['mode-button', { active: contentMode === 'diff' }]"
+              >
+                <Icon name="git-compare" :size="12" />
+                Diff
+              </button>
+              <button
+                @click.stop="$emit('update:contentMode', 'local')"
+                :class="['mode-button', { active: contentMode === 'local' }]"
+                :title="'View local version'"
+              >
+                <Icon name="file-code" :size="12" />
+                Local
+              </button>
+              <button
+                @click.stop="$emit('update:contentMode', 'remote')"
+                :class="['mode-button', { active: contentMode === 'remote' }]"
+                :title="'View remote version'"
+              >
+                <Icon name="git-branch" :size="12" />
+                Remote
+              </button>
+            </div>
+          </div>
 
+          <!-- View Mode Toggle -->
+          <div class="view-mode-toggle">
+            <div class="mode-buttons">
+              <button
+                @click.stop="$emit('update:viewMode', 'unified')"
+                :class="['mode-button', { active: viewMode === 'unified' }]"
+              >
+                <Icon name="align-justify" :size="12" />
+                Unified
+              </button>
+              <button
+                @click.stop="$emit('update:viewMode', 'split')"
+                :class="['mode-button', { active: viewMode === 'split' }]"
+              >
+                <Icon name="columns" :size="12" />
+                Side-by-Side
+              </button>
+            </div>
+          </div>
+
+          <FileTreeView
+            :files="files"
+            :selected-file="currentFile?.path || currentFile?.fileName || ''"
+            @file-select="handleFileSelect"
+          />
+        </div>
+      </div>
+
+      <!-- Main Diff Content -->
+      <div class="diff-main">
     <!-- Diff Content -->
     <div class="diff-container" :class="[`view-${viewMode}`]">
       <!-- Unified View -->
       <div v-if="viewMode === 'unified' && currentFile" class="unified-view">
         <div class="file-header">
-          <Icon name="file-code" />
-          {{ currentFile.path || currentFile.fileName || currentFile.fileName }}
+          <PathEditor
+            :current-file="currentFile"
+            :files="files"
+            @file-select="handleFileSelect"
+          />
           <!-- Mode Indicator -->
           <span v-if="contentMode && contentMode !== 'diff'" class="mode-indicator">
             Viewing: {{ contentMode === 'local' ? 'Local' : 'Remote' }}
@@ -52,7 +116,7 @@
                   {{ getHunkForLine(line.newNumber || line.oldNumber || 0)?.risk }} risk
                 </span>
                 <span v-if="getHunkForLine(line.newNumber || line.oldNumber || 0)?.needsAttention" class="needs-attention">
-                  <Icon name="alert-circle" :size="12" />
+                  <Icon name="alert-triangle" :size="12" />
                   Needs Attention
                 </span>
               </div>
@@ -68,7 +132,7 @@
                     class="ask-hunk-button"
                     @click="toggleHunkThread(getHunkForLine(line.newNumber || line.oldNumber || 0))"
                   >
-                    <Icon name="help-circle" :size="14" />
+                    <Icon name="info" :size="14" />
                     Ask about this change
                   </button>
                 </div>
@@ -127,7 +191,7 @@
                     @click="toggleInlineThread(line.newNumber || line.oldNumber || 0)"
                     title="Reply inline"
                   >
-                    <Icon name="message-circle" :size="14" />
+                    <Icon name="message-square" :size="14" />
                   </button>
                 </div>
               </div>
@@ -176,8 +240,11 @@
       <!-- Split View -->
       <div v-else-if="viewMode === 'split' && currentFile" class="split-view">
         <div class="file-header">
-          <Icon name="file-code" />
-          {{ currentFile.path || currentFile.fileName || currentFile.fileName }}
+          <PathEditor
+            :current-file="currentFile"
+            :files="files"
+            @file-select="handleFileSelect"
+          />
           <!-- Mode Indicator -->
           <span v-if="contentMode && contentMode !== 'diff'" class="mode-indicator">
             Viewing: {{ contentMode === 'local' ? 'Local' : 'Remote' }}
@@ -257,15 +324,20 @@
         <p>No diff data available</p>
       </div>
     </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import Icon from '../Icon.vue'
+import { FolderOpen, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import CommentCard from './CommentCard.vue'
 import HunkReplyCard from './HunkReplyCard.vue'
 import InlineCommentThread from './InlineCommentThread.vue'
+import FileTreeView from './FileTreeView.vue'
+import PathEditor from './PathEditor.vue'
 import type { DiffFile, Comment, Hunk } from '../../services/ProjectWorkflowService'
 import type { CommentThreadingService } from '../../services/CommentThreadingService'
 import type { ThreadInfo } from '../../types/CodeReview'
@@ -280,6 +352,7 @@ interface Props {
   threads?: ThreadInfo[]
   isHunkAiTyping?: (hunk: any) => boolean
   getHunkStreamingResponse?: (hunk: any) => string
+  selectedFileIndex?: number
 }
 
 interface ProcessedLine {
@@ -300,13 +373,17 @@ const emit = defineEmits<{
   'apply-fix': [comment: Comment]
   'hunk-question': [hunk: Hunk, question: string]
   'comment-reply': [comment: Comment, reply: string]
+  'update:selectedFileIndex': [index: number]
+  'update:contentMode': [mode: 'diff' | 'local' | 'remote']
+  'update:viewMode': [mode: 'unified' | 'split']
 }>()
 
-const selectedFileIndex = ref(0)
+const selectedFileIndex = ref(props.selectedFileIndex ?? 0)
 const expandedComments = ref<Record<number, boolean>>({})
 const collapsedHunks = ref<Record<string, boolean>>({})
 const expandedHunkThreads = ref<Record<string, boolean>>({})
 const expandedInlineThreads = ref<Record<string, boolean>>({})
+const fileTreeCollapsed = ref(false)
 
 const currentFile = computed(() => props.files[selectedFileIndex.value])
 
@@ -555,10 +632,24 @@ function isHunkCollapsed(hunk: Hunk | undefined): boolean {
 }
 
 // Method to select a file by path
+function updateSelectedFileIndex(index: number) {
+  selectedFileIndex.value = index
+  emit('update:selectedFileIndex', index)
+}
+
+function handleFileSelect(file: DiffFile) {
+  const fileIndex = props.files.findIndex(f =>
+    (f.path || f.fileName) === (file.path || file.fileName)
+  )
+  if (fileIndex !== -1) {
+    updateSelectedFileIndex(fileIndex)
+  }
+}
+
 function selectFile(filePath: string): boolean {
   const index = props.files.findIndex(f => f.path === filePath)
   if (index !== -1) {
-    selectedFileIndex.value = index
+    updateSelectedFileIndex(index)
     return true
   }
   return false
@@ -652,10 +743,17 @@ function onCommentReplySubmitted(comment: Comment, reply: string) {
 
 // Watch for file changes
 watch(() => props.files, () => {
-  selectedFileIndex.value = 0
+  updateSelectedFileIndex(0)
   expandedComments.value = {}
   expandedHunkThreads.value = {}
   expandedInlineThreads.value = {}
+})
+
+// Watch for selectedFileIndex prop changes (for v-model support)
+watch(() => props.selectedFileIndex, (newIndex) => {
+  if (newIndex !== undefined && newIndex !== selectedFileIndex.value) {
+    selectedFileIndex.value = newIndex
+  }
 })
 </script>
 
@@ -1284,5 +1382,179 @@ code :deep(.key) {
   --syntax-tag: #569cd6;
   --syntax-attribute: #9cdcfe;
   --syntax-key: #9cdcfe;
+}
+
+/* Diff Layout Styles */
+.diff-layout {
+  display: flex;
+  gap: 1rem;
+  height: 100%;
+  min-height: 500px;
+}
+
+.file-sidebar {
+  width: 280px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.file-sidebar.collapsed {
+  width: 48px;
+  min-width: 48px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  background: transparent;
+}
+
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sidebar-toggle:hover {
+  background: var(--glass-bg-hover);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.diff-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--glass-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .diff-layout {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .file-sidebar {
+    width: 100%;
+    min-width: auto;
+    max-height: 300px;
+  }
+
+  .file-sidebar.collapsed {
+    width: 100%;
+    max-height: 48px;
+  }
+
+  .diff-main {
+    flex: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .diff-layout {
+    gap: 0.25rem;
+  }
+
+  .sidebar-header {
+    padding: 0.5rem;
+  }
+
+  .sidebar-title {
+    font-size: 0.75rem;
+  }
+}
+
+/* Content Mode Selector */
+.content-mode-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  background: transparent;
+}
+
+.mode-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.mode-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.625rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text-primary);
+}
+
+.mode-button.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.mode-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-button:disabled:hover {
+  transform: none;
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-secondary);
 }
 </style>

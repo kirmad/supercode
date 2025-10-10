@@ -76,7 +76,7 @@ export class WorkflowFactory {
   /**
    * Create a review workflow processor
    */
-  createReviewWorkflow(overrides?: Partial<ReviewConfig>): IWorkflowProcessor<ReviewInput, ReviewResult> {
+  createReviewWorkflow(overrides?: Partial<ReviewConfig> & { operationSubscriber?: IOperationSubscriber }): IWorkflowProcessor<ReviewInput, ReviewResult> {
     this.logger.info('Creating review workflow processor')
 
     // Create sub-configurations
@@ -140,13 +140,20 @@ export class WorkflowFactory {
       saveVersions: overrides?.saveVersions ?? this.config.defaults?.saveVersions ?? false
     }
 
-    return new ReviewWorkflowProcessor(reviewConfig)
+    const processor = new ReviewWorkflowProcessor(reviewConfig)
+
+    // Set operation subscriber if provided
+    if (overrides?.operationSubscriber) {
+      processor.setOperationSubscriber(overrides.operationSubscriber)
+    }
+
+    return processor
   }
 
   /**
    * Create a git review workflow processor
    */
-  createGitReviewWorkflow(gitConfig: GitDiffConfig, overrides?: Partial<ReviewConfig>): IWorkflowProcessor<ReviewInput, ReviewResult> {
+  createGitReviewWorkflow(gitConfig: GitDiffConfig, overrides?: Partial<ReviewConfig> & { operationSubscriber?: IOperationSubscriber }): IWorkflowProcessor<ReviewInput, ReviewResult> {
     this.logger.info('Creating git review workflow processor')
 
     // Validate git configuration
@@ -217,7 +224,14 @@ export class WorkflowFactory {
     }
 
     // Create ReviewWorkflowProcessor with git config (it will create GitContentSource internally like ADO)
-    return new ReviewWorkflowProcessor(reviewConfig, gitConfig)
+    const processor = new ReviewWorkflowProcessor(reviewConfig, gitConfig)
+
+    // Set operation subscriber if provided
+    if (overrides?.operationSubscriber) {
+      processor.setOperationSubscriber(overrides.operationSubscriber)
+    }
+
+    return processor
   }
 
   /**
