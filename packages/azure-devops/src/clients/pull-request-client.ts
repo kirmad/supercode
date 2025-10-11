@@ -23,6 +23,20 @@ import type {
   GitCommitRef
 } from '../interfaces/index.js';
 
+/**
+ * Browser-compatible base64 encoding function
+ * Uses native browser btoa() function for web compatibility
+ */
+function toBase64(input: string): string {
+  if (typeof btoa !== 'undefined') {
+    // Browser environment
+    return btoa(input);
+  } else {
+    // Node.js fallback (if needed)
+    return Buffer.from(input).toString('base64');
+  }
+}
+
 export class PullRequestClient {
   private baseUrl: string;
   private headers: Record<string, string>;
@@ -36,7 +50,7 @@ export class PullRequestClient {
     this.apiVersion = config.apiVersion || '7.1';
     this.prApiVersion = '7.2-preview';
     this.headers = {
-      'Authorization': `Basic ${Buffer.from(`:${config.pat}`).toString('base64')}`,
+      'Authorization': `Basic ${toBase64(`:${config.pat}`)}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
@@ -637,7 +651,7 @@ export class PullRequestClient {
 
       const response = await fetch(fullUrl, {
         headers: {
-          "Authorization": `Basic ${Buffer.from(`:${this.config.pat}`).toString("base64")}`,
+          "Authorization": `Basic ${toBase64(`:${this.config.pat}`)}`,
           "Accept": "text/plain"
         }
       })
@@ -665,72 +679,6 @@ export class PullRequestClient {
    * @param filePath File path
    * @param changeType Change type (add, delete, edit)
    */
-  async generateFileDiff(
-    repositoryId: string,
-    baseCommit: string,
-    targetCommit: string,
-    filePath: string,
-    changeType?: string
-  ): Promise<{
-    diff: string;
-    oldContent: string | null;
-    newContent: string | null;
-  }> {
-    console.log(`[ADO Native] Fetching optimized diff: ${filePath} (${baseCommit.substring(0, 8)}...${targetCommit.substring(0, 8)}) [${changeType || 'edit'}]`)
-
-    try {
-      // Use Azure DevOps Diffs API for optimized diffs
-      const diffUrl = `https://dev.azure.com/${this.config.organization}/${this.config.project}/_apis/git/repositories/${repositoryId}/diffs/commits`
-      const queryParams = new URLSearchParams({
-        'baseVersionDescriptor.versionType': 'commit',
-        'baseVersionDescriptor.version': baseCommit,
-        'targetVersionDescriptor.versionType': 'commit',
-        'targetVersionDescriptor.version': targetCommit,
-        'api-version': '7.1'
-      })
-
-      const fullUrl = `${diffUrl}?${queryParams.toString()}`
-
-      const response = await fetch(fullUrl, {
-        headers: {
-          "Authorization": `Basic ${Buffer.from(`:${this.config.pat}`).toString("base64")}`,
-          "Accept": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error(`Azure DevOps Diff API error: ${response.status} ${response.statusText}`)
-      }
-
-      const diffData = await response.json()
-
-      // Find the specific file change in the diff response
-      const fileChange = diffData.changes?.find((change: any) =>
-        change.item?.path === filePath || change.item?.path === `/${filePath.replace(/^\//, '')}`
-      )
-
-      if (fileChange && fileChange.gitDiff) {
-        // ADO provides optimized git diff format
-        console.log(`[ADO Native] Found optimized diff for ${filePath}: ${fileChange.gitDiff.length} chars`)
-        // Still need to fetch file contents for saving
-        const [oldContent, newContent] = await this.fetchFileContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
-        return {
-          diff: fileChange.gitDiff,
-          oldContent,
-          newContent
-        }
-      }
-
-      // Fallback to manual diff generation if native diff not available
-      console.log(`[ADO Native] No native diff found, falling back to manual generation for ${filePath}`)
-      return await this.generateFileDiffWithContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
-
-    } catch (error: any) {
-      console.log(`[ADO Native] Error fetching optimized diff for ${filePath}: ${error.message}`)
-      // Fallback to manual diff generation
-      return await this.generateFileDiffWithContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
-    }
-  }
 
   /**
    * Helper function to fetch file contents for both commits
@@ -768,102 +716,7 @@ export class PullRequestClient {
     return [oldContent, newContent]
   }
 
-  /**
-   * Helper function to get optimized diff using local files and git diff
-   * Returns the diff and file contents without saving to disk
-   */
-  private async generateFileDiffWithContents(
-    repositoryId: string,
-    baseCommit: string,
-    targetCommit: string,
-    filePath: string,
-    changeType?: string
-  ): Promise<{
-    diff: string;
-    oldContent: string | null;
-    newContent: string | null;
-  }> {
-    console.log(`[ADO Git] Generating optimized diff: ${filePath} (${baseCommit.substring(0, 8)}...${targetCommit.substring(0, 8)}) [${changeType || 'edit'}]`)
 
-    const fs = await import('node:fs/promises')
-    const os = await import('node:os')
-    const path = await import('node:path')
-    const { execSync } = await import('node:child_process')
-
-    try {
-      // Fetch file contents
-      const [oldContent, newContent] = await this.fetchFileContents(repositoryId, baseCommit, targetCommit, filePath, changeType)
-
-      // Create temporary directory for diff generation
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ado-diff-'))
-      const oldFilePath = path.join(tempDir, `old-${path.basename(filePath)}`)
-      const newFilePath = path.join(tempDir, `new-${path.basename(filePath)}`)
-
-      try {
-        // Write content to temporary files
-        if (oldContent !== null) {
-          await fs.writeFile(oldFilePath, oldContent, 'utf8')
-        }
-        if (newContent !== null) {
-          await fs.writeFile(newFilePath, newContent, 'utf8')
-        }
-
-        // Generate optimized diff using git diff
-        let gitDiff: string
-
-        if (changeType === 'add') {
-          // For added files: diff /dev/null to new file
-          gitDiff = execSync(`git diff --no-index /dev/null "${newFilePath}" || true`, { encoding: 'utf8' })
-          gitDiff = gitDiff.replace(/\/dev\/null/, `a${filePath}`)
-          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(newFilePath), 'g'), `b${filePath}`)
-        } else if (changeType === 'delete') {
-          // For deleted files: diff old file to /dev/null
-          gitDiff = execSync(`git diff --no-index "${oldFilePath}" /dev/null || true`, { encoding: 'utf8' })
-          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(oldFilePath), 'g'), `a${filePath}`)
-          gitDiff = gitDiff.replace(/\/dev\/null/, `b${filePath}`)
-        } else {
-          // For modified files: diff old to new
-          gitDiff = execSync(`git diff --no-index "${oldFilePath}" "${newFilePath}" || true`, { encoding: 'utf8' })
-          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(oldFilePath), 'g'), `a${filePath}`)
-          gitDiff = gitDiff.replace(new RegExp(this.escapeRegExp(newFilePath), 'g'), `b${filePath}`)
-        }
-
-        // Clean up the diff header to match standard git format
-        gitDiff = gitDiff.replace(/^diff --git.*$/m, `diff --git a${filePath} b${filePath}`)
-
-        console.log(`[ADO Git] Generated optimized diff: ${gitDiff.length} chars (was ${oldContent?.length || 0} + ${newContent?.length || 0})`)
-        return {
-          diff: gitDiff,
-          oldContent,
-          newContent
-        }
-
-      } finally {
-        // Cleanup temporary files
-        try {
-          await fs.rm(tempDir, { recursive: true, force: true })
-        } catch (cleanupError) {
-          console.log(`[ADO Git] Failed to cleanup temp dir: ${cleanupError}`)
-        }
-      }
-
-    } catch (error: any) {
-      console.log(`[ADO Git] Could not generate optimized diff for ${filePath}: ${error.message}`)
-      // Fallback: generate basic diff header if no content available
-      return {
-        diff: `diff --git a${filePath} b${filePath}\n--- a${filePath}\n+++ b${filePath}\n@@ -1,1 +1,1 @@\n [Diff content not available: ${error.message}]`,
-        oldContent: null,
-        newContent: null
-      }
-    }
-  }
-
-  /**
-   * Helper function to escape special regex characters
-   */
-  private escapeRegExp(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  }
 
   /**
    * Get file content at a specific commit

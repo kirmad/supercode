@@ -36,6 +36,7 @@ import {
   generateUnifiedDiff,
   type AzureDevOpsConfig
 } from '@supercode/azure-devops'
+import { AdoDiffHelper } from './ado-diff-helper.js'
 
 /**
  * ADO credentials interface
@@ -306,10 +307,15 @@ export class ADOContentSource implements IContentSource {
       let newContent: string | null = null
       let diffGenerated = false
 
-      // Try to get actual diff content from azure-devops
+      // Try to get actual diff content using browser-friendly diff helper
       if (baseCommit && targetCommit) {
         try {
-          const diffResult = await client.generateFileDiff(
+          const diffHelper = new AdoDiffHelper({
+            client: client,
+            workspaceManager: this.workspaceManager
+          })
+
+          const diffResult = await diffHelper.generateFileDiffWithContents(
             repository,
             baseCommit,
             targetCommit,
@@ -322,7 +328,7 @@ export class ADOContentSource implements IContentSource {
           diffGenerated = true
           this.logger.debug(`Generated diff for ${change.item.path}: ${diff.length} chars`)
         } catch (diffError) {
-          this.logger.warn(`Failed to generate diff using client for ${change.item.path}: ${diffError}`)
+          this.logger.warn(`Failed to generate diff using helper for ${change.item.path}: ${diffError}`)
         }
       }
 
@@ -338,31 +344,17 @@ export class ADOContentSource implements IContentSource {
         }
       }
 
-      // Save file versions if saveDirectory is provided and we have workspace manager
-      // Save even if we only have placeholder diffs, as long as we tried to generate a diff
-
-      if (saveDirectory && this.workspaceManager) {
-        // Always save the diff file (even if it's just a placeholder)
+      // AdoDiffHelper handles version file saving when workspaceManager is provided
+      // Only save manually for placeholder diffs when we have saveDirectory but no diff was generated
+      if (saveDirectory && this.workspaceManager && !diffGenerated) {
         try {
           const safeFileName = change.item.path.replace(/[\/\\:*?"<>|]/g, '_').replace(/^_+/, '')
 
-          // Save old version (.local for "from" version) if we have content
-          if (oldContent !== null && oldContent !== undefined) {
-            const localPath = await this.workspaceManager.saveContent(`versions/${safeFileName}.local`, oldContent)
-            this.logger.info(`Saved old version: ${localPath}`)
-          }
-
-          // Save new version (.remote for "to" version) if we have content
-          if (newContent !== null && newContent !== undefined) {
-            const remotePath = await this.workspaceManager.saveContent(`versions/${safeFileName}.remote`, newContent)
-            this.logger.info(`Saved new version: ${remotePath}`)
-          }
-
-          // Always save the diff (even if it's a placeholder)
+          // Save the placeholder diff
           const diffPath = await this.workspaceManager.saveContent(`versions/${safeFileName}.diff`, diff)
-          this.logger.info(`Saved diff: ${diffPath}`)
+          this.logger.info(`Saved placeholder diff: ${diffPath}`)
         } catch (saveError) {
-          this.logger.error(`Failed to save version files for ${change.item.path}: ${saveError}`)
+          this.logger.error(`Failed to save placeholder diff for ${change.item.path}: ${saveError}`)
         }
       }
 

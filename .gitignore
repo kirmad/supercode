@@ -60,3 +60,6 @@ reviews/*.json
 packages/project-workflow/dist/*
 .supercode-workspaces/*
 packages/opencode/.supercode-workspaces/*
+packages/vscode-webview/playwright-report/*
+packages/vscode-webview/test-results/*
+packages/vscode-webview/test-results.json

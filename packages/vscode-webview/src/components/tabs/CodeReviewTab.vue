@@ -106,11 +106,11 @@
                 v-model="pullRequestUrl"
                 type="url"
                 class="text-input"
-                placeholder="https://github.com/user/repo/pull/123"
+                placeholder="https://github.com/owner/repo/pull/123 or https://dev.azure.com/org/project/_git/repo/pullrequest/123"
                 @keydown.enter="startReview"
               />
               <p class="input-help">
-                Supports GitHub, GitLab, and Bitbucket pull request URLs
+                Supports Azure DevOps pull request URLs
               </p>
             </div>
           </div>
@@ -300,7 +300,7 @@
             <div class="hunks-list">
               <TransitionGroup name="slide-fade">
                 <div
-                  v-for="(hunk, index) in hunks"
+                  v-for="hunk in hunks"
                   :key="`${hunk.file}-${hunk.start}-${hunk.end}`"
                   :class="['hunk-item', { 'needs-attention': hunk.needsAttention }]"
                   @click="scrollToFile(hunk.file, hunk.start)"
@@ -573,15 +573,16 @@ const canStartReview = computed(() => {
   }
 })
 
-// Helper function to validate URL
+// Helper function to validate pull request URL (supports Azure DevOps and GitHub)
 function isValidUrl(url: string): boolean {
   try {
     const urlObj = new URL(url)
-    // Check if it's a known git hosting service
-    const validHosts = ['github.com', 'gitlab.com', 'bitbucket.org']
-    const isValidHost = validHosts.some(host => urlObj.hostname.includes(host))
-    const isValidPrUrl = url.includes('/pull/') || url.includes('/merge_requests/')
-    return isValidHost && isValidPrUrl
+
+    // Check if it's an Azure DevOps URL (dev.azure.com or .visualstudio.com)
+    const isADOUrl = (urlObj.hostname === 'dev.azure.com' || urlObj.hostname.endsWith('.visualstudio.com'))
+                     && url.includes('/_git/') && url.includes('/pullrequest/')
+
+    return isADOUrl
   } catch {
     return false
   }

@@ -1,4 +1,8 @@
 {
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "1800000",
+    "BASH_MAX_TIMEOUT_MS": "7200000"
+  },
   "permissions": {
     "allow": [
       "mcp__sequential-thinking__sequentialthinking",
@@ -25,14 +29,11 @@
       "mcp__serena__find_file",
       "mcp__perplexity-mcp__perplexity_search_web",
       "mcp__serena__get_symbols_overview",
-      "mcp__serena__replace_symbol_body"
+      "mcp__serena__replace_symbol_body",
+      "mcp__serena__find_referencing_symbols"
     ],
     "deny": [],
     "ask": []
   },
-  "outputStyle": "default",
-  "env": {
-    "BASH_DEFAULT_TIMEOUT_MS": "1800000",
-    "BASH_MAX_TIMEOUT_MS": "7200000"
-  }
+  "outputStyle": "default"
 }

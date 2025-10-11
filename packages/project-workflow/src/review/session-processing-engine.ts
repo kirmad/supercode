@@ -290,7 +290,7 @@ export class SessionProcessingEngine implements IProcessingEngine {
 <review-result>
 
 <hunks>
-<hunk file="path/to/file.ext" start="10" end="20">
+<hunk file="ACTUAL_FILE_PATH_FROM_DIFF" start="10" end="20">
 <category>security-fix</category>
 <risk>high</risk>
 <description>Brief description of what this hunk does</description>
@@ -300,7 +300,7 @@ export class SessionProcessingEngine implements IProcessingEngine {
 
 <comments>
 <comment>
-<file>path/to/file.ext</file>
+<file>ACTUAL_FILE_PATH_FROM_DIFF</file>
 <lines start="15" end="15"/>
 <type>issue</type>
 <severity>high</severity>
@@ -315,12 +315,18 @@ export class SessionProcessingEngine implements IProcessingEngine {
 
 </review-result>
 
+**IMPORTANT**: 
+- Use the EXACT file paths as they appear in the diff headers (e.g., "b/SkypeCast/UserPolicy.cs")
+- Use the EXACT line numbers from the diff
+- Do NOT use placeholder paths like "path/to/file.ext"
+- Comments should be clear and actionable. We should focus on critical and major issues. 
+
 **Code diff to review:**
 \`\`\`diff
 ${shardContent}
 \`\`\`
 
-Output ONLY the XML format above. Focus on security, performance, quality issues with specific line numbers.`
+Output ONLY the XML format above. Focus on security, performance, quality issues with specific line numbers from the actual files in the diff.`
   }
 
   /**

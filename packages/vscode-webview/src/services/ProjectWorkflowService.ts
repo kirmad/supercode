@@ -412,8 +412,13 @@ export class ProjectWorkflowService {
       this.processedHunkIds.clear()
       this.processedCommentIds.clear()
 
-      // Generate workflow ID
-      this.currentWorkflowId = `review-${Date.now()}-${Math.random().toString(36).substring(2)}`
+      // Generate workflow ID - for PRs, use the PR URL as the identifier
+      // This ensures events are emitted and subscribed to the same topic
+      if (options.pullRequestUrl) {
+        this.currentWorkflowId = options.pullRequestUrl
+      } else {
+        this.currentWorkflowId = `review-${Date.now()}-${Math.random().toString(36).substring(2)}`
+      }
 
       this.onProgressUpdate?.("Initializing project workflow...")
 
@@ -585,23 +590,21 @@ export class ProjectWorkflowService {
         // Pull request URL review
         this.onProgressUpdate?.("Fetching pull request data...")
 
-        // For now, treat PR URL as a custom input until we implement PR API integration
+        // Create review workflow with ADO PR support
         processor = this.workflowFactory.createReviewWorkflow({
           operationSubscriber: this.operationSubscriber
         })
         reviewInput = {
-          identifier: this.currentWorkflowId,
+          identifier: options.pullRequestUrl,
           type: SourceType.ADO_PR,
           metadata: {
             saveVersions: true,
-            includeComments: true,
-            // pullRequestUrl will be added when PR API integration is implemented
+            includeComments: true
           }
         }
 
-        // TODO: Add actual PR API integration to fetch diff data
-        this.onError?.("Pull request URL support is coming soon! Please use other review types for now.")
-        return null
+        // For ADO PRs, files will be available via FILES_READY event after content fetch
+        // Don't try to fetch early - let the event system handle it
       } else if (options.staged) {
         // Staged changes review
         const gitConfig: GitDiffConfig = {
@@ -694,6 +697,7 @@ export class ProjectWorkflowService {
         agent: 'code-reviewer',
         outputFormat: 'xml',
         autoCleanup: false,
+        saveVersions: true,  // Enable version file saving for FILES_READY event
         maxParallelSessions: 3,
         timeoutPerShard: 300000,
         operationSubscription: {
@@ -781,6 +785,11 @@ export class ProjectWorkflowService {
         this.currentWorkflowId,
         [CustomEvents.FILES_READY],
         async (eventData: GenericEventData<FilesReadyPayload>, metadata) => {
+          console.log('[ProjectWorkflowService] 🔔 FILES_READY event received!', {
+            eventType: eventData.type,
+            topicId: metadata.topicId,
+            currentWorkflowId: this.currentWorkflowId
+          })
           if (eventData.type !== 'custom') return;
           try {
             // eventData.data.payload is automatically typed as FilesReadyPayload

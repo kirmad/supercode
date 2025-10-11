@@ -67,6 +67,9 @@ export type {
   // Credential types
   ADOCredentials,
 
+  // ADO diff helper types
+  AdoDiffHelperConfig,
+
   // Generic Event System types
   CustomEventType,
   CustomEventData,
@@ -102,6 +105,7 @@ export {
 // Concrete implementations for advanced usage
 export { ReviewWorkflowProcessor } from './review/review-workflow-processor.js'
 export { ADOContentSource } from './sources/ado-content-source.js'
+export { AdoDiffHelper, generateAdoFileDiff } from './sources/ado-diff-helper.js'
 export { FileBoundaryShardingStrategy } from './review/file-boundary-sharding-strategy.js'
 export { SessionProcessingEngine } from './review/session-processing-engine.js'
 export { ReviewResultAggregator } from './review/review-result-aggregator.js'

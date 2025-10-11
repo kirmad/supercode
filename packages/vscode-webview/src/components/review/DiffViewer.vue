@@ -664,15 +664,15 @@ defineExpose({
 function isHunkStart(lineNumber: number): boolean {
   if (!currentFile.value) return false
   return props.hunks.some(h =>
-    h.file === currentFile.value.path &&
-    h.start === lineNumber
+    (h.file === currentFile.value.path || h.file === `b${currentFile.value.path}`) &&
+    h.start === lineNumber 
   )
 }
 
 function getHunkForLine(lineNumber: number): Hunk | undefined {
   if (!currentFile.value) return undefined
   return props.hunks.find(h =>
-    h.file === currentFile.value.path &&
+    (h.file === currentFile.value.path || h.file === `b${currentFile.value.path}`) &&
     h.start === lineNumber
   )
 }

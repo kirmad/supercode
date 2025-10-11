@@ -225,7 +225,8 @@ function showReplyInput() {
     })
   }
 }
-function getFileName(path: string): string {
+function getFileName(path: string | undefined): string {
+  if (!path) return 'Unknown file'
   return path.split('/').pop() || path
 }
 
