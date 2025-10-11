@@ -67,9 +67,6 @@ export type {
   // Credential types
   ADOCredentials,
 
-  // ADO diff helper types
-  AdoDiffHelperConfig,
-
   // Generic Event System types
   CustomEventType,
   CustomEventData,

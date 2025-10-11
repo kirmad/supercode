@@ -669,55 +669,7 @@ export class PullRequestClient {
       return null
     }
   }
-
-  /**
-   * Generate a unified diff for a file using Azure DevOps native diff API
-   * Returns both the diff and the file contents
-   * @param repositoryId Repository ID
-   * @param baseCommit Base commit SHA
-   * @param targetCommit Target commit SHA
-   * @param filePath File path
-   * @param changeType Change type (add, delete, edit)
-   */
-
-  /**
-   * Helper function to fetch file contents for both commits
-   */
-  private async fetchFileContents(
-    repositoryId: string,
-    baseCommit: string,
-    targetCommit: string,
-    filePath: string,
-    changeType?: string
-  ): Promise<[string | null, string | null]> {
-    let oldContent: string | null = null
-    let newContent: string | null = null
-
-    // Optimize file fetching based on change type
-    if (changeType === 'add') {
-      // For added files, only fetch new content
-      newContent = await this.getFileContent(repositoryId, targetCommit, filePath)
-      console.log(`[ADO] Added file content length: ${newContent?.length || 0}`)
-    } else if (changeType === 'delete') {
-      // For deleted files, only fetch old content
-      oldContent = await this.getFileContent(repositoryId, baseCommit, filePath)
-      console.log(`[ADO] Deleted file content length: ${oldContent?.length || 0}`)
-    } else {
-      // For modified files, fetch both
-      const [oldContentResult, newContentResult] = await Promise.all([
-        this.getFileContent(repositoryId, baseCommit, filePath),
-        this.getFileContent(repositoryId, targetCommit, filePath)
-      ])
-      oldContent = oldContentResult
-      newContent = newContentResult
-      console.log(`[ADO] Content lengths - old: ${oldContent?.length || 0}, new: ${newContent?.length || 0}`)
-    }
-
-    return [oldContent, newContent]
-  }
-
-
-
+  
   /**
    * Get file content at a specific commit
    * @param repositoryId Repository ID
